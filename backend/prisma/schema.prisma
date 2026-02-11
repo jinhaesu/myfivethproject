@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  name        String?
+  department  String?
+  role        String   @default("user")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  labels      Label[]
+  reviews     ReviewItem[]
+  verificationCodes EmailVerification[]
+}
+
+model EmailVerification {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+}
+
+model Label {
+  id            String   @id @default(uuid())
+  productName   String
+  salesChannel  String?
+  status        String   @default("draft")
+  servingSize   Float?
+  servingUnit   String?
+  totalContent  Float?
+  totalUnit     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdBy     User     @relation(fields: [createdById], references: [id])
+  createdById   String
+
+  nutritionInfo NutritionInfo?
+  ingredients   Ingredient[]
+  reviewCategories ReviewCategory[]
+}
+
+model NutritionInfo {
+  id              String @id @default(uuid())
+  calories        Float?
+  carbohydrates   Float?
+  sugars          Float?
+  dietaryFiber    Float?
+  protein         Float?
+  totalFat        Float?
+  saturatedFat    Float?
+  transFat        Float?
+  cholesterol     Float?
+  sodium          Float?
+  vitaminA        Float?
+  vitaminC        Float?
+  calcium         Float?
+  iron            Float?
+
+  label           Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId         String @unique
+}
+
+model Ingredient {
+  id          String @id @default(uuid())
+  name        String
+  ratio       Float
+  origin      String?
+  allergen    Boolean @default(false)
+  allergenInfo String?
+  sortOrder   Int    @default(0)
+
+  label       Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId     String
+}
+
+model ReviewCategory {
+  id        String @id @default(uuid())
+  name      String
+  sortOrder Int    @default(0)
+
+  label     Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId   String
+
+  items     ReviewItem[]
+}
+
+model ReviewItem {
+  id          String   @id @default(uuid())
+  taskName    String
+  department  String
+  isCompleted Boolean  @default(false)
+  reviewerNote String?
+  completedAt DateTime?
+  sortOrder   Int      @default(0)
+
+  category    ReviewCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId  String
+
+  reviewer    User?    @relation(fields: [reviewerId], references: [id])
+  reviewerId  String?
+}

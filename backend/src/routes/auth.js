@@ -1,0 +1,166 @@
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
+const { PrismaClient } = require('@prisma/client');
+const { authenticate } = require('../middleware/auth');
+
+const router = express.Router();
+const prisma = new PrismaClient();
+
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.EMAIL_PORT || '587'),
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// 인증 코드 발송
+router.post('/send-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: '이메일을 입력해주세요.' });
+    }
+
+    const code = generateCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10분
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    await prisma.emailVerification.create({
+      data: {
+        email,
+        code,
+        expiresAt,
+        userId: user?.id,
+      },
+    });
+
+    if (process.env.EMAIL_USER) {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: '[영양성분 표기사항 관리] 인증 코드',
+        html: `
+          <div style="padding: 20px; font-family: sans-serif;">
+            <h2>이메일 인증</h2>
+            <p>아래 인증 코드를 입력해주세요:</p>
+            <div style="font-size: 32px; font-weight: bold; color: #2563eb; margin: 20px 0; letter-spacing: 8px;">
+              ${code}
+            </div>
+            <p style="color: #666;">이 코드는 10분간 유효합니다.</p>
+          </div>
+        `,
+      });
+    } else {
+      console.log(`[DEV] Verification code for ${email}: ${code}`);
+    }
+
+    res.json({ message: '인증 코드가 발송되었습니다.' });
+  } catch (error) {
+    console.error('Send code error:', error);
+    res.status(500).json({ error: '인증 코드 발송에 실패했습니다.' });
+  }
+});
+
+// 인증 코드 검증 및 로그인
+router.post('/verify-code', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ error: '이메일과 인증 코드를 입력해주세요.' });
+    }
+
+    const verification = await prisma.emailVerification.findFirst({
+      where: {
+        email,
+        code,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!verification) {
+      return res.status(400).json({ error: '유효하지 않은 인증 코드입니다.' });
+    }
+
+    await prisma.emailVerification.update({
+      where: { id: verification.id },
+      data: { used: true },
+    });
+
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email },
+      });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Verify code error:', error);
+    res.status(500).json({ error: '인증에 실패했습니다.' });
+  }
+});
+
+// 사용자 프로필 조회
+router.get('/me', authenticate, async (req, res) => {
+  res.json({
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name,
+      department: req.user.department,
+      role: req.user.role,
+    },
+  });
+});
+
+// 사용자 프로필 업데이트
+router.put('/me', authenticate, async (req, res) => {
+  try {
+    const { name, department } = req.body;
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { name, department },
+    });
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: '프로필 업데이트에 실패했습니다.' });
+  }
+});
+
+module.exports = router;
