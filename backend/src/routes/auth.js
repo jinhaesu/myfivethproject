@@ -36,7 +36,7 @@ router.post('/send-code', async (req, res) => {
 
     if (process.env.RESEND_API_KEY) {
       await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+        from: process.env.EMAIL_FROM || 'noreply@joinandjoin.com',
         to: email,
         subject: '[영양성분 표기사항 관리] 인증 코드',
         html: `
