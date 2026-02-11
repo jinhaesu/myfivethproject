@@ -1,21 +1,12 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -43,9 +34,9 @@ router.post('/send-code', async (req, res) => {
       },
     });
 
-    if (process.env.EMAIL_USER) {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+    if (process.env.RESEND_API_KEY) {
+      await resend.emails.send({
+        from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
         to: email,
         subject: '[영양성분 표기사항 관리] 인증 코드',
         html: `
