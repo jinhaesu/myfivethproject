@@ -20,6 +20,11 @@ router.post('/send-code', async (req, res) => {
       return res.status(400).json({ error: '이메일을 입력해주세요.' });
     }
 
+    const allowedDomain = process.env.ALLOWED_EMAIL_DOMAIN || 'joinandjoin.com';
+    if (!email.endsWith(`@${allowedDomain}`)) {
+      return res.status(403).json({ error: `@${allowedDomain} 이메일만 사용할 수 있습니다.` });
+    }
+
     const code = generateCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10분
 
