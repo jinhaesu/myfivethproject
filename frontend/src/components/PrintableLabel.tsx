@@ -94,7 +94,7 @@ function KoreaLabel({ productName, productType, servingSize, servingUnit, totalC
       {allergens.length > 0 && (
         <div className="label-section allergen-section">
           <h2>알레르기 유발물질</h2>
-          <p>{[...new Set(allergens.flatMap(a => a.split(',')))].map(a => a.trim()).join(', ')} 함유</p>
+          <p>{Array.from(new Set(allergens.flatMap(a => a.split(',')))).map(a => a.trim()).join(', ')} 함유</p>
         </div>
       )}
 
