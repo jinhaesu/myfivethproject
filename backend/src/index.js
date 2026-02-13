@@ -8,14 +8,20 @@ const reviewRoutes = require('./routes/reviews');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map(u => u.trim().replace(/\/+$/, ''))
+  : ['http://localhost:3000'];
+
+console.log('Allowed CORS origins:', allowedOrigins);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(u => u.trim()) : 'http://localhost:3000',
+  origin: allowedOrigins,
   credentials: true,
 }));
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), port: PORT });
 });
 
 app.use('/api/auth', authRoutes);
