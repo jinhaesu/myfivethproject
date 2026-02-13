@@ -84,6 +84,18 @@ export const api = {
     delete: (id: string) =>
       request(`/labels/${id}`, { method: 'DELETE' }),
   },
+  ai: {
+    generateLabel: (data: any) =>
+      request('/ai/generate-label', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    checkCompliance: (data: any) =>
+      request('/ai/check-compliance', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
   reviews: {
     updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string }) =>
       request(`/reviews/items/${itemId}`, {

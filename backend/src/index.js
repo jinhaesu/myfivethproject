@@ -5,6 +5,7 @@ const { execSync } = require('child_process');
 const authRoutes = require('./routes/auth');
 const labelRoutes = require('./routes/labels');
 const reviewRoutes = require('./routes/reviews');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -29,6 +30,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/labels', labelRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

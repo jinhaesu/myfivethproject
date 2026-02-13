@@ -26,58 +26,92 @@
   }
 }
 
+/* 기존 미리보기 라벨 */
 .nutrition-label {
   font-family: 'Arial', 'Helvetica', sans-serif;
   border: 2px solid #000;
   padding: 8px;
   width: 280px;
 }
+.nutrition-label .title { font-size: 22px; font-weight: 900; border-bottom: 1px solid #000; padding-bottom: 4px; text-align: center; }
+.nutrition-label .thick-line { border-top: 8px solid #000; margin: 2px 0; }
+.nutrition-label .thin-line { border-top: 1px solid #000; margin: 1px 0; }
+.nutrition-label .medium-line { border-top: 3px solid #000; margin: 1px 0; }
+.nutrition-label .row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 13px; }
+.nutrition-label .row.indent { padding-left: 20px; }
+.nutrition-label .row.bold { font-weight: 700; }
+.nutrition-label .serving-info { font-size: 12px; padding: 2px 0; }
+.nutrition-label .dv-header { text-align: right; font-size: 12px; font-weight: 700; }
 
-.nutrition-label .title {
-  font-size: 22px;
-  font-weight: 900;
-  border-bottom: 1px solid #000;
-  padding-bottom: 4px;
-  text-align: center;
+/* ===== 인쇄용 라벨 공통 ===== */
+.printable-label {
+  font-family: 'Arial', 'Helvetica Neue', sans-serif;
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  padding: 16px;
+  width: 380px;
+  line-height: 1.4;
 }
+.printable-label h1 { font-size: 18px; font-weight: 900; margin: 0; }
+.printable-label h2 { font-size: 13px; font-weight: 700; margin: 0 0 4px 0; border-bottom: 1px solid #000; padding-bottom: 2px; }
+.printable-label p { font-size: 11px; margin: 0 0 4px 0; }
+.printable-label .bold { font-weight: 700; }
+.printable-label .label-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
+.printable-label .label-header .food-type { font-size: 11px; color: #555; margin-top: 2px; }
+.printable-label .label-section { margin-bottom: 10px; }
+.printable-label .allergen-section { background: #fff3cd; padding: 8px; border: 1px solid #ffc107; border-radius: 4px; }
+.printable-label .allergen-section h2 { color: #856404; border-color: #856404; }
 
-.nutrition-label .thick-line {
-  border-top: 8px solid #000;
-  margin: 2px 0;
-}
+/* 한국 라벨 영양성분표 */
+.korea-label .nutrition-table { border: 1px solid #000; padding: 6px; font-size: 11px; }
+.korea-label .nutrition-table .nt-header { display: flex; justify-content: space-between; font-size: 10px; padding-bottom: 4px; border-bottom: 1px solid #000; }
+.korea-label .nutrition-table .nt-subheader { font-size: 9px; text-align: right; padding: 2px 0; font-weight: 700; }
+.korea-label .nutrition-table table { width: 100%; border-collapse: collapse; }
+.korea-label .nutrition-table td { padding: 1px 0; font-size: 11px; border-top: 1px solid #ddd; }
+.korea-label .nutrition-table td:nth-child(2) { text-align: right; width: 70px; }
+.korea-label .nutrition-table td:nth-child(3) { text-align: right; width: 40px; font-weight: 700; }
+.korea-label .nutrition-table tr.bold td { font-weight: 700; border-top: 2px solid #000; }
+.korea-label .nutrition-table tr.indent td:first-child { padding-left: 16px; }
+.korea-label .nutrition-table .nt-footer { font-size: 8px; color: #666; margin-top: 4px; }
 
-.nutrition-label .thin-line {
-  border-top: 1px solid #000;
-  margin: 1px 0;
-}
+/* ===== 미국 FDA Nutrition Facts ===== */
+.us-label { width: 320px; }
+.us-label .nf-title { font-size: 28px; font-weight: 900; line-height: 1; }
+.us-label .nf-divider { margin: 2px 0; }
+.us-label .nf-divider.thin { border-top: 1px solid #000; }
+.us-label .nf-divider.medium { border-top: 3px solid #000; }
+.us-label .nf-divider.thick { border-top: 7px solid #000; }
+.us-label .nf-divider.extra-thick { border-top: 12px solid #000; }
+.us-label .nf-serving { font-size: 12px; padding: 4px 0; }
+.us-label .nf-servings { font-size: 12px; }
+.us-label .nf-serving-size { display: flex; justify-content: space-between; font-size: 14px; }
+.us-label .nf-calories-row { display: flex; justify-content: space-between; align-items: flex-end; padding: 4px 0; }
+.us-label .nf-calories-label { font-size: 14px; font-weight: 900; }
+.us-label .nf-calories-value { font-size: 36px; font-weight: 900; line-height: 1; }
+.us-label .nf-dv-header { text-align: right; font-size: 10px; font-weight: 700; }
+.us-label .nf-row { display: flex; justify-content: space-between; font-size: 12px; padding: 1px 0; border-top: 1px solid #ddd; }
+.us-label .nf-row.bold { font-weight: 700; }
+.us-label .nf-row.indent { padding-left: 20px; }
+.us-label .nf-footnote { font-size: 9px; color: #333; margin-top: 4px; }
+.us-label .nf-ingredients { font-size: 10px; margin-top: 10px; border-top: 1px solid #000; padding-top: 6px; }
+.us-label .nf-allergens { font-size: 10px; margin-top: 6px; font-weight: 700; }
 
-.nutrition-label .medium-line {
-  border-top: 3px solid #000;
-  margin: 1px 0;
-}
+/* ===== 일본 라벨 ===== */
+.japan-label { width: 360px; font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; }
+.japan-label .jp-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
+.japan-label .jp-info-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 12px; }
+.japan-label .jp-info-table th { text-align: left; padding: 4px 8px; border: 1px solid #000; background: #f5f5f5; width: 80px; font-weight: 700; }
+.japan-label .jp-info-table td { padding: 4px 8px; border: 1px solid #000; }
+.japan-label .jp-nutrition { border: 1px solid #000; padding: 8px; }
+.japan-label .jp-nut-title { font-size: 12px; font-weight: 700; text-align: center; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 4px; }
+.japan-label .jp-nut-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+.japan-label .jp-nut-table td { padding: 2px 4px; border-bottom: 1px solid #ddd; }
+.japan-label .jp-nut-table td:last-child { text-align: right; }
 
-.nutrition-label .row {
-  display: flex;
-  justify-content: space-between;
-  padding: 1px 0;
-  font-size: 13px;
-}
-
-.nutrition-label .row.indent {
-  padding-left: 20px;
-}
-
-.nutrition-label .row.bold {
-  font-weight: 700;
-}
-
-.nutrition-label .serving-info {
-  font-size: 12px;
-  padding: 2px 0;
-}
-
-.nutrition-label .dv-header {
-  text-align: right;
-  font-size: 12px;
-  font-weight: 700;
+/* ===== 인쇄 스타일 ===== */
+@media print {
+  body * { visibility: hidden; }
+  #printable-label, #printable-label * { visibility: visible; }
+  #printable-label { position: absolute; left: 0; top: 0; margin: 0; border: 2px solid #000; }
 }
