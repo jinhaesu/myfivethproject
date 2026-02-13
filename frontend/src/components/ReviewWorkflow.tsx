@@ -152,23 +152,23 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
               </div>
 
               {/* 검토 항목 테이블 */}
-              <div className="bg-white">
-                <table className="w-full">
+              <div className="bg-white overflow-x-auto">
+                <table className="w-full" style={{ minWidth: '700px' }}>
                   <thead className="bg-gray-50 border-y border-gray-200">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-10">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500" style={{ width: '50px' }}>
                         확인
                       </th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500" style={{ width: '30%' }}>
                         검토 항목
                       </th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-24">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500" style={{ width: '90px' }}>
                         담당 부서
                       </th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-28">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500" style={{ width: '25%', minWidth: '160px' }}>
                         검토자
                       </th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500" style={{ minWidth: '160px' }}>
                         비고
                       </th>
                     </tr>
@@ -186,7 +186,7 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                           } hover:bg-gray-50`}
                         >
                           {/* 체크박스 */}
-                          <td className="px-4 py-2 text-center">
+                          <td className="px-3 py-2 text-center">
                             <button
                               onClick={() => handleToggleItem(item.id, item.isCompleted)}
                               disabled={isLoading}
@@ -205,23 +205,23 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                           </td>
 
                           {/* 검토 항목명 */}
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">
                             <span className={`text-sm ${item.isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                               {item.taskName}
                             </span>
                           </td>
 
                           {/* 담당 부서 */}
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">
                             <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${deptColor}`}>
                               {item.department}
                             </span>
                           </td>
 
                           {/* 검토자 */}
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">
                             {editingName === item.id ? (
-                              <div className="flex gap-1">
+                              <div className="space-y-1">
                                 <input
                                   type="text"
                                   value={nameInputs[item.id] ?? item.reviewerName ?? ''}
@@ -231,23 +231,29 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                                       [item.id]: e.target.value,
                                     }))
                                   }
-                                  className="input-field text-xs py-1"
-                                  placeholder="검토자 이름"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveName(item.id);
+                                    if (e.key === 'Escape') setEditingName(null);
+                                  }}
+                                  className="input-field text-sm py-1.5 w-full"
+                                  placeholder="검토자 이름 입력"
                                   autoFocus
                                 />
-                                <button
-                                  onClick={() => handleSaveName(item.id)}
-                                  disabled={isLoading}
-                                  className="text-xs text-blue-600 hover:underline whitespace-nowrap"
-                                >
-                                  저장
-                                </button>
-                                <button
-                                  onClick={() => setEditingName(null)}
-                                  className="text-xs text-gray-400 hover:underline whitespace-nowrap"
-                                >
-                                  취소
-                                </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleSaveName(item.id)}
+                                    disabled={isLoading}
+                                    className="text-xs text-blue-600 hover:underline"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingName(null)}
+                                    className="text-xs text-gray-400 hover:underline"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <div
@@ -258,24 +264,26 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                                     [item.id]: item.reviewerName || '',
                                   }));
                                 }}
-                                className="text-xs text-gray-600 cursor-pointer hover:text-gray-800 min-h-[20px]"
+                                className="text-sm text-gray-700 cursor-pointer hover:bg-gray-100 rounded px-1.5 py-1 -mx-1.5 min-h-[28px] flex items-center"
                               >
-                                {item.reviewerName || (
-                                  <span className="text-gray-300">클릭하여 입력</span>
+                                {item.reviewerName ? (
+                                  <span>{item.reviewerName}</span>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">클릭하여 입력</span>
                                 )}
-                                {item.completedAt && (
-                                  <div className="text-xs text-gray-400">
-                                    {new Date(item.completedAt).toLocaleDateString('ko-KR')}
-                                  </div>
-                                )}
+                              </div>
+                            )}
+                            {item.completedAt && !editingName && (
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                {new Date(item.completedAt).toLocaleDateString('ko-KR')}
                               </div>
                             )}
                           </td>
 
                           {/* 비고 */}
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">
                             {editingNote === item.id ? (
-                              <div className="flex gap-1">
+                              <div className="space-y-1">
                                 <input
                                   type="text"
                                   value={noteInputs[item.id] ?? item.reviewerNote ?? ''}
@@ -285,22 +293,29 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                                       [item.id]: e.target.value,
                                     }))
                                   }
-                                  className="input-field text-xs py-1"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveNote(item.id);
+                                    if (e.key === 'Escape') setEditingNote(null);
+                                  }}
+                                  className="input-field text-sm py-1.5 w-full"
                                   placeholder="비고 입력"
+                                  autoFocus
                                 />
-                                <button
-                                  onClick={() => handleSaveNote(item.id)}
-                                  disabled={isLoading}
-                                  className="text-xs text-blue-600 hover:underline whitespace-nowrap"
-                                >
-                                  저장
-                                </button>
-                                <button
-                                  onClick={() => setEditingNote(null)}
-                                  className="text-xs text-gray-400 hover:underline whitespace-nowrap"
-                                >
-                                  취소
-                                </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleSaveNote(item.id)}
+                                    disabled={isLoading}
+                                    className="text-xs text-blue-600 hover:underline"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingNote(null)}
+                                    className="text-xs text-gray-400 hover:underline"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <div
@@ -311,10 +326,12 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                                     [item.id]: item.reviewerNote || '',
                                   }));
                                 }}
-                                className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 min-h-[20px]"
+                                className="text-sm text-gray-600 cursor-pointer hover:bg-gray-100 rounded px-1.5 py-1 -mx-1.5 min-h-[28px] flex items-center"
                               >
-                                {item.reviewerNote || (
-                                  <span className="text-gray-300">클릭하여 입력</span>
+                                {item.reviewerNote ? (
+                                  <span>{item.reviewerNote}</span>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">클릭하여 입력</span>
                                 )}
                               </div>
                             )}
