@@ -5,10 +5,10 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// 리뷰 항목 업데이트 (체크/해제)
+// 리뷰 항목 업데이트 (체크/해제, 검토자 이름, 비고)
 router.put('/items/:itemId', authenticate, async (req, res) => {
   try {
-    const { isCompleted, reviewerNote } = req.body;
+    const { isCompleted, reviewerNote, reviewerName } = req.body;
     const { itemId } = req.params;
 
     const item = await prisma.reviewItem.findUnique({
@@ -20,14 +20,22 @@ router.put('/items/:itemId', authenticate, async (req, res) => {
       return res.status(404).json({ error: '검토 항목을 찾을 수 없습니다.' });
     }
 
+    // 변경된 필드만 업데이트 (기존 데이터 보존)
+    const updateData = {};
+    if (isCompleted !== undefined) {
+      updateData.isCompleted = isCompleted;
+      updateData.completedAt = isCompleted ? new Date() : null;
+    }
+    if (reviewerNote !== undefined) {
+      updateData.reviewerNote = reviewerNote;
+    }
+    if (reviewerName !== undefined) {
+      updateData.reviewerName = reviewerName;
+    }
+
     const updated = await prisma.reviewItem.update({
       where: { id: itemId },
-      data: {
-        isCompleted: isCompleted !== undefined ? isCompleted : item.isCompleted,
-        reviewerNote: reviewerNote !== undefined ? reviewerNote : item.reviewerNote,
-        reviewerId: req.user.id,
-        completedAt: isCompleted ? new Date() : null,
-      },
+      data: updateData,
       include: {
         reviewer: { select: { id: true, name: true, department: true } },
       },

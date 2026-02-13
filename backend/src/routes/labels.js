@@ -55,6 +55,13 @@ const DEFAULT_REVIEW_TEMPLATE = [
   },
 ];
 
+// 안전한 숫자 파싱 (0도 유효한 값으로 처리, 빈 문자열/null/undefined만 null)
+function safeParseFloat(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const num = parseFloat(val);
+  return isNaN(num) ? null : num;
+}
+
 const LABEL_INCLUDE = {
   createdBy: { select: { id: true, name: true, email: true, department: true } },
   nutritionInfo: true,
@@ -156,9 +163,9 @@ router.post('/', authenticate, async (req, res) => {
         productName,
         productType: productType || null,
         salesChannel,
-        servingSize: servingSize ? parseFloat(servingSize) : null,
+        servingSize: safeParseFloat(servingSize),
         servingUnit,
-        totalContent: totalContent ? parseFloat(totalContent) : null,
+        totalContent: safeParseFloat(totalContent),
         totalUnit,
         healthClaims: healthClaims || null,
         aiNotes: aiNotes || null,
@@ -167,20 +174,20 @@ router.post('/', authenticate, async (req, res) => {
         nutritionInfo: nutritionInfo
           ? {
               create: {
-                calories: nutritionInfo.calories ? parseFloat(nutritionInfo.calories) : null,
-                carbohydrates: nutritionInfo.carbohydrates ? parseFloat(nutritionInfo.carbohydrates) : null,
-                sugars: nutritionInfo.sugars ? parseFloat(nutritionInfo.sugars) : null,
-                dietaryFiber: nutritionInfo.dietaryFiber ? parseFloat(nutritionInfo.dietaryFiber) : null,
-                protein: nutritionInfo.protein ? parseFloat(nutritionInfo.protein) : null,
-                totalFat: nutritionInfo.totalFat ? parseFloat(nutritionInfo.totalFat) : null,
-                saturatedFat: nutritionInfo.saturatedFat ? parseFloat(nutritionInfo.saturatedFat) : null,
-                transFat: nutritionInfo.transFat ? parseFloat(nutritionInfo.transFat) : null,
-                cholesterol: nutritionInfo.cholesterol ? parseFloat(nutritionInfo.cholesterol) : null,
-                sodium: nutritionInfo.sodium ? parseFloat(nutritionInfo.sodium) : null,
-                vitaminA: nutritionInfo.vitaminA ? parseFloat(nutritionInfo.vitaminA) : null,
-                vitaminC: nutritionInfo.vitaminC ? parseFloat(nutritionInfo.vitaminC) : null,
-                calcium: nutritionInfo.calcium ? parseFloat(nutritionInfo.calcium) : null,
-                iron: nutritionInfo.iron ? parseFloat(nutritionInfo.iron) : null,
+                calories: safeParseFloat(nutritionInfo.calories),
+                carbohydrates: safeParseFloat(nutritionInfo.carbohydrates),
+                sugars: safeParseFloat(nutritionInfo.sugars),
+                dietaryFiber: safeParseFloat(nutritionInfo.dietaryFiber),
+                protein: safeParseFloat(nutritionInfo.protein),
+                totalFat: safeParseFloat(nutritionInfo.totalFat),
+                saturatedFat: safeParseFloat(nutritionInfo.saturatedFat),
+                transFat: safeParseFloat(nutritionInfo.transFat),
+                cholesterol: safeParseFloat(nutritionInfo.cholesterol),
+                sodium: safeParseFloat(nutritionInfo.sodium),
+                vitaminA: safeParseFloat(nutritionInfo.vitaminA),
+                vitaminC: safeParseFloat(nutritionInfo.vitaminC),
+                calcium: safeParseFloat(nutritionInfo.calcium),
+                iron: safeParseFloat(nutritionInfo.iron),
               },
             }
           : undefined,
@@ -188,7 +195,7 @@ router.post('/', authenticate, async (req, res) => {
           ? {
               create: ingredients.map((ing, idx) => ({
                 name: ing.name,
-                ratio: parseFloat(ing.ratio),
+                ratio: safeParseFloat(ing.ratio) ?? 0,
                 origin: ing.origin || null,
                 allergen: ing.allergen || false,
                 allergenInfo: ing.allergenInfo || null,
@@ -244,28 +251,34 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: '라벨을 찾을 수 없습니다.' });
     }
 
+    // 영양성분: 전달된 필드만 업데이트 (0 값도 보존)
     if (nutritionInfo) {
+      const nutrientFields = [
+        'calories', 'carbohydrates', 'sugars', 'dietaryFiber', 'protein',
+        'totalFat', 'saturatedFat', 'transFat', 'cholesterol', 'sodium',
+        'vitaminA', 'vitaminC', 'calcium', 'iron',
+      ];
+      const parsed = {};
+      for (const key of nutrientFields) {
+        if (key in nutritionInfo) {
+          parsed[key] = safeParseFloat(nutritionInfo[key]);
+        }
+      }
       await prisma.nutritionInfo.upsert({
         where: { labelId: req.params.id },
-        create: {
-          labelId: req.params.id,
-          ...Object.fromEntries(
-            Object.entries(nutritionInfo).map(([k, v]) => [k, v ? parseFloat(v) : null])
-          ),
-        },
-        update: Object.fromEntries(
-          Object.entries(nutritionInfo).map(([k, v]) => [k, v ? parseFloat(v) : null])
-        ),
+        create: { labelId: req.params.id, ...parsed },
+        update: parsed,
       });
     }
 
+    // 원재료: 전달된 경우에만 교체
     if (ingredients) {
       await prisma.ingredient.deleteMany({ where: { labelId: req.params.id } });
       await prisma.ingredient.createMany({
         data: ingredients.map((ing, idx) => ({
           labelId: req.params.id,
           name: ing.name,
-          ratio: parseFloat(ing.ratio),
+          ratio: safeParseFloat(ing.ratio) ?? 0,
           origin: ing.origin || null,
           allergen: ing.allergen || false,
           allergenInfo: ing.allergenInfo || null,
@@ -274,15 +287,16 @@ router.put('/:id', authenticate, async (req, res) => {
       });
     }
 
+    // 라벨 기본 정보: 전달된 필드만 업데이트 (undefined인 필드는 기존값 유지)
     const label = await prisma.label.update({
       where: { id: req.params.id },
       data: {
         ...(productName && { productName }),
         ...(productType !== undefined && { productType: productType || null }),
         ...(salesChannel !== undefined && { salesChannel }),
-        ...(servingSize !== undefined && { servingSize: servingSize ? parseFloat(servingSize) : null }),
+        ...(servingSize !== undefined && { servingSize: safeParseFloat(servingSize) }),
         ...(servingUnit !== undefined && { servingUnit }),
-        ...(totalContent !== undefined && { totalContent: totalContent ? parseFloat(totalContent) : null }),
+        ...(totalContent !== undefined && { totalContent: safeParseFloat(totalContent) }),
         ...(totalUnit !== undefined && { totalUnit }),
         ...(status && { status }),
         ...(healthClaims !== undefined && { healthClaims }),

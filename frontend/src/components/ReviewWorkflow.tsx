@@ -8,6 +8,7 @@ interface ReviewItem {
   taskName: string;
   department: string;
   isCompleted: boolean;
+  reviewerName: string | null;
   reviewerNote: string | null;
   completedAt: string | null;
   reviewer: {
@@ -51,6 +52,8 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
+  const [editingName, setEditingName] = useState<string | null>(null);
 
   const handleToggleItem = async (itemId: string, isCompleted: boolean) => {
     setLoadingItems((prev) => ({ ...prev, [itemId]: true }));
@@ -74,6 +77,21 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
       onUpdate();
     } catch (error) {
       console.error('Failed to save note:', error);
+    } finally {
+      setLoadingItems((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleSaveName = async (itemId: string) => {
+    setLoadingItems((prev) => ({ ...prev, [itemId]: true }));
+    try {
+      await api.reviews.updateItem(itemId, {
+        reviewerName: nameInputs[itemId] || '',
+      });
+      setEditingName(null);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to save reviewer name:', error);
     } finally {
       setLoadingItems((prev) => ({ ...prev, [itemId]: false }));
     }
@@ -201,15 +219,55 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                           </td>
 
                           {/* 검토자 */}
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            {item.reviewer ? (
-                              <span>{item.reviewer.name || '-'}</span>
+                          <td className="px-4 py-2">
+                            {editingName === item.id ? (
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  value={nameInputs[item.id] ?? item.reviewerName ?? ''}
+                                  onChange={(e) =>
+                                    setNameInputs((prev) => ({
+                                      ...prev,
+                                      [item.id]: e.target.value,
+                                    }))
+                                  }
+                                  className="input-field text-xs py-1"
+                                  placeholder="검토자 이름"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleSaveName(item.id)}
+                                  disabled={isLoading}
+                                  className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                                >
+                                  저장
+                                </button>
+                                <button
+                                  onClick={() => setEditingName(null)}
+                                  className="text-xs text-gray-400 hover:underline whitespace-nowrap"
+                                >
+                                  취소
+                                </button>
+                              </div>
                             ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                            {item.completedAt && (
-                              <div className="text-xs text-gray-400">
-                                {new Date(item.completedAt).toLocaleDateString('ko-KR')}
+                              <div
+                                onClick={() => {
+                                  setEditingName(item.id);
+                                  setNameInputs((prev) => ({
+                                    ...prev,
+                                    [item.id]: item.reviewerName || '',
+                                  }));
+                                }}
+                                className="text-xs text-gray-600 cursor-pointer hover:text-gray-800 min-h-[20px]"
+                              >
+                                {item.reviewerName || (
+                                  <span className="text-gray-300">클릭하여 입력</span>
+                                )}
+                                {item.completedAt && (
+                                  <div className="text-xs text-gray-400">
+                                    {new Date(item.completedAt).toLocaleDateString('ko-KR')}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </td>

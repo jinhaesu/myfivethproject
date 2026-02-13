@@ -106,13 +106,14 @@ model ReviewCategory {
 }
 
 model ReviewItem {
-  id          String   @id @default(uuid())
-  taskName    String
-  department  String
-  isCompleted Boolean  @default(false)
-  reviewerNote String?
-  completedAt DateTime?
-  sortOrder   Int      @default(0)
+  id            String   @id @default(uuid())
+  taskName      String
+  department    String
+  isCompleted   Boolean  @default(false)
+  reviewerName  String?
+  reviewerNote  String?
+  completedAt   DateTime?
+  sortOrder     Int      @default(0)
 
   category    ReviewCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   categoryId  String

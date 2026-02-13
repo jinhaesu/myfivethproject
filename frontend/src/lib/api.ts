@@ -140,7 +140,7 @@ export const api = {
       }),
   },
   reviews: {
-    updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string }) =>
+    updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string; reviewerName?: string }) =>
       request(`/reviews/items/${itemId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
