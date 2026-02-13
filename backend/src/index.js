@@ -7,7 +7,7 @@ const labelRoutes = require('./routes/labels');
 const reviewRoutes = require('./routes/reviews');
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 8080;
 
 const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map(u => u.trim().replace(/\/+$/, ''))
