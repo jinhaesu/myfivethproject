@@ -1,11 +1,13 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { execSync } = require('child_process');
 const authRoutes = require('./routes/auth');
 const labelRoutes = require('./routes/labels');
 const reviewRoutes = require('./routes/reviews');
 const aiRoutes = require('./routes/ai');
+const uploadRoutes = require('./routes/uploads');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -22,6 +24,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -31,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/labels', labelRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

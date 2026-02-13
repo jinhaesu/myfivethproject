@@ -6,7 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import NutritionLabel from '@/components/NutritionLabel';
 import PrintableLabel from '@/components/PrintableLabel';
 import ReviewWorkflow from '@/components/ReviewWorkflow';
-import { api } from '@/lib/api';
+import { api, getFileUrl } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
 
@@ -23,6 +23,9 @@ interface Label {
   healthClaims: HealthClaim[] | null;
   aiNotes: any | null;
   labelSnapshot: any | null;
+  designFileUrl: string | null;
+  designFileName: string | null;
+  designUploadedAt: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: {
@@ -55,9 +58,13 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
   const [label, setLabel] = useState<Label | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'result' | 'label' | 'claims' | 'ainotes' | 'review'>('result');
+  const [activeTab, setActiveTab] = useState<'result' | 'label' | 'design' | 'claims' | 'ainotes' | 'review'>('result');
   const [deleting, setDeleting] = useState(false);
   const [labelFormat, setLabelFormat] = useState<'korea' | 'us' | 'japan'>('korea');
+
+  // 디자인 파일 업로드 관련
+  const [uploading, setUploading] = useState(false);
+  const [designCompareMode, setDesignCompareMode] = useState(false);
 
   // 수정 모드
   const [editMode, setEditMode] = useState(false);
@@ -140,6 +147,32 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
     }
   };
 
+  const handleDesignUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      await api.uploads.uploadDesign(id, file);
+      await fetchLabel();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDesignDelete = async () => {
+    if (!confirm('디자인 파일을 삭제하시겠습니까?')) return;
+    try {
+      await api.uploads.deleteDesign(id);
+      await fetchLabel();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirm('이 표기사항을 삭제하시겠습니까?')) return;
     setDeleting(true);
@@ -194,6 +227,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
   const TABS = [
     { id: 'result' as const, name: '표기사항 결과' },
     { id: 'label' as const, name: '라벨 디자인' },
+    { id: 'design' as const, name: `디자인 검수${label.designFileUrl ? ' ✓' : ''}` },
     { id: 'claims' as const, name: '강조 표기사항' },
     { id: 'ainotes' as const, name: 'AI 검수 노트' },
     { id: 'review' as const, name: '부서별 검토' },
@@ -538,6 +572,208 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
               aiResult={snapshot}
             />
           </div>
+        </div>
+      )}
+
+      {/* 디자인 검수 */}
+      {activeTab === 'design' && (
+        <div className="space-y-6">
+          {/* 파일 업로드 영역 */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold">디자인 파일</h3>
+                <p className="text-xs text-gray-500 mt-1">디자이너가 제작한 라벨 시안 PDF/이미지를 업로드하여 비교 검수합니다.</p>
+              </div>
+              <div className="flex gap-2 items-center">
+                {label.designFileUrl && (
+                  <>
+                    <button
+                      onClick={() => setDesignCompareMode(!designCompareMode)}
+                      className={`text-sm px-3 py-1.5 rounded-lg border-2 font-medium transition-colors ${
+                        designCompareMode
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      비교 모드
+                    </button>
+                    <button onClick={handleDesignDelete} className="btn-danger text-xs">
+                      삭제
+                    </button>
+                  </>
+                )}
+                <label className="btn-primary text-sm cursor-pointer">
+                  {uploading ? '업로드 중...' : label.designFileUrl ? '파일 교체' : '파일 업로드'}
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    onChange={handleDesignUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {label.designFileUrl && (
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <span className="text-2xl">
+                  {label.designFileName?.endsWith('.pdf') ? '\u{1F4C4}' : '\u{1F5BC}'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{label.designFileName}</p>
+                  <p className="text-xs text-gray-500">
+                    업로드: {label.designUploadedAt ? new Date(label.designUploadedAt).toLocaleString('ko-KR') : '-'}
+                  </p>
+                </div>
+                <a
+                  href={getFileUrl(label.designFileUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary text-xs"
+                >
+                  새 탭에서 보기
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* 비교 모드 OFF: 디자인 파일만 표시 */}
+          {!designCompareMode && label.designFileUrl && (
+            <div className="card">
+              <h3 className="text-sm font-bold mb-3">디자인 시안</h3>
+              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                {label.designFileName?.endsWith('.pdf') ? (
+                  <iframe
+                    src={getFileUrl(label.designFileUrl)}
+                    className="w-full"
+                    style={{ height: '80vh', minHeight: '600px' }}
+                    title="디자인 PDF"
+                  />
+                ) : (
+                  <img
+                    src={getFileUrl(label.designFileUrl)}
+                    alt="디자인 시안"
+                    className="w-full h-auto max-h-[80vh] object-contain"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 비교 모드 ON: 좌우 나란히 */}
+          {designCompareMode && label.designFileUrl && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 왼쪽: 디자인 시안 */}
+              <div className="card">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-bold">디자인 시안</span>
+                  <span className="text-xs text-gray-500">{label.designFileName}</span>
+                </div>
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                  {label.designFileName?.endsWith('.pdf') ? (
+                    <iframe
+                      src={getFileUrl(label.designFileUrl)}
+                      className="w-full"
+                      style={{ height: '70vh', minHeight: '500px' }}
+                      title="디자인 PDF"
+                    />
+                  ) : (
+                    <img
+                      src={getFileUrl(label.designFileUrl)}
+                      alt="디자인 시안"
+                      className="w-full h-auto max-h-[70vh] object-contain"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* 오른쪽: AI 생성 라벨 */}
+              <div className="card">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-bold">AI 생성 라벨</span>
+                  <div className="flex gap-1 ml-auto">
+                    {[
+                      { id: 'korea' as const, name: 'KR' },
+                      { id: 'us' as const, name: 'US' },
+                      { id: 'japan' as const, name: 'JP' },
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setLabelFormat(f.id)}
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          labelFormat === f.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="border border-gray-200 rounded-lg overflow-auto bg-white p-4" style={{ maxHeight: '70vh' }}>
+                  <PrintableLabel
+                    format={labelFormat}
+                    productName={label.productName}
+                    productType={label.productType || ''}
+                    servingSize={label.servingSize}
+                    servingUnit={label.servingUnit || 'g'}
+                    totalContent={label.totalContent}
+                    totalUnit={label.totalUnit || 'g'}
+                    nutritionInfo={nutritionForPreview}
+                    ingredients={ingredientsForPreview}
+                    aiResult={snapshot}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 검수 체크리스트 */}
+          {label.designFileUrl && (
+            <div className="card">
+              <h3 className="text-sm font-bold mb-3">디자인 검수 체크포인트</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { title: '제품명 일치', desc: '디자인에 표기된 제품명이 등록 정보와 동일한지 확인' },
+                  { title: '영양성분표 수치', desc: '영양정보 수치, 단위, %기준치가 정확한지 확인' },
+                  { title: '원재료명 순서', desc: '배합비 높은 순서대로 정확히 기재되었는지 확인' },
+                  { title: '원산지 표기', desc: '법적 의무 대상 원재료의 원산지가 정확하게 기재되었는지 확인' },
+                  { title: '알레르기 표시', desc: '알레르기 유발물질 경고문이 누락 없이 표시되었는지 확인' },
+                  { title: '글자 크기/가독성', desc: '법적 최소 글자 크기 기준 충족 여부 확인' },
+                  { title: '바코드/QR', desc: '바코드 규격 및 인쇄 적합성 확인' },
+                  { title: '색상/레이아웃', desc: '브랜드 가이드라인 및 인쇄 색상 적합성 확인' },
+                ].map((item, i) => (
+                  <div key={i} className="p-3 border border-gray-200 rounded-lg hover:border-blue-200 transition-colors">
+                    <h4 className="text-sm font-medium text-gray-800">{item.title}</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 파일 미첨부 안내 */}
+          {!label.designFileUrl && (
+            <div className="card text-center py-12">
+              <div className="text-5xl mb-4">{'\u{1F4E4}'}</div>
+              <p className="text-gray-500 mb-2">디자인 파일이 아직 첨부되지 않았습니다.</p>
+              <p className="text-sm text-gray-400 mb-4">
+                디자이너가 제작한 라벨 시안(PDF, PNG, JPG)을 업로드하면<br />
+                AI 생성 라벨과 나란히 비교 검수할 수 있습니다.
+              </p>
+              <label className="btn-primary cursor-pointer inline-block">
+                디자인 파일 업로드
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  onChange={handleDesignUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          )}
         </div>
       )}
 

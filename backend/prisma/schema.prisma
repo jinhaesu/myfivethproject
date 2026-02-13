@@ -43,11 +43,14 @@ model Label {
   servingUnit   String?
   totalContent  Float?
   totalUnit     String?
-  healthClaims  Json?
-  aiNotes       Json?
-  labelSnapshot Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  healthClaims    Json?
+  aiNotes         Json?
+  labelSnapshot   Json?
+  designFileUrl   String?
+  designFileName  String?
+  designUploadedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   createdBy     User     @relation(fields: [createdById], references: [id])
   createdById   String

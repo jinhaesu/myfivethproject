@@ -13,6 +13,8 @@ interface Label {
   salesChannel: string | null;
   status: string;
   healthClaims: HealthClaim[] | null;
+  designFileUrl: string | null;
+  designFileName: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: {
@@ -136,6 +138,9 @@ export default function DashboardPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     상태
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">
+                    디자인
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">
                     검토 진행률
                   </th>
@@ -191,6 +196,15 @@ export default function DashboardPage() {
                         >
                           {statusInfo.label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        {label.designFileUrl ? (
+                          <Link href={`/labels/${label.id}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                            {label.designFileName?.endsWith('.pdf') ? '\u{1F4C4}' : '\u{1F5BC}'} 첨부완료
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-400">미첨부</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <div className="flex items-center gap-2">

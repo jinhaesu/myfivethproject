@@ -42,6 +42,49 @@ async function request(path: string, options: RequestInit = {}) {
   return data;
 }
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'http://localhost:4000';
+
+async function uploadFile(path: string, file: File) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('designFile', file);
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+  } catch (err) {
+    console.error(`Upload 요청 실패: ${API_URL}${path}`, err);
+    throw new Error('서버에 연결할 수 없습니다.');
+  }
+
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '업로드에 실패했습니다.');
+  }
+  return data;
+}
+
+export function getFileUrl(path: string): string {
+  if (!path) return '';
+  return `${BACKEND_URL}${path}`;
+}
+
 export const api = {
   auth: {
     sendCode: (email: string) =>
@@ -103,5 +146,11 @@ export const api = {
         body: JSON.stringify(data),
       }),
     getProgress: (labelId: string) => request(`/reviews/progress/${labelId}`),
+  },
+  uploads: {
+    uploadDesign: (labelId: string, file: File) =>
+      uploadFile(`/uploads/${labelId}/design`, file),
+    deleteDesign: (labelId: string) =>
+      request(`/uploads/${labelId}/design`, { method: 'DELETE' }),
   },
 };
