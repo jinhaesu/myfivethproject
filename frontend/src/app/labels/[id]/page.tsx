@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import NutritionLabel from '@/components/NutritionLabel';
@@ -42,8 +42,8 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   approved: { label: '승인 완료', color: 'bg-green-100 text-green-700' },
 };
 
-export default function LabelDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function LabelDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const router = useRouter();
   const [label, setLabel] = useState<Label | null>(null);
   const [loading, setLoading] = useState(true);
