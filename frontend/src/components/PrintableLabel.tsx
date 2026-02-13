@@ -1,5 +1,7 @@
 'use client';
 
+import { analyzeHealthClaims, getEligibleClaims } from '@/lib/healthClaims';
+
 interface Ingredient {
   name: string;
   ratio: string;
@@ -38,6 +40,11 @@ function pct(val: number | null | undefined, dv: number): string {
   return `${Math.round((val / dv) * 100)}%`;
 }
 
+function pctNum(val: number | null | undefined, dv: number): number {
+  if (!val || dv <= 0) return 0;
+  return Math.round((val / dv) * 100);
+}
+
 function fmt(val: number | null | undefined, unit: string = 'g'): string {
   if (val == null) return `0${unit}`;
   return `${val}${unit}`;
@@ -45,63 +52,127 @@ function fmt(val: number | null | undefined, unit: string = 'g'): string {
 
 function KoreaLabel({ productName, productType, servingSize, servingUnit, totalContent, totalUnit, nutritionInfo: ni, ingredients, aiResult }: Props) {
   const sorted = [...ingredients].sort((a, b) => parseFloat(b.ratio || '0') - parseFloat(a.ratio || '0'));
-  const allergens = sorted.filter(i => i.allergen && i.allergenInfo).map(i => i.allergenInfo);
+  const allergenInfos = sorted.filter(i => i.allergen && i.allergenInfo).map(i => i.allergenInfo);
+  const allergenList = Array.from(new Set(allergenInfos.flatMap(a => a.split(',')))).map(a => a.trim()).filter(Boolean);
   const storage = aiResult?.storageInstructions?.korea || '직사광선을 피하고 서늘한 곳에 보관';
+  const precautions = aiResult?.precautions?.korea || [];
+
+  const claims = analyzeHealthClaims(ni, servingSize);
+  const eligible = getEligibleClaims(claims);
+
+  const nutrientRows = [
+    { key: 'sodium', label: '나트륨', unit: 'mg', dv: KR_DV.sodium },
+    { key: 'carbohydrates', label: '탄수화물', unit: 'g', dv: KR_DV.carbohydrates },
+    { key: 'sugars', label: '  당류', unit: 'g', dv: KR_DV.sugars, indent: true },
+    { key: 'dietaryFiber', label: '  식이섬유', unit: 'g', dv: KR_DV.dietaryFiber, indent: true },
+    { key: 'totalFat', label: '지방', unit: 'g', dv: KR_DV.totalFat },
+    { key: 'transFat', label: '  트랜스지방', unit: 'g', dv: 0, indent: true },
+    { key: 'saturatedFat', label: '  포화지방', unit: 'g', dv: KR_DV.saturatedFat, indent: true },
+    { key: 'cholesterol', label: '콜레스테롤', unit: 'mg', dv: KR_DV.cholesterol },
+    { key: 'protein', label: '단백질', unit: 'g', dv: KR_DV.protein },
+  ];
 
   return (
-    <div className="printable-label korea-label" id="printable-label">
-      <div className="label-header">
-        <h1>{productName}</h1>
-        {productType && <p className="food-type">식품유형: {productType}</p>}
-      </div>
-
-      <div className="label-section">
-        <h2>영양성분표</h2>
-        <div className="nutrition-table">
-          <div className="nt-header">
-            <span>{totalContent && totalUnit ? `총 내용량 ${totalContent}${totalUnit}` : ''}</span>
-            <span>{servingSize && servingUnit ? `1회 제공량 ${servingSize}${servingUnit}` : ''}</span>
-          </div>
-          <div className="nt-subheader">1회 제공량당 함량 / %영양성분기준치</div>
-          <table>
-            <tbody>
-              <tr className="bold"><td>열량</td><td>{fmt(ni.calories, 'kcal')}</td><td></td></tr>
-              <tr className="bold"><td>탄수화물</td><td>{fmt(ni.carbohydrates)}</td><td>{pct(ni.carbohydrates, KR_DV.carbohydrates)}</td></tr>
-              <tr className="indent"><td>당류</td><td>{fmt(ni.sugars)}</td><td>{pct(ni.sugars, KR_DV.sugars)}</td></tr>
-              <tr className="indent"><td>식이섬유</td><td>{fmt(ni.dietaryFiber)}</td><td>{pct(ni.dietaryFiber, KR_DV.dietaryFiber)}</td></tr>
-              <tr className="bold"><td>단백질</td><td>{fmt(ni.protein)}</td><td>{pct(ni.protein, KR_DV.protein)}</td></tr>
-              <tr className="bold"><td>지방</td><td>{fmt(ni.totalFat)}</td><td>{pct(ni.totalFat, KR_DV.totalFat)}</td></tr>
-              <tr className="indent"><td>포화지방</td><td>{fmt(ni.saturatedFat)}</td><td>{pct(ni.saturatedFat, KR_DV.saturatedFat)}</td></tr>
-              <tr className="indent"><td>트랜스지방</td><td>{fmt(ni.transFat)}</td><td></td></tr>
-              <tr className="bold"><td>콜레스테롤</td><td>{fmt(ni.cholesterol, 'mg')}</td><td>{pct(ni.cholesterol, KR_DV.cholesterol)}</td></tr>
-              <tr className="bold"><td>나트륨</td><td>{fmt(ni.sodium, 'mg')}</td><td>{pct(ni.sodium, KR_DV.sodium)}</td></tr>
-            </tbody>
-          </table>
-          <div className="nt-footer">* %영양성분기준치: 1일 영양성분기준치에 대한 비율</div>
-        </div>
-      </div>
-
-      <div className="label-section">
-        <h2>원재료명</h2>
-        <p>{sorted.map(i => {
-          let t = i.name;
-          if (i.origin) t += `(${i.origin})`;
-          t += ` ${i.ratio}%`;
-          return t;
-        }).join(', ')}</p>
-      </div>
-
-      {allergens.length > 0 && (
-        <div className="label-section allergen-section">
-          <h2>알레르기 유발물질</h2>
-          <p>{Array.from(new Set(allergens.flatMap(a => a.split(',')))).map(a => a.trim()).join(', ')} 함유</p>
+    <div className="kr-label" id="printable-label">
+      {/* 강조 표기 배지 */}
+      {eligible.length > 0 && (
+        <div className="kr-claims">
+          {eligible.map(c => (
+            <span key={c.id} className={`kr-claim-badge ${c.category === 'positive' ? 'positive' : 'negative'}`}>
+              {c.name}
+            </span>
+          ))}
         </div>
       )}
 
-      <div className="label-section">
-        <h2>보관방법</h2>
-        <p>{storage}</p>
+      {/* 제품 정보 헤더 */}
+      <div className="kr-header">
+        <div className="kr-product-name">{productName}</div>
+        {productType && <div className="kr-food-type">식품유형: {productType}</div>}
+        {totalContent && totalUnit && <div className="kr-content">내용량: {totalContent}{totalUnit}</div>}
       </div>
+
+      {/* 원재료명 */}
+      <div className="kr-section">
+        <div className="kr-section-title">원재료명</div>
+        <div className="kr-ingredients-text">
+          {sorted.map(i => {
+            let t = i.name;
+            if (i.origin) t += `(${i.origin})`;
+            if (parseFloat(i.ratio) > 0) t += ` ${i.ratio}%`;
+            return t;
+          }).join(', ')}
+        </div>
+      </div>
+
+      {/* 영양정보 */}
+      <div className="kr-nutrition-box">
+        <div className="kr-nut-header">
+          <span className="kr-nut-title">영양정보</span>
+          <span className="kr-nut-dv">1일 영양성분 기준치에 대한 비율(%)</span>
+        </div>
+        <div className="kr-nut-serving">
+          {servingSize && servingUnit ? `1회 제공량 ${servingSize}${servingUnit}` : ''}
+          {totalContent && totalUnit ? ` / 총 내용량 ${totalContent}${totalUnit}` : ''}
+        </div>
+
+        {/* 열량 */}
+        <div className="kr-calories-row">
+          <span className="kr-cal-value">{ni.calories || 0}kcal</span>
+        </div>
+
+        {/* 영양성분 바 차트 */}
+        <div className="kr-nutrients">
+          {nutrientRows.map(({ key, label, unit, dv, indent }) => {
+            const val = ni[key] ?? 0;
+            const dvPct = dv > 0 ? pctNum(val, dv) : -1;
+            return (
+              <div key={key} className={`kr-nut-row ${indent ? 'indent' : ''}`}>
+                <div className="kr-nut-label">{label.trim()}</div>
+                <div className="kr-nut-val">{fmt(val, unit)}</div>
+                <div className="kr-nut-bar-wrap">
+                  {dvPct >= 0 && (
+                    <div className="kr-nut-bar">
+                      <div
+                        className="kr-nut-bar-fill"
+                        style={{ width: `${Math.min(dvPct, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="kr-nut-pct">{dvPct >= 0 ? `${dvPct}%` : ''}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="kr-nut-footer">
+          * %영양성분기준치: 1일 영양성분기준치에 대한 비율
+        </div>
+      </div>
+
+      {/* 알레르기 유발물질 */}
+      {allergenList.length > 0 && (
+        <div className="kr-allergen">
+          <strong>알레르기 유발물질:</strong> {allergenList.join(', ')} 함유
+        </div>
+      )}
+
+      {/* 보관방법 */}
+      <div className="kr-section">
+        <div className="kr-section-title">보관방법</div>
+        <div className="kr-section-text">{storage}</div>
+      </div>
+
+      {/* 주의사항 */}
+      {precautions.length > 0 && (
+        <div className="kr-section">
+          <div className="kr-section-title">주의사항</div>
+          <ul className="kr-precautions">
+            {precautions.map((p: string, i: number) => <li key={i}>{p}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

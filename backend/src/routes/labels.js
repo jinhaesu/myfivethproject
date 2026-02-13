@@ -55,6 +55,21 @@ const DEFAULT_REVIEW_TEMPLATE = [
   },
 ];
 
+const LABEL_INCLUDE = {
+  createdBy: { select: { id: true, name: true, email: true, department: true } },
+  nutritionInfo: true,
+  ingredients: { orderBy: { sortOrder: 'asc' } },
+  reviewCategories: {
+    orderBy: { sortOrder: 'asc' },
+    include: {
+      items: {
+        orderBy: { sortOrder: 'asc' },
+        include: { reviewer: { select: { id: true, name: true, department: true } } },
+      },
+    },
+  },
+};
+
 // 라벨 목록 조회
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -72,20 +87,7 @@ router.get('/', authenticate, async (req, res) => {
     const [labels, total] = await Promise.all([
       prisma.label.findMany({
         where,
-        include: {
-          createdBy: { select: { id: true, name: true, email: true, department: true } },
-          nutritionInfo: true,
-          ingredients: { orderBy: { sortOrder: 'asc' } },
-          reviewCategories: {
-            orderBy: { sortOrder: 'asc' },
-            include: {
-              items: {
-                orderBy: { sortOrder: 'asc' },
-                include: { reviewer: { select: { id: true, name: true, department: true } } },
-              },
-            },
-          },
-        },
+        include: LABEL_INCLUDE,
         orderBy: { createdAt: 'desc' },
         skip,
         take: parseInt(limit),
@@ -113,20 +115,7 @@ router.get('/:id', authenticate, async (req, res) => {
   try {
     const label = await prisma.label.findUnique({
       where: { id: req.params.id },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true, department: true } },
-        nutritionInfo: true,
-        ingredients: { orderBy: { sortOrder: 'asc' } },
-        reviewCategories: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            items: {
-              orderBy: { sortOrder: 'asc' },
-              include: { reviewer: { select: { id: true, name: true, department: true } } },
-            },
-          },
-        },
-      },
+      include: LABEL_INCLUDE,
     });
 
     if (!label) {
@@ -145,6 +134,7 @@ router.post('/', authenticate, async (req, res) => {
   try {
     const {
       productName,
+      productType,
       salesChannel,
       servingSize,
       servingUnit,
@@ -152,6 +142,9 @@ router.post('/', authenticate, async (req, res) => {
       totalUnit,
       nutritionInfo,
       ingredients,
+      healthClaims,
+      aiNotes,
+      labelSnapshot,
     } = req.body;
 
     if (!productName) {
@@ -161,11 +154,15 @@ router.post('/', authenticate, async (req, res) => {
     const label = await prisma.label.create({
       data: {
         productName,
+        productType: productType || null,
         salesChannel,
         servingSize: servingSize ? parseFloat(servingSize) : null,
         servingUnit,
         totalContent: totalContent ? parseFloat(totalContent) : null,
         totalUnit,
+        healthClaims: healthClaims || null,
+        aiNotes: aiNotes || null,
+        labelSnapshot: labelSnapshot || null,
         createdById: req.user.id,
         nutritionInfo: nutritionInfo
           ? {
@@ -213,20 +210,7 @@ router.post('/', authenticate, async (req, res) => {
           })),
         },
       },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true, department: true } },
-        nutritionInfo: true,
-        ingredients: { orderBy: { sortOrder: 'asc' } },
-        reviewCategories: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            items: {
-              orderBy: { sortOrder: 'asc' },
-              include: { reviewer: { select: { id: true, name: true, department: true } } },
-            },
-          },
-        },
-      },
+      include: LABEL_INCLUDE,
     });
 
     res.status(201).json({ label });
@@ -241,6 +225,7 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const {
       productName,
+      productType,
       salesChannel,
       servingSize,
       servingUnit,
@@ -249,6 +234,9 @@ router.put('/:id', authenticate, async (req, res) => {
       status,
       nutritionInfo,
       ingredients,
+      healthClaims,
+      aiNotes,
+      labelSnapshot,
     } = req.body;
 
     const existing = await prisma.label.findUnique({ where: { id: req.params.id } });
@@ -290,27 +278,18 @@ router.put('/:id', authenticate, async (req, res) => {
       where: { id: req.params.id },
       data: {
         ...(productName && { productName }),
+        ...(productType !== undefined && { productType: productType || null }),
         ...(salesChannel !== undefined && { salesChannel }),
         ...(servingSize !== undefined && { servingSize: servingSize ? parseFloat(servingSize) : null }),
         ...(servingUnit !== undefined && { servingUnit }),
         ...(totalContent !== undefined && { totalContent: totalContent ? parseFloat(totalContent) : null }),
         ...(totalUnit !== undefined && { totalUnit }),
         ...(status && { status }),
+        ...(healthClaims !== undefined && { healthClaims }),
+        ...(aiNotes !== undefined && { aiNotes }),
+        ...(labelSnapshot !== undefined && { labelSnapshot }),
       },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true, department: true } },
-        nutritionInfo: true,
-        ingredients: { orderBy: { sortOrder: 'asc' } },
-        reviewCategories: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            items: {
-              orderBy: { sortOrder: 'asc' },
-              include: { reviewer: { select: { id: true, name: true, department: true } } },
-            },
-          },
-        },
-      },
+      include: LABEL_INCLUDE,
     });
 
     res.json({ label });

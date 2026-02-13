@@ -8,6 +8,7 @@ import ComplianceCheck from '@/components/ComplianceCheck';
 import PrintableLabel from '@/components/PrintableLabel';
 import { api } from '@/lib/api';
 import { SAMPLE_TEMPLATES, SampleTemplate } from '@/data/sampleLabels';
+import { analyzeHealthClaims, HealthClaim, getEligibleClaims, getClaimBadgeColor } from '@/lib/healthClaims';
 
 interface Ingredient {
   name: string;
@@ -21,7 +22,56 @@ const EMPTY_INGREDIENT: Ingredient = {
   name: '', ratio: '', origin: '', allergen: false, allergenInfo: '',
 };
 
-const STEPS = ['템플릿 선택', '기본 정보', 'AI 생성', '규정 검토', '저장/인쇄'];
+const STEPS = ['템플릿 선택', '기본 정보', 'AI 생성', '규정 검토', '최종 결과'];
+
+function HealthClaimsPanel({ claims }: { claims: HealthClaim[] }) {
+  const eligible = getEligibleClaims(claims);
+  const ineligible = claims.filter(c => !c.eligible);
+
+  return (
+    <div className="card">
+      <h3 className="text-lg font-bold mb-4">강조 표기사항 분석</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        식약처 「식품등의 표시·광고에 관한 법률」 기준
+      </p>
+
+      {eligible.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-sm font-bold text-green-700 mb-2">표기 가능 ({eligible.length})</h4>
+          <div className="space-y-2">
+            {eligible.map(c => (
+              <div key={c.id} className="flex items-start gap-2 p-2 bg-green-50 rounded-lg border border-green-200">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${getClaimBadgeColor(c)}`}>
+                  {c.name}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-green-800">{c.reason}</p>
+                  <p className="text-xs text-green-600 mt-0.5">{c.standard}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ineligible.length > 0 && (
+        <div>
+          <h4 className="text-sm font-bold text-gray-500 mb-2">해당 없음 ({ineligible.length})</h4>
+          <div className="space-y-1">
+            {ineligible.map(c => (
+              <div key={c.id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">
+                  {c.name}
+                </span>
+                <p className="text-xs text-gray-500 flex-1">{c.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function NewLabelPage() {
   const router = useRouter();
@@ -186,12 +236,29 @@ export default function NewLabelPage() {
     }
   };
 
+  const nutritionForPreview = Object.fromEntries(
+    Object.entries(nutrition).map(([k, v]) => [k, v ? parseFloat(v) : null])
+  );
+
+  const currentHealthClaims = analyzeHealthClaims(
+    nutritionForPreview,
+    servingSize ? parseFloat(servingSize) : null,
+  );
+
   const handleSave = async () => {
     setLoading(true);
     setError('');
     try {
+      // AI 주의사항 정리
+      const aiNotes: any = {};
+      if (aiResult?.precautions) aiNotes.precautions = aiResult.precautions;
+      if (aiResult?.storageInstructions) aiNotes.storageInstructions = aiResult.storageInstructions;
+      if (aiResult?.regulatoryText) aiNotes.regulatoryText = aiResult.regulatoryText;
+      if (complianceResult) aiNotes.compliance = complianceResult;
+
       const data = await api.labels.create({
         productName,
+        productType: productType || null,
         salesChannel: salesChannel || null,
         servingSize: servingSize || null,
         servingUnit,
@@ -201,6 +268,9 @@ export default function NewLabelPage() {
         ingredients: ingredients
           .filter(ing => ing.name.trim())
           .map(ing => ({ ...ing, ratio: ing.ratio || '0' })),
+        healthClaims: currentHealthClaims,
+        aiNotes: Object.keys(aiNotes).length > 0 ? aiNotes : null,
+        labelSnapshot: aiResult || null,
       });
       router.push(`/labels/${data.label.id}`);
     } catch (err: any) {
@@ -209,10 +279,6 @@ export default function NewLabelPage() {
       setLoading(false);
     }
   };
-
-  const nutritionForPreview = Object.fromEntries(
-    Object.entries(nutrition).map(([k, v]) => [k, v ? parseFloat(v) : null])
-  );
 
   return (
     <AppLayout>
@@ -608,6 +674,9 @@ export default function NewLabelPage() {
             </div>
           </div>
 
+          {/* 강조 표기사항 분석 */}
+          <HealthClaimsPanel claims={currentHealthClaims} />
+
           {/* 규정별 원재료 표기 */}
           {aiResult.regulatoryText && (
             <div className="card">
@@ -655,16 +724,16 @@ export default function NewLabelPage() {
           <div className="flex gap-3">
             <button onClick={() => setStep(2)} className="btn-secondary">이전 (수정)</button>
             <button onClick={() => setStep(4)} className="btn-primary flex-1">
-              라벨 저장 및 인쇄
+              최종 결과 확인
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 4: 저장/인쇄 */}
+      {/* Step 4: 최종 결과 - 라벨 디자인 + 강조표기 + 저장 */}
       {step === 4 && (
         <div className="space-y-6">
-          <h1 className="text-2xl font-bold text-gray-900">라벨 저장 및 인쇄</h1>
+          <h1 className="text-2xl font-bold text-gray-900">최종 라벨 결과</h1>
 
           {/* 포맷 선택 */}
           <div className="flex gap-3">
@@ -684,23 +753,89 @@ export default function NewLabelPage() {
             ))}
           </div>
 
-          {/* 인쇄용 라벨 */}
-          <div className="flex justify-center">
-            <PrintableLabel
-              format={labelFormat}
-              productName={productName}
-              productType={productType}
-              servingSize={servingSize ? parseFloat(servingSize) : null}
-              servingUnit={servingUnit}
-              totalContent={totalContent ? parseFloat(totalContent) : null}
-              totalUnit={totalUnit}
-              nutritionInfo={nutritionForPreview}
-              ingredients={ingredients.filter(i => i.name.trim())}
-              aiResult={aiResult}
-            />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 인쇄용 라벨 */}
+            <div className="lg:col-span-2 flex justify-center">
+              <PrintableLabel
+                format={labelFormat}
+                productName={productName}
+                productType={productType}
+                servingSize={servingSize ? parseFloat(servingSize) : null}
+                servingUnit={servingUnit}
+                totalContent={totalContent ? parseFloat(totalContent) : null}
+                totalUnit={totalUnit}
+                nutritionInfo={nutritionForPreview}
+                ingredients={ingredients.filter(i => i.name.trim())}
+                aiResult={aiResult}
+              />
+            </div>
+
+            {/* 사이드: 강조 표기 + AI 주의사항 요약 */}
+            <div className="space-y-4">
+              {/* 강조 표기 요약 */}
+              <div className="card">
+                <h3 className="text-sm font-bold mb-3">강조 표기 가능 항목</h3>
+                {getEligibleClaims(currentHealthClaims).length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {getEligibleClaims(currentHealthClaims).map(c => (
+                      <span key={c.id} className={`px-2 py-1 rounded-full text-xs font-bold ${getClaimBadgeColor(c)}`}>
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">해당하는 강조 표기사항이 없습니다.</p>
+                )}
+              </div>
+
+              {/* AI 주의사항 */}
+              {aiResult?.precautions?.korea && aiResult.precautions.korea.length > 0 && (
+                <div className="card">
+                  <h3 className="text-sm font-bold mb-3">AI 검수 주의사항</h3>
+                  <ul className="text-xs text-gray-700 space-y-1">
+                    {aiResult.precautions.korea.map((p: string, i: number) => (
+                      <li key={i} className="flex items-start gap-1.5">
+                        <span className="text-yellow-500 mt-0.5">&#9888;</span>
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 규정 검토 요약 */}
+              {complianceResult?.korea && (
+                <div className="card">
+                  <h3 className="text-sm font-bold mb-3">규정 검토 결과</h3>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-sm font-bold ${complianceResult.korea.passed ? 'text-green-600' : 'text-red-600'}`}>
+                      {complianceResult.korea.passed ? '통과' : '미통과'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      점수: {complianceResult.korea.score}/100
+                    </span>
+                  </div>
+                  {complianceResult.korea.issues?.length > 0 && (
+                    <ul className="text-xs text-gray-600 space-y-1">
+                      {complianceResult.korea.issues.slice(0, 3).map((issue: any, i: number) => (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className={issue.severity === 'error' ? 'text-red-500' : 'text-yellow-500'}>
+                            {issue.severity === 'error' ? '●' : '▲'}
+                          </span>
+                          <span>{issue.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-3 justify-center">
+            <button onClick={() => step > 0 ? setStep(step - 1) : null} className="btn-secondary">
+              이전
+            </button>
             <button onClick={() => window.print()} className="btn-secondary flex items-center gap-2">
               🖨️ 인쇄하기
             </button>

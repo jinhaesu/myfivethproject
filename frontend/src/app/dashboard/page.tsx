@@ -4,12 +4,15 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
+import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 
 interface Label {
   id: string;
   productName: string;
+  productType: string | null;
   salesChannel: string | null;
   status: string;
+  healthClaims: HealthClaim[] | null;
   createdAt: string;
   updatedAt: string;
   createdBy: {
@@ -128,7 +131,7 @@ export default function DashboardPage() {
                     제품명
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">
-                    판매채널
+                    강조 표기
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     상태
@@ -148,6 +151,9 @@ export default function DashboardPage() {
                 {labels.map((label) => {
                   const progress = getReviewProgress(label);
                   const statusInfo = STATUS_MAP[label.status] || STATUS_MAP.draft;
+                  const claims = (label.healthClaims as HealthClaim[]) || [];
+                  const eligibleClaims = claims.filter(c => c.eligible);
+
                   return (
                     <tr key={label.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -157,9 +163,27 @@ export default function DashboardPage() {
                         >
                           {label.productName}
                         </Link>
+                        {label.productType && (
+                          <p className="text-xs text-gray-400 mt-0.5">{label.productType}</p>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">
-                        {label.salesChannel || '-'}
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        {eligibleClaims.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {eligibleClaims.slice(0, 3).map(c => (
+                              <span key={c.id} className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${getClaimBadgeColor(c)}`}>
+                                {c.name}
+                              </span>
+                            ))}
+                            {eligibleClaims.length > 3 && (
+                              <span className="px-1.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">
+                                +{eligibleClaims.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span

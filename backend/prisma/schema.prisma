@@ -36,12 +36,16 @@ model EmailVerification {
 model Label {
   id            String   @id @default(uuid())
   productName   String
+  productType   String?
   salesChannel  String?
   status        String   @default("draft")
   servingSize   Float?
   servingUnit   String?
   totalContent  Float?
   totalUnit     String?
+  healthClaims  Json?
+  aiNotes       Json?
+  labelSnapshot Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

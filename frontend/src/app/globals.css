@@ -43,7 +43,223 @@
 .nutrition-label .serving-info { font-size: 12px; padding: 2px 0; }
 .nutrition-label .dv-header { text-align: right; font-size: 12px; font-weight: 700; }
 
-/* ===== 인쇄용 라벨 공통 ===== */
+/* ===== 한국 라벨 (이미지 디자인 기반 리디자인) ===== */
+.kr-label {
+  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  background: #fff;
+  color: #1a1a1a;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  width: 420px;
+  line-height: 1.5;
+  font-size: 12px;
+}
+
+/* 강조표기 배지 */
+.kr-claims {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.kr-claim-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.kr-claim-badge.positive {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+.kr-claim-badge.negative {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+/* 헤더 */
+.kr-header {
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+.kr-product-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #111;
+  letter-spacing: -0.3px;
+}
+.kr-food-type {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+.kr-content {
+  font-size: 11px;
+  color: #666;
+  margin-top: 1px;
+}
+
+/* 섹션 */
+.kr-section {
+  margin-bottom: 10px;
+}
+.kr-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #333;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+.kr-section-text {
+  font-size: 11px;
+  color: #444;
+}
+.kr-ingredients-text {
+  font-size: 11px;
+  color: #444;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+/* 영양정보 박스 */
+.kr-nutrition-box {
+  border: 2px solid #1a1a1a;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fafafa;
+}
+.kr-nut-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+.kr-nut-title {
+  font-size: 16px;
+  font-weight: 900;
+  color: #111;
+}
+.kr-nut-dv {
+  font-size: 9px;
+  color: #888;
+}
+.kr-nut-serving {
+  font-size: 11px;
+  color: #555;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* 열량 */
+.kr-calories-row {
+  text-align: center;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 2px solid #1a1a1a;
+}
+.kr-cal-value {
+  font-size: 28px;
+  font-weight: 900;
+  color: #111;
+}
+
+/* 영양성분 행 */
+.kr-nutrients {
+  margin-bottom: 8px;
+}
+.kr-nut-row {
+  display: grid;
+  grid-template-columns: 80px 60px 1fr 36px;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid #eee;
+  gap: 6px;
+}
+.kr-nut-row.indent {
+  padding-left: 12px;
+}
+.kr-nut-row.indent .kr-nut-label {
+  font-size: 10px;
+  color: #666;
+}
+.kr-nut-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+}
+.kr-nut-val {
+  font-size: 11px;
+  color: #555;
+  text-align: right;
+}
+.kr-nut-bar-wrap {
+  display: flex;
+  align-items: center;
+}
+.kr-nut-bar {
+  width: 100%;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.kr-nut-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.kr-nut-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  text-align: right;
+}
+
+/* 푸터 */
+.kr-nut-footer {
+  font-size: 9px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* 알레르기 */
+.kr-allergen {
+  background: #fef9c3;
+  border: 1px solid #facc15;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #854d0e;
+  margin-bottom: 10px;
+}
+.kr-allergen strong {
+  color: #92400e;
+}
+
+/* 주의사항 */
+.kr-precautions {
+  font-size: 10px;
+  color: #666;
+  padding-left: 16px;
+  margin: 0;
+}
+.kr-precautions li {
+  margin-bottom: 2px;
+}
+
+/* ===== 인쇄용 라벨 공통 (US/Japan) ===== */
 .printable-label {
   font-family: 'Arial', 'Helvetica Neue', sans-serif;
   background: #fff;
@@ -57,23 +273,6 @@
 .printable-label h2 { font-size: 13px; font-weight: 700; margin: 0 0 4px 0; border-bottom: 1px solid #000; padding-bottom: 2px; }
 .printable-label p { font-size: 11px; margin: 0 0 4px 0; }
 .printable-label .bold { font-weight: 700; }
-.printable-label .label-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
-.printable-label .label-header .food-type { font-size: 11px; color: #555; margin-top: 2px; }
-.printable-label .label-section { margin-bottom: 10px; }
-.printable-label .allergen-section { background: #fff3cd; padding: 8px; border: 1px solid #ffc107; border-radius: 4px; }
-.printable-label .allergen-section h2 { color: #856404; border-color: #856404; }
-
-/* 한국 라벨 영양성분표 */
-.korea-label .nutrition-table { border: 1px solid #000; padding: 6px; font-size: 11px; }
-.korea-label .nutrition-table .nt-header { display: flex; justify-content: space-between; font-size: 10px; padding-bottom: 4px; border-bottom: 1px solid #000; }
-.korea-label .nutrition-table .nt-subheader { font-size: 9px; text-align: right; padding: 2px 0; font-weight: 700; }
-.korea-label .nutrition-table table { width: 100%; border-collapse: collapse; }
-.korea-label .nutrition-table td { padding: 1px 0; font-size: 11px; border-top: 1px solid #ddd; }
-.korea-label .nutrition-table td:nth-child(2) { text-align: right; width: 70px; }
-.korea-label .nutrition-table td:nth-child(3) { text-align: right; width: 40px; font-weight: 700; }
-.korea-label .nutrition-table tr.bold td { font-weight: 700; border-top: 2px solid #000; }
-.korea-label .nutrition-table tr.indent td:first-child { padding-left: 16px; }
-.korea-label .nutrition-table .nt-footer { font-size: 8px; color: #666; margin-top: 4px; }
 
 /* ===== 미국 FDA Nutrition Facts ===== */
 .us-label { width: 320px; }
@@ -113,5 +312,5 @@
 @media print {
   body * { visibility: hidden; }
   #printable-label, #printable-label * { visibility: visible; }
-  #printable-label { position: absolute; left: 0; top: 0; margin: 0; border: 2px solid #000; }
+  #printable-label { position: absolute; left: 0; top: 0; margin: 0; }
 }
