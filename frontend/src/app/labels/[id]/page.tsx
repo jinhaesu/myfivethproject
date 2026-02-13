@@ -370,18 +370,18 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
             {label.ingredients.length > 0 ? (
               <>
                 <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-600 mb-2">원재료 표기문</h4>
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">원재료 표기문 (실제 라벨 표기)</h4>
                   <div className="p-3 bg-gray-50 rounded-lg text-sm leading-relaxed">
                     {label.ingredients
                       .sort((a, b) => b.ratio - a.ratio)
                       .map(ing => {
                         let text = ing.name;
                         if (ing.origin) text += `(${ing.origin})`;
-                        text += ` ${ing.ratio}%`;
                         return text;
                       })
                       .join(', ')}
                   </div>
+                  <p className="text-xs text-gray-400 mt-1">※ 배합비(%)는 내부 관리용이며 실제 표기사항에는 기재하지 않습니다.</p>
                 </div>
 
                 {label.ingredients.some(ing => ing.allergen) && (

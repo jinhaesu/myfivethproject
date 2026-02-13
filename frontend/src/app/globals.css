@@ -43,220 +43,214 @@
 .nutrition-label .serving-info { font-size: 12px; padding: 2px 0; }
 .nutrition-label .dv-header { text-align: right; font-size: 12px; font-weight: 700; }
 
-/* ===== 한국 라벨 (이미지 디자인 기반 리디자인) ===== */
+/* ===== 한국 표준 식품표시사항 라벨 (식약처 표준 양식) ===== */
 .kr-label {
   font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   background: #fff;
-  color: #1a1a1a;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 20px;
-  width: 420px;
+  color: #222;
+  border: 2px solid #1b3a5c;
+  width: 440px;
   line-height: 1.5;
   font-size: 12px;
 }
 
-/* 강조표기 배지 */
-.kr-claims {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
+/* ── 상단 제품 정보 테이블 ── */
+.kr-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
 }
-.kr-claim-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 11px;
+.kr-info-table th {
+  background: #1b3a5c;
+  color: #fff;
   font-weight: 700;
-  letter-spacing: 0.3px;
+  text-align: center;
+  padding: 6px 10px;
+  border: 1px solid #1b3a5c;
+  width: 70px;
+  white-space: nowrap;
 }
-.kr-claim-badge.positive {
-  background: #dcfce7;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+.kr-info-table td {
+  padding: 6px 10px;
+  border: 1px solid #c0cfe0;
+  background: #f0f5fb;
+  color: #1a1a1a;
 }
-.kr-claim-badge.negative {
-  background: #dbeafe;
-  color: #1e40af;
-  border: 1px solid #bfdbfe;
-}
-
-/* 헤더 */
-.kr-header {
-  border-bottom: 2px solid #1a1a1a;
-  padding-bottom: 10px;
-  margin-bottom: 12px;
-}
-.kr-product-name {
-  font-size: 18px;
+.kr-pname {
+  font-size: 15px;
   font-weight: 800;
   color: #111;
   letter-spacing: -0.3px;
 }
-.kr-food-type {
-  font-size: 11px;
-  color: #666;
-  margin-top: 2px;
+.kr-claims-inline {
+  margin-left: 8px;
 }
-.kr-content {
-  font-size: 11px;
-  color: #666;
-  margin-top: 1px;
+.kr-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+.kr-badge.positive {
+  background: #16a34a;
+  color: #fff;
+}
+.kr-badge.negative {
+  background: #2563eb;
+  color: #fff;
 }
 
-/* 섹션 */
-.kr-section {
-  margin-bottom: 10px;
+/* ── 원재료명 ── */
+.kr-ingr-box {
+  border-bottom: 1px solid #c0cfe0;
 }
-.kr-section-title {
+.kr-ingr-title {
+  background: #1b3a5c;
+  color: #fff;
   font-size: 12px;
   font-weight: 700;
-  color: #333;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 3px;
-  margin-bottom: 4px;
+  padding: 4px 10px;
 }
-.kr-section-text {
-  font-size: 11px;
-  color: #444;
-}
-.kr-ingredients-text {
-  font-size: 11px;
-  color: #444;
-  line-height: 1.6;
-  word-break: keep-all;
-}
-
-/* 영양정보 박스 */
-.kr-nutrition-box {
-  border: 2px solid #1a1a1a;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-  background: #fafafa;
-}
-.kr-nut-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  border-bottom: 2px solid #1a1a1a;
-  padding-bottom: 6px;
-  margin-bottom: 6px;
-}
-.kr-nut-title {
-  font-size: 16px;
-  font-weight: 900;
-  color: #111;
-}
-.kr-nut-dv {
-  font-size: 9px;
-  color: #888;
-}
-.kr-nut-serving {
-  font-size: 11px;
-  color: #555;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #ddd;
-}
-
-/* 열량 */
-.kr-calories-row {
-  text-align: center;
-  padding: 8px 0;
-  margin-bottom: 8px;
-  border-bottom: 2px solid #1a1a1a;
-}
-.kr-cal-value {
-  font-size: 28px;
-  font-weight: 900;
-  color: #111;
-}
-
-/* 영양성분 행 */
-.kr-nutrients {
-  margin-bottom: 8px;
-}
-.kr-nut-row {
-  display: grid;
-  grid-template-columns: 80px 60px 1fr 36px;
-  align-items: center;
-  padding: 3px 0;
-  border-bottom: 1px solid #eee;
-  gap: 6px;
-}
-.kr-nut-row.indent {
-  padding-left: 12px;
-}
-.kr-nut-row.indent .kr-nut-label {
-  font-size: 10px;
-  color: #666;
-}
-.kr-nut-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #333;
-}
-.kr-nut-val {
-  font-size: 11px;
-  color: #555;
-  text-align: right;
-}
-.kr-nut-bar-wrap {
-  display: flex;
-  align-items: center;
-}
-.kr-nut-bar {
-  width: 100%;
-  height: 6px;
-  background: #e5e7eb;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.kr-nut-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-.kr-nut-pct {
-  font-size: 11px;
-  font-weight: 700;
-  color: #1e40af;
-  text-align: right;
-}
-
-/* 푸터 */
-.kr-nut-footer {
-  font-size: 9px;
-  color: #999;
-  margin-top: 4px;
-}
-
-/* 알레르기 */
-.kr-allergen {
-  background: #fef9c3;
-  border: 1px solid #facc15;
-  border-radius: 6px;
+.kr-ingr-text {
   padding: 8px 10px;
   font-size: 11px;
-  color: #854d0e;
-  margin-bottom: 10px;
-}
-.kr-allergen strong {
-  color: #92400e;
+  color: #333;
+  line-height: 1.7;
+  word-break: keep-all;
+  background: #fff;
 }
 
-/* 주의사항 */
-.kr-precautions {
-  font-size: 10px;
-  color: #666;
-  padding-left: 16px;
-  margin: 0;
+/* ── 영양정보 (파란 헤더 표준 양식) ── */
+.kr-nut-box {
+  border-top: none;
 }
-.kr-precautions li {
-  margin-bottom: 2px;
+.kr-nut-header {
+  background: #1b3a5c;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+}
+.kr-nut-header-left {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+.kr-nut-header-right {
+  font-size: 9px;
+  text-align: right;
+  line-height: 1.3;
+  opacity: 0.9;
+}
+
+.kr-nut-serving-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #444;
+  background: #f0f5fb;
+  border-bottom: 2px solid #1b3a5c;
+}
+
+.kr-nut-cal {
+  text-align: center;
+  padding: 10px 10px;
+  font-size: 14px;
+  color: #1b3a5c;
+  font-weight: 700;
+  border-bottom: 2px solid #1b3a5c;
+  background: #fff;
+}
+.kr-nut-cal strong {
+  font-size: 26px;
+  font-weight: 900;
+  color: #111;
+  margin-left: 4px;
+}
+
+/* ── 영양성분 테이블 ── */
+.kr-nut-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.kr-nut-table thead {
+  display: none;
+}
+.kr-nut-table tr {
+  border-bottom: 1px solid #d0dcea;
+}
+.kr-td-name {
+  padding: 5px 10px;
+  font-weight: 600;
+  color: #1a1a1a;
+  width: 50%;
+}
+.kr-td-name.kr-indent {
+  padding-left: 28px;
+  font-weight: 400;
+  color: #555;
+  font-size: 11px;
+}
+.kr-td-val {
+  padding: 5px 6px;
+  text-align: right;
+  color: #333;
+  width: 25%;
+}
+.kr-td-dv {
+  padding: 5px 10px;
+  text-align: right;
+  font-weight: 700;
+  color: #1b3a5c;
+  width: 25%;
+}
+
+/* ── 하단 주석 ── */
+.kr-nut-note {
+  padding: 6px 10px;
+  font-size: 9px;
+  color: #888;
+  background: #f8fafc;
+  border-top: 1px solid #d0dcea;
+}
+
+/* ── 알레르기 ── */
+.kr-allergen-box {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border-top: 2px solid #1b3a5c;
+}
+.kr-allergen-box strong {
+  color: #991b1b;
+}
+
+/* ── 보관방법 / 주의사항 ── */
+.kr-bottom-row {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #333;
+  border-top: 1px solid #c0cfe0;
+  background: #fff;
+}
+.kr-bottom-row strong {
+  color: #1b3a5c;
+}
+.kr-precaution ul {
+  margin: 2px 0 0 0;
+  padding-left: 16px;
+  font-size: 10px;
+  color: #555;
+}
+.kr-precaution li {
+  margin-bottom: 1px;
 }
 
 /* ===== 인쇄용 라벨 공통 (US/Japan) ===== */

@@ -527,7 +527,8 @@ export default function NewLabelPage() {
                 />
               </div>
               <div className="card">
-                <h3 className="text-sm font-bold mb-2">원재료명 표기</h3>
+                <h3 className="text-sm font-bold mb-2">원재료명 표기 (실제 라벨)</h3>
+                <p className="text-xs text-gray-500 mb-1">※ 배합비(%)는 내부용이며, 실제 표기사항에는 미기재</p>
                 <p className="text-xs text-gray-600 leading-relaxed">
                   {ingredients
                     .filter(i => i.name.trim())
@@ -535,7 +536,6 @@ export default function NewLabelPage() {
                     .map(i => {
                       let t = i.name;
                       if (i.origin) t += `(${i.origin})`;
-                      if (i.ratio) t += ` ${i.ratio}%`;
                       return t;
                     })
                     .join(', ') || '원재료를 입력해주세요.'}
