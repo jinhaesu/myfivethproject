@@ -1,6 +1,7 @@
 'use client';
 
 import { analyzeHealthClaims, getEligibleClaims } from '@/lib/healthClaims';
+import { analyzeOriginRequirements } from '@/lib/originRules';
 
 interface Ingredient {
   name: string;
@@ -67,10 +68,21 @@ function KoreaLabel({ productName, productType, servingSize, servingUnit, totalC
   const claims = analyzeHealthClaims(ni, servingSize);
   const eligible = getEligibleClaims(claims);
 
-  // 원재료명 표기 (배합비 % 미표시 - 실제 한국 표기사항 규정)
+  // 원산지 표기 분석 - 한국 「농수산물의 원산지 표시 등에 관한 법률」 기준
+  // 모든 원재료에 원산지를 표기하는 것이 아니라, 법적 의무 대상만 표기
+  const originAnalysis = analyzeOriginRequirements(
+    sorted.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin })),
+    productType,
+    productName,
+  );
+
+  // 원재료명 표기 (배합비 % 미표시 + 원산지는 의무 대상만)
   const ingredientText = sorted.map(i => {
     let t = i.name;
-    if (i.origin) t += `(${i.origin})`;
+    const req = originAnalysis.find(r => r.ingredientName === i.name.trim());
+    if (req?.required && i.origin) {
+      t += `(${i.origin})`;
+    }
     return t;
   }).join(', ');
 

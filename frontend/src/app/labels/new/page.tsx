@@ -9,6 +9,7 @@ import PrintableLabel from '@/components/PrintableLabel';
 import { api } from '@/lib/api';
 import { SAMPLE_TEMPLATES, SampleTemplate } from '@/data/sampleLabels';
 import { analyzeHealthClaims, HealthClaim, getEligibleClaims, getClaimBadgeColor } from '@/lib/healthClaims';
+import { analyzeOriginRequirements, OriginRequirement, getRequiredOriginIngredients, getExemptOriginIngredients } from '@/lib/originRules';
 
 interface Ingredient {
   name: string;
@@ -255,6 +256,15 @@ export default function NewLabelPage() {
       if (aiResult?.storageInstructions) aiNotes.storageInstructions = aiResult.storageInstructions;
       if (aiResult?.regulatoryText) aiNotes.regulatoryText = aiResult.regulatoryText;
       if (complianceResult) aiNotes.compliance = complianceResult;
+
+      // 원산지 분석 결과 저장
+      const validIngredients = ingredients.filter(i => i.name.trim());
+      const originAnalysisResult = analyzeOriginRequirements(
+        validIngredients.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin })),
+        productType,
+        productName,
+      );
+      aiNotes.originAnalysis = originAnalysisResult;
 
       const data = await api.labels.create({
         productName,
@@ -529,17 +539,48 @@ export default function NewLabelPage() {
               <div className="card">
                 <h3 className="text-sm font-bold mb-2">원재료명 표기 (실제 라벨)</h3>
                 <p className="text-xs text-gray-500 mb-1">※ 배합비(%)는 내부용이며, 실제 표기사항에는 미기재</p>
+                <p className="text-xs text-gray-500 mb-1">※ 원산지는 법적 의무 대상 원재료만 표기</p>
                 <p className="text-xs text-gray-600 leading-relaxed">
-                  {ingredients
-                    .filter(i => i.name.trim())
-                    .sort((a, b) => parseFloat(b.ratio || '0') - parseFloat(a.ratio || '0'))
-                    .map(i => {
+                  {(() => {
+                    const valid = ingredients.filter(i => i.name.trim());
+                    if (valid.length === 0) return '원재료를 입력해주세요.';
+                    const sorted = [...valid].sort((a, b) => parseFloat(b.ratio || '0') - parseFloat(a.ratio || '0'));
+                    const analysis = analyzeOriginRequirements(
+                      sorted.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin })),
+                      productType,
+                      productName,
+                    );
+                    return sorted.map(i => {
                       let t = i.name;
-                      if (i.origin) t += `(${i.origin})`;
+                      const req = analysis.find(r => r.ingredientName === i.name.trim());
+                      if (req?.required && i.origin) t += `(${i.origin})`;
                       return t;
-                    })
-                    .join(', ') || '원재료를 입력해주세요.'}
+                    }).join(', ');
+                  })()}
                 </p>
+                {(() => {
+                  const valid = ingredients.filter(i => i.name.trim());
+                  if (valid.length === 0) return null;
+                  const analysis = analyzeOriginRequirements(
+                    valid.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin })),
+                    productType,
+                    productName,
+                  );
+                  const required = analysis.filter(r => r.required);
+                  const noOrigin = required.filter(r => {
+                    const ing = valid.find(i => i.name.trim() === r.ingredientName);
+                    return !ing?.origin;
+                  });
+                  if (noOrigin.length > 0) {
+                    return (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                        <strong>원산지 미입력 (필수):</strong>{' '}
+                        {noOrigin.map(r => r.ingredientName).join(', ')}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {ingredients.some(i => i.allergen && i.allergenInfo) && (
                   <div className="mt-2 p-2 bg-yellow-50 rounded text-xs">
                     <strong>알레르기 유발물질:</strong>{' '}
@@ -677,6 +718,66 @@ export default function NewLabelPage() {
           {/* 강조 표기사항 분석 */}
           <HealthClaimsPanel claims={currentHealthClaims} />
 
+          {/* 원산지 표기 분석 */}
+          {(() => {
+            const valid = ingredients.filter(i => i.name.trim());
+            const analysis = analyzeOriginRequirements(
+              valid.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin })),
+              productType,
+              productName,
+            );
+            const required = analysis.filter(r => r.required);
+            const exempt = analysis.filter(r => !r.required);
+            return (
+              <div className="card">
+                <h3 className="text-lg font-bold mb-2">원산지 표기 분석</h3>
+                <p className="text-xs text-gray-500 mb-4">
+                  「농수산물의 원산지 표시 등에 관한 법률」 시행령 기준
+                </p>
+
+                {required.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-bold text-blue-700 mb-2">원산지 표기 필수 ({required.length})</h4>
+                    <div className="space-y-2">
+                      {required.map((r, i) => {
+                        const ing = valid.find(v => v.name.trim() === r.ingredientName);
+                        return (
+                          <div key={i} className="flex items-start gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                              {r.ingredientName}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-blue-800">{r.reason}</p>
+                              <p className="text-xs text-blue-600 mt-0.5">
+                                {ing?.origin ? `원산지: ${ing.origin}` : '⚠️ 원산지 미입력'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {exempt.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-500 mb-2">원산지 표기 불필요 ({exempt.length})</h4>
+                    <div className="space-y-1">
+                      {exempt.map((r, i) => (
+                        <div key={i} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">
+                            {r.ingredientName}
+                          </span>
+                          <p className="text-xs text-gray-500 flex-1">{r.reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* 규정별 원재료 표기 */}
           {aiResult.regulatoryText && (
             <div className="card">
@@ -787,6 +888,38 @@ export default function NewLabelPage() {
                   <p className="text-xs text-gray-500">해당하는 강조 표기사항이 없습니다.</p>
                 )}
               </div>
+
+              {/* 원산지 표기 요약 */}
+              {(() => {
+                const valid = ingredients.filter(i => i.name.trim());
+                if (valid.length === 0) return null;
+                const analysis = analyzeOriginRequirements(
+                  valid.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin })),
+                  productType,
+                  productName,
+                );
+                const required = analysis.filter(r => r.required);
+                if (required.length === 0) return null;
+                return (
+                  <div className="card">
+                    <h3 className="text-sm font-bold mb-3">원산지 표기 대상</h3>
+                    <div className="space-y-1.5">
+                      {required.map((r, i) => {
+                        const ing = valid.find(v => v.name.trim() === r.ingredientName);
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-xs">
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold">{r.ingredientName}</span>
+                            <span className={ing?.origin ? 'text-green-600' : 'text-red-500 font-bold'}>
+                              {ing?.origin || '미입력'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">법적 의무 대상만 라벨에 원산지 표기</p>
+                  </div>
+                );
+              })()}
 
               {/* AI 주의사항 */}
               {aiResult?.precautions?.korea && aiResult.precautions.korea.length > 0 && (

@@ -64,13 +64,22 @@ const GENERATE_PROMPT = `당신은 한국, 미국, 일본의 식품 표시 규�
     "us": ["Precaution 1"],
     "japan": ["注意事項1"]
   },
+  "originAnalysis": [
+    {
+      "ingredientName": "원재료명",
+      "required": true/false,
+      "reason": "원산지 표기 필요/불필요 사유",
+      "category": "meat|rice|seafood|agricultural|kimchi_ingredient|additive|water_salt|general"
+    }
+  ],
   "regulatoryText": {
     "korea": {
       "foodType": "식품유형",
       "manufacturer": "제조원 표시 예시",
       "shelfLife": "유통기한/소비기한 권장",
-      "ingredientsList": "원재료명 표기 (배합비 높은 순, 한국 식약처 기준)",
-      "requiredStatements": ["필수 표시사항"]
+      "ingredientsList": "원재료명 표기 (배합비 높은 순, 원산지 표시 의무 대상만 원산지 괄호 표기)",
+      "requiredStatements": ["필수 표시사항"],
+      "originNote": "원산지 표기 관련 참고사항"
     },
     "us": {
       "foodType": "Food category",
@@ -94,7 +103,18 @@ const GENERATE_PROMPT = `당신은 한국, 미국, 일본의 식품 표시 규�
 
 영양성분은 1회 제공량 기준으로 계산하세요.
 원재료 배합비를 기반으로 합리적인 영양성분을 추정하세요.
-각 국가의 최신 식품 표시 규정을 정확히 반영하세요.`;
+각 국가의 최신 식품 표시 규정을 정확히 반영하세요.
+
+원산지(originAnalysis) 분석 시 반드시 다음 한국 규정을 따르세요:
+- 「농수산물의 원산지 표시 등에 관한 법률」 시행령 [별표1]
+- 육류(쇠고기, 돼지고기, 닭고기, 오리고기, 양고기, 염소고기)는 항상 원산지 표시 필수
+- 쌀(현미, 찹쌀 포함)은 항상 원산지 표시 필수
+- 김치류 제조 시 배추, 고춧가루, 무는 원산지 표시 필수
+- 수산물은 배합비율 상위 또는 제품명에 포함 시 원산지 표시 필수
+- 주요 농산물(콩, 감자, 고구마, 마늘, 양파, 고추, 참깨 등)은 배합비 5% 이상 또는 제품명에 포함 시 표시 필수
+- 식품첨가물, 정제수, 정제염, 설탕, 물엿, 전분, 유화제 등은 원산지 표시 불필요
+- 모든 원재료에 무조건 원산지를 표기하는 것은 규정에 맞지 않음
+- 원산지 표기가 필요한 원재료만 "원재료명(원산지)" 형태로 표기하세요`;
 
 const COMPLIANCE_PROMPT = `당신은 한국(식약처/MFDS), 미국(FDA), 일본(소비자청/CAA)의 식품 표시 규정 전문가입니다.
 주어진 라벨 정보를 각 국가의 규정에 맞는지 검토해주세요.

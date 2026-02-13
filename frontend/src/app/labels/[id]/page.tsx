@@ -8,6 +8,7 @@ import PrintableLabel from '@/components/PrintableLabel';
 import ReviewWorkflow from '@/components/ReviewWorkflow';
 import { api } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
+import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
 
 interface Label {
   id: string;
@@ -372,16 +373,23 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                 <div className="mb-4">
                   <h4 className="text-sm font-medium text-gray-600 mb-2">원재료 표기문 (실제 라벨 표기)</h4>
                   <div className="p-3 bg-gray-50 rounded-lg text-sm leading-relaxed">
-                    {label.ingredients
-                      .sort((a, b) => b.ratio - a.ratio)
-                      .map(ing => {
+                    {(() => {
+                      const sorted = [...label.ingredients].sort((a, b) => b.ratio - a.ratio);
+                      const originAnalysis = analyzeOriginRequirements(
+                        sorted.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin || '' })),
+                        label.productType || '',
+                        label.productName,
+                      );
+                      return sorted.map(ing => {
                         let text = ing.name;
-                        if (ing.origin) text += `(${ing.origin})`;
+                        const req = originAnalysis.find(r => r.ingredientName === ing.name.trim());
+                        if (req?.required && ing.origin) text += `(${ing.origin})`;
                         return text;
-                      })
-                      .join(', ')}
+                      }).join(', ');
+                    })()}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">※ 배합비(%)는 내부 관리용이며 실제 표기사항에는 기재하지 않습니다.</p>
+                  <p className="text-xs text-gray-400">※ 원산지는 법적 의무 대상 원재료만 표기합니다.</p>
                 </div>
 
                 {label.ingredients.some(ing => ing.allergen) && (
@@ -397,29 +405,48 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                 )}
 
                 <h4 className="text-sm font-medium text-gray-600 mb-2">배합비 상세</h4>
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-2 py-1 text-left text-xs text-gray-500">원재료</th>
-                      <th className="px-2 py-1 text-left text-xs text-gray-500">배합비</th>
-                      <th className="px-2 py-1 text-left text-xs text-gray-500">원산지</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {label.ingredients
-                      .sort((a, b) => b.ratio - a.ratio)
-                      .map(ing => (
-                        <tr key={ing.id}>
-                          <td className="px-2 py-1.5">
-                            {ing.name}
-                            {ing.allergen && <span className="ml-1 text-xs text-yellow-600">(알레르기)</span>}
-                          </td>
-                          <td className="px-2 py-1.5">{ing.ratio}%</td>
-                          <td className="px-2 py-1.5 text-gray-500">{ing.origin || '-'}</td>
+                {(() => {
+                  const sorted = [...label.ingredients].sort((a, b) => b.ratio - a.ratio);
+                  const originAnalysis = analyzeOriginRequirements(
+                    sorted.map(i => ({ name: i.name, ratio: i.ratio, origin: i.origin || '' })),
+                    label.productType || '',
+                    label.productName,
+                  );
+                  return (
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-1 text-left text-xs text-gray-500">원재료</th>
+                          <th className="px-2 py-1 text-left text-xs text-gray-500">배합비</th>
+                          <th className="px-2 py-1 text-left text-xs text-gray-500">원산지</th>
+                          <th className="px-2 py-1 text-left text-xs text-gray-500">표기 의무</th>
                         </tr>
-                      ))}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {sorted.map(ing => {
+                          const req = originAnalysis.find(r => r.ingredientName === ing.name.trim());
+                          return (
+                            <tr key={ing.id}>
+                              <td className="px-2 py-1.5">
+                                {ing.name}
+                                {ing.allergen && <span className="ml-1 text-xs text-yellow-600">(알레르기)</span>}
+                              </td>
+                              <td className="px-2 py-1.5">{ing.ratio}%</td>
+                              <td className="px-2 py-1.5 text-gray-500">{ing.origin || '-'}</td>
+                              <td className="px-2 py-1.5">
+                                {req?.required ? (
+                                  <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700">필수</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-400">해당없음</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  );
+                })()}
               </>
             ) : (
               <p className="text-gray-500 text-sm">등록된 원재료가 없습니다.</p>
@@ -568,6 +595,46 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
         <div className="space-y-6">
           {aiNotes ? (
             <>
+              {/* 원산지 표기 분석 */}
+              {aiNotes.originAnalysis && (
+                <div className="card">
+                  <h3 className="text-lg font-bold mb-2">원산지 표기 분석</h3>
+                  <p className="text-xs text-gray-500 mb-4">「농수산물의 원산지 표시 등에 관한 법률」 시행령 기준</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(aiNotes.originAnalysis as OriginRequirement[]).filter(r => r.required).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-bold text-blue-700 mb-2">
+                          표기 필수 ({(aiNotes.originAnalysis as OriginRequirement[]).filter(r => r.required).length})
+                        </h4>
+                        <div className="space-y-1.5">
+                          {(aiNotes.originAnalysis as OriginRequirement[]).filter(r => r.required).map((r, i) => (
+                            <div key={i} className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                              <span className="text-xs font-bold text-blue-700">{r.ingredientName}</span>
+                              <p className="text-xs text-blue-600 mt-0.5">{r.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(aiNotes.originAnalysis as OriginRequirement[]).filter(r => !r.required).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-500 mb-2">
+                          표기 불필요 ({(aiNotes.originAnalysis as OriginRequirement[]).filter(r => !r.required).length})
+                        </h4>
+                        <div className="space-y-1">
+                          {(aiNotes.originAnalysis as OriginRequirement[]).filter(r => !r.required).map((r, i) => (
+                            <div key={i} className="p-2 bg-gray-50 rounded-lg">
+                              <span className="text-xs font-bold text-gray-500">{r.ingredientName}</span>
+                              <p className="text-xs text-gray-400 mt-0.5">{r.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 주의사항 */}
               {aiNotes.precautions && (
                 <div className="card">
