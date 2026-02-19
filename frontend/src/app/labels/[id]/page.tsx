@@ -831,6 +831,68 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
         <div className="space-y-6">
           {aiNotes ? (
             <>
+              {/* 경고 사항 */}
+              {aiNotes.warnings && (aiNotes.warnings as any[]).length > 0 && (
+                <div className="card border-l-4 border-yellow-400">
+                  <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                    <span className="text-yellow-500">&#9888;</span> 확인 필요 사항
+                  </h3>
+                  <div className="space-y-2">
+                    {(aiNotes.warnings as any[]).map((w: any, i: number) => (
+                      <div key={i} className={`p-3 rounded-lg ${
+                        w.severity === 'error' ? 'bg-red-50 border border-red-200' :
+                        w.severity === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
+                        'bg-blue-50 border border-blue-200'
+                      }`}>
+                        <p className="text-sm font-medium text-gray-800">{w.message}</p>
+                        {w.suggestion && <p className="text-xs text-gray-600 mt-0.5">{w.suggestion}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 원재료명 표기 문구 */}
+              {aiNotes.ingredientLabelText && (
+                <div className="card border-l-4 border-green-500">
+                  <h3 className="text-lg font-bold mb-3">원재료명 표기 문구 (한국 표시기준 적용)</h3>
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                      {(aiNotes.ingredientLabelText as any).korea}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 규칙 적용 내역 */}
+              {aiNotes.ruleApplicationReport && (aiNotes.ruleApplicationReport as any[]).length > 0 && (
+                <div className="card">
+                  <h3 className="text-lg font-bold mb-3">규칙 적용 내역</h3>
+                  <div className="space-y-2">
+                    {(aiNotes.ruleApplicationReport as any[]).map((r: any, i: number) => (
+                      <div key={i} className={`p-3 rounded-lg border ${r.applied ? 'bg-blue-50/50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className="flex items-start gap-2">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                            r.applied ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'
+                          }`}>{r.ruleId}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800">{r.ruleName}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">{r.details}</p>
+                            {r.affectedIngredients && r.affectedIngredients.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {r.affectedIngredients.map((name: string, j: number) => (
+                                  <span key={j} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{name}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 원산지 표기 분석 */}
               {aiNotes.originAnalysis && (
                 <div className="card">

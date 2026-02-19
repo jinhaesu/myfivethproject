@@ -199,6 +199,9 @@ router.post('/', authenticate, async (req, res) => {
                 origin: ing.origin || null,
                 allergen: ing.allergen || false,
                 allergenInfo: ing.allergenInfo || null,
+                ingredientType: ing.ingredientType || 'regular',
+                subIngredients: ing.subIngredients || null,
+                additivePurpose: ing.additivePurpose || null,
                 sortOrder: idx,
               })),
             }
@@ -282,6 +285,9 @@ router.put('/:id', authenticate, async (req, res) => {
           origin: ing.origin || null,
           allergen: ing.allergen || false,
           allergenInfo: ing.allergenInfo || null,
+          ingredientType: ing.ingredientType || 'regular',
+          subIngredients: ing.subIngredients || null,
+          additivePurpose: ing.additivePurpose || null,
           sortOrder: idx,
         })),
       });

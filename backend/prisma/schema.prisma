@@ -82,16 +82,19 @@ model NutritionInfo {
 }
 
 model Ingredient {
-  id          String @id @default(uuid())
-  name        String
-  ratio       Float
-  origin      String?
-  allergen    Boolean @default(false)
-  allergenInfo String?
-  sortOrder   Int    @default(0)
+  id              String  @id @default(uuid())
+  name            String
+  ratio           Float
+  origin          String?
+  allergen        Boolean @default(false)
+  allergenInfo    String?
+  ingredientType  String  @default("regular") // regular, compound, additive
+  subIngredients  Json?   // 복합원재료 구성성분 [{name, ratio?}]
+  additivePurpose String? // 식품첨가물 용도 (합성보존료, 합성감미료 등)
+  sortOrder       Int     @default(0)
 
-  label       Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  labelId     String
+  label           Label   @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId         String
 }
 
 model ReviewCategory {

@@ -11,17 +11,31 @@ import { SAMPLE_TEMPLATES, SampleTemplate } from '@/data/sampleLabels';
 import { analyzeHealthClaims, HealthClaim, getEligibleClaims, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement, getRequiredOriginIngredients, getExemptOriginIngredients } from '@/lib/originRules';
 
+interface SubIngredient {
+  name: string;
+}
+
 interface Ingredient {
   name: string;
   ratio: string;
   origin: string;
   allergen: boolean;
   allergenInfo: string;
+  ingredientType: 'regular' | 'compound' | 'additive';
+  subIngredients: SubIngredient[];
+  additivePurpose: string;
 }
 
 const EMPTY_INGREDIENT: Ingredient = {
   name: '', ratio: '', origin: '', allergen: false, allergenInfo: '',
+  ingredientType: 'regular', subIngredients: [], additivePurpose: '',
 };
+
+const ADDITIVE_PURPOSES = [
+  '합성보존료', '합성감미료', '합성착색료', '천연착색료',
+  '발색제', '산화방지제', '표백제', '천연향료', '합성향료',
+  '유화제', '증점제', '산도조절제', '팽창제', '영양강화제', '기타',
+];
 
 const STEPS = ['템플릿 선택', '기본 정보', 'AI 생성', '규정 검토', '최종 결과'];
 
@@ -114,7 +128,13 @@ export default function NewLabelPage() {
     setServingUnit(template.servingUnit);
     setTotalContent(template.totalContent);
     setTotalUnit(template.totalUnit);
-    setIngredients(template.ingredients.map(i => ({ ...i })));
+    setIngredients(template.ingredients.map(i => ({
+      ...EMPTY_INGREDIENT,
+      ...i,
+      ingredientType: (i as any).ingredientType || 'regular',
+      subIngredients: (i as any).subIngredients || [],
+      additivePurpose: (i as any).additivePurpose || '',
+    })));
     setNutrition({ ...template.nutrition });
     setStep(1);
   };
@@ -158,6 +178,11 @@ export default function NewLabelPage() {
           name: i.name,
           ratio: i.ratio || '0',
           origin: i.origin,
+          ingredientType: i.ingredientType || 'regular',
+          subIngredients: i.ingredientType === 'compound' ? i.subIngredients.filter(s => s.name.trim()) : [],
+          additivePurpose: i.ingredientType === 'additive' ? i.additivePurpose : '',
+          allergen: i.allergen,
+          allergenInfo: i.allergenInfo,
         })),
         servingSize,
         servingUnit,
@@ -255,6 +280,9 @@ export default function NewLabelPage() {
       if (aiResult?.precautions) aiNotes.precautions = aiResult.precautions;
       if (aiResult?.storageInstructions) aiNotes.storageInstructions = aiResult.storageInstructions;
       if (aiResult?.regulatoryText) aiNotes.regulatoryText = aiResult.regulatoryText;
+      if (aiResult?.ingredientLabelText) aiNotes.ingredientLabelText = aiResult.ingredientLabelText;
+      if (aiResult?.ruleApplicationReport) aiNotes.ruleApplicationReport = aiResult.ruleApplicationReport;
+      if (aiResult?.warnings) aiNotes.warnings = aiResult.warnings;
       if (complianceResult) aiNotes.compliance = complianceResult;
 
       // 원산지 분석 결과 저장
@@ -277,7 +305,12 @@ export default function NewLabelPage() {
         nutritionInfo: nutrition,
         ingredients: ingredients
           .filter(ing => ing.name.trim())
-          .map(ing => ({ ...ing, ratio: ing.ratio || '0' })),
+          .map(ing => ({
+            ...ing,
+            ratio: ing.ratio || '0',
+            subIngredients: ing.ingredientType === 'compound' ? ing.subIngredients.filter(s => s.name.trim()) : [],
+            additivePurpose: ing.ingredientType === 'additive' ? ing.additivePurpose : '',
+          })),
         healthClaims: currentHealthClaims,
         aiNotes: Object.keys(aiNotes).length > 0 ? aiNotes : null,
         labelSnapshot: aiResult || null,
@@ -429,49 +462,137 @@ export default function NewLabelPage() {
 
             {/* 원재료 */}
             <div className="card">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-2">
                 <h2 className="text-lg font-bold">배합비 (원재료)</h2>
                 <button type="button" onClick={addIngredient} className="btn-secondary text-sm">+ 원재료 추가</button>
               </div>
+              <p className="text-xs text-gray-500 mb-4">
+                각 원재료의 유형을 지정하세요. 복합원재료는 구성성분을, 식품첨가물은 용도를 입력하면 AI가 한국 표시기준에 맞는 표기를 생성합니다.
+              </p>
               <div className="space-y-3">
-                <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 px-1">
-                  <div className="col-span-3">원재료명</div>
-                  <div className="col-span-2">배합비(%)</div>
-                  <div className="col-span-2">원산지</div>
-                  <div className="col-span-2">알레르기</div>
-                  <div className="col-span-2">알레르기 정보</div>
-                  <div className="col-span-1"></div>
-                </div>
                 {ingredients.map((ing, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-3">
-                      <input type="text" value={ing.name} onChange={e => updateIngredient(idx, 'name', e.target.value)}
-                        className="input-field text-sm" placeholder="원재료명" />
+                  <div key={idx} className={`border rounded-lg p-3 ${
+                    ing.ingredientType === 'compound' ? 'border-purple-300 bg-purple-50/30' :
+                    ing.ingredientType === 'additive' ? 'border-orange-300 bg-orange-50/30' :
+                    'border-gray-200'
+                  }`}>
+                    {/* 메인 입력 행 */}
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-3">
+                        <label className="block text-xs text-gray-500 mb-0.5">원재료명</label>
+                        <input type="text" value={ing.name} onChange={e => updateIngredient(idx, 'name', e.target.value)}
+                          className="input-field text-sm" placeholder="원재료명" />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-xs text-gray-500 mb-0.5">배합비</label>
+                        <input type="number" value={ing.ratio} onChange={e => updateIngredient(idx, 'ratio', e.target.value)}
+                          className="input-field text-sm" placeholder="%" step="any" min="0" max="100" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-500 mb-0.5">유형</label>
+                        <select value={ing.ingredientType} onChange={e => updateIngredient(idx, 'ingredientType', e.target.value)}
+                          className="input-field text-sm">
+                          <option value="regular">일반 원료</option>
+                          <option value="compound">복합원재료</option>
+                          <option value="additive">식품첨가물</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-500 mb-0.5">원산지</label>
+                        <input type="text" value={ing.origin} onChange={e => updateIngredient(idx, 'origin', e.target.value)}
+                          className="input-field text-sm" placeholder="국산" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs text-gray-500 mb-0.5">알레르기</label>
+                        <div className="flex items-center gap-1">
+                          <input type="checkbox" checked={ing.allergen}
+                            onChange={e => updateIngredient(idx, 'allergen', e.target.checked)} className="w-4 h-4" />
+                          <input type="text" value={ing.allergenInfo}
+                            onChange={e => updateIngredient(idx, 'allergenInfo', e.target.value)}
+                            className="input-field text-xs flex-1" placeholder="대두, 밀" disabled={!ing.allergen} />
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex items-end gap-1 pb-0.5">
+                        {idx > 0 && (
+                          <button type="button" onClick={() => {
+                            const updated = [...ingredients];
+                            [updated[idx - 1], updated[idx]] = [updated[idx], updated[idx - 1]];
+                            setIngredients(updated);
+                          }} className="text-gray-400 hover:text-gray-600 text-xs px-1">&#9650;</button>
+                        )}
+                        {idx < ingredients.length - 1 && (
+                          <button type="button" onClick={() => {
+                            const updated = [...ingredients];
+                            [updated[idx], updated[idx + 1]] = [updated[idx + 1], updated[idx]];
+                            setIngredients(updated);
+                          }} className="text-gray-400 hover:text-gray-600 text-xs px-1">&#9660;</button>
+                        )}
+                        {ingredients.length > 1 && (
+                          <button type="button" onClick={() => removeIngredient(idx)}
+                            className="text-red-400 hover:text-red-600 text-xs ml-auto">삭제</button>
+                        )}
+                      </div>
                     </div>
-                    <div className="col-span-2">
-                      <input type="number" value={ing.ratio} onChange={e => updateIngredient(idx, 'ratio', e.target.value)}
-                        className="input-field text-sm" placeholder="0" step="any" min="0" max="100" />
-                    </div>
-                    <div className="col-span-2">
-                      <input type="text" value={ing.origin} onChange={e => updateIngredient(idx, 'origin', e.target.value)}
-                        className="input-field text-sm" placeholder="국산" />
-                    </div>
-                    <div className="col-span-2 flex items-center">
-                      <input type="checkbox" checked={ing.allergen}
-                        onChange={e => updateIngredient(idx, 'allergen', e.target.checked)} className="w-4 h-4 mr-1" />
-                      <span className="text-xs">해당</span>
-                    </div>
-                    <div className="col-span-2">
-                      <input type="text" value={ing.allergenInfo}
-                        onChange={e => updateIngredient(idx, 'allergenInfo', e.target.value)}
-                        className="input-field text-sm" placeholder="대두, 밀 등" disabled={!ing.allergen} />
-                    </div>
-                    <div className="col-span-1">
-                      {ingredients.length > 1 && (
-                        <button type="button" onClick={() => removeIngredient(idx)}
-                          className="text-red-400 hover:text-red-600 text-sm">삭제</button>
-                      )}
-                    </div>
+
+                    {/* 복합원재료: 구성성분 입력 */}
+                    {ing.ingredientType === 'compound' && (
+                      <div className="mt-2 ml-4 p-2 bg-purple-50 rounded border border-purple-200">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-purple-700">구성성분 (5% 이상 시 상위 5개 이상 필요)</span>
+                          <button type="button" onClick={() => {
+                            const updated = [...ingredients];
+                            updated[idx] = { ...updated[idx], subIngredients: [...updated[idx].subIngredients, { name: '' }] };
+                            setIngredients(updated);
+                          }} className="text-xs text-purple-600 hover:underline">+ 추가</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {ing.subIngredients.map((sub, subIdx) => (
+                            <div key={subIdx} className="flex items-center gap-1">
+                              <input type="text" value={sub.name}
+                                onChange={e => {
+                                  const updated = [...ingredients];
+                                  const subs = [...updated[idx].subIngredients];
+                                  subs[subIdx] = { ...subs[subIdx], name: e.target.value };
+                                  updated[idx] = { ...updated[idx], subIngredients: subs };
+                                  setIngredients(updated);
+                                }}
+                                className="input-field text-xs w-24 py-1" placeholder={`성분 ${subIdx + 1}`} />
+                              <button type="button" onClick={() => {
+                                const updated = [...ingredients];
+                                const subs = updated[idx].subIngredients.filter((_, i) => i !== subIdx);
+                                updated[idx] = { ...updated[idx], subIngredients: subs };
+                                setIngredients(updated);
+                              }} className="text-red-400 hover:text-red-600 text-xs">x</button>
+                            </div>
+                          ))}
+                        </div>
+                        {parseFloat(ing.ratio || '0') >= 5 && ing.subIngredients.filter(s => s.name.trim()).length < 5 && (
+                          <p className="text-xs text-red-500 mt-1">
+                            배합비 5% 이상 복합원재료는 구성성분을 5가지 이상 입력해야 합니다.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 식품첨가물: 용도 선택 */}
+                    {ing.ingredientType === 'additive' && (
+                      <div className="mt-2 ml-4 p-2 bg-orange-50 rounded border border-orange-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-orange-700">첨가물 용도:</span>
+                          <select value={ing.additivePurpose}
+                            onChange={e => updateIngredient(idx, 'additivePurpose', e.target.value)}
+                            className="input-field text-xs py-1 w-40">
+                            <option value="">용도 선택</option>
+                            {ADDITIVE_PURPOSES.map(p => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                          {['합성보존료', '합성감미료', '합성착색료', '발색제', '산화방지제', '표백제'].includes(ing.additivePurpose) && (
+                            <span className="text-xs text-orange-600 font-medium">* 용도명 병기 의무</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -597,7 +718,95 @@ export default function NewLabelPage() {
       {step === 2 && aiResult && (
         <div className="space-y-6">
           <h1 className="text-2xl font-bold text-gray-900">AI 생성 결과</h1>
-          <p className="text-gray-500">AI가 생성한 라벨 정보를 확인하고 수정하세요.</p>
+          <p className="text-gray-500">한국 식품 표시기준에 따라 생성된 결과를 확인하세요.</p>
+
+          {/* 경고 사항 (최상단) */}
+          {aiResult.warnings && aiResult.warnings.length > 0 && (
+            <div className="card border-l-4 border-yellow-400">
+              <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                <span className="text-yellow-500">&#9888;</span> 확인 필요 사항
+              </h3>
+              <div className="space-y-2">
+                {aiResult.warnings.map((w: any, i: number) => (
+                  <div key={i} className={`p-3 rounded-lg ${
+                    w.severity === 'error' ? 'bg-red-50 border border-red-200' :
+                    w.severity === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
+                    'bg-blue-50 border border-blue-200'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <span className={`text-sm mt-0.5 ${
+                        w.severity === 'error' ? 'text-red-500' :
+                        w.severity === 'warning' ? 'text-yellow-600' : 'text-blue-500'
+                      }`}>
+                        {w.severity === 'error' ? '●' : w.severity === 'warning' ? '▲' : 'i'}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{w.message}</p>
+                        {w.suggestion && <p className="text-xs text-gray-600 mt-0.5">{w.suggestion}</p>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 원재료명 표기 문구 (핵심 결과물) */}
+          {aiResult.ingredientLabelText && (
+            <div className="card border-l-4 border-green-500">
+              <h3 className="text-lg font-bold mb-3">원재료명 표기 문구 (한국 표시기준 적용)</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                아래 문구는 「식품등의 표시기준」 별지1 제1호에 따라 AI가 생성한 것입니다. 최종 확인 후 라벨에 사용하세요.
+              </p>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {aiResult.ingredientLabelText.korea}
+                </p>
+              </div>
+              {aiResult.ingredientLabelText.us && targetMarkets.includes('us') && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                  <span className="text-xs font-bold text-gray-500 block mb-1">US (FDA)</span>
+                  <p className="text-xs text-gray-700">{aiResult.ingredientLabelText.us}</p>
+                </div>
+              )}
+              {aiResult.ingredientLabelText.japan && targetMarkets.includes('japan') && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                  <span className="text-xs font-bold text-gray-500 block mb-1">Japan (CAA)</span>
+                  <p className="text-xs text-gray-700">{aiResult.ingredientLabelText.japan}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 규칙 적용 내역 */}
+          {aiResult.ruleApplicationReport && aiResult.ruleApplicationReport.length > 0 && (
+            <div className="card">
+              <h3 className="text-lg font-bold mb-3">규칙 적용 내역</h3>
+              <p className="text-xs text-gray-500 mb-3">각 표시 규칙이 이 제품에 어떻게 적용되었는지 확인하세요.</p>
+              <div className="space-y-2">
+                {aiResult.ruleApplicationReport.map((r: any, i: number) => (
+                  <div key={i} className={`p-3 rounded-lg border ${r.applied ? 'bg-blue-50/50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="flex items-start gap-2">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                        r.applied ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'
+                      }`}>{r.ruleId}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">{r.ruleName}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">{r.details}</p>
+                        {r.affectedIngredients && r.affectedIngredients.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {r.affectedIngredients.map((name: string, j: number) => (
+                              <span key={j} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{name}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* 영양성분 */}
