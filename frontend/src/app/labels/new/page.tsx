@@ -110,6 +110,11 @@ export default function NewLabelPage() {
   const [totalUnit, setTotalUnit] = useState('g');
   const [targetMarkets, setTargetMarkets] = useState<string[]>(['korea']);
 
+  // 소비기한, 보관방법, 혼입 알레르기
+  const [shelfLife, setShelfLife] = useState('');
+  const [storageMethod, setStorageMethod] = useState('');
+  const [crossContaminationAllergens, setCrossContaminationAllergens] = useState('');
+
   // 영양성분
   const [nutrition, setNutrition] = useState<Record<string, string>>({
     calories: '', carbohydrates: '', sugars: '', dietaryFiber: '',
@@ -258,8 +263,16 @@ export default function NewLabelPage() {
         totalContent,
         totalUnit,
         targetMarkets,
+        shelfLife,
+        storageMethod,
+        crossContaminationAllergens,
       });
       setAiResult(data.generated);
+
+      // AI가 보관방법을 추천한 경우 자동 반영 (사용자가 미입력 시)
+      if (!storageMethod && data.generated?.storageInstructions?.korea) {
+        setStorageMethod(data.generated.storageInstructions.korea);
+      }
 
       // AI 결과로 영양성분 자동 채우기
       if (data.generated?.nutritionInfo) {
@@ -371,6 +384,9 @@ export default function NewLabelPage() {
         servingUnit,
         totalContent: totalContent || null,
         totalUnit,
+        shelfLife: shelfLife || null,
+        storageMethod: storageMethod || null,
+        crossContaminationAllergens: crossContaminationAllergens || null,
         nutritionInfo: nutrition,
         ingredients: ingredients
           .filter(ing => ing.name.trim())
@@ -905,6 +921,52 @@ export default function NewLabelPage() {
               </div>
             </div>
 
+            {/* 소비기한 / 보관방법 / 혼입 알레르기 */}
+            <div className="card">
+              <h2 className="text-lg font-bold mb-4">소비기한 / 보관방법 / 혼입 알레르기</h2>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">소비기한 (기준 소비기한)</label>
+                    <input
+                      type="text"
+                      value={shelfLife}
+                      onChange={e => setShelfLife(e.target.value)}
+                      className="input-field"
+                      placeholder="예: 제조일로부터 12개월, 2025.12.31"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">미입력 시 AI가 일반적인 권장 범위를 안내합니다.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">보관방법</label>
+                    <input
+                      type="text"
+                      value={storageMethod}
+                      onChange={e => setStorageMethod(e.target.value)}
+                      className="input-field"
+                      placeholder="예: 직사광선을 피해 서늘한 곳에 보관"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">미입력 시 AI가 원재료 기반으로 추천합니다.</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    혼입 가능 알레르기 유발물질
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    같은 제조시설에서 다른 제품에 사용하는 알레르기 유발물질을 입력하세요. 라벨에 &quot;이 제품은 OO을(를) 사용한 제품과 같은 제조시설에서 제조하고 있습니다&quot; 문구가 추가됩니다.
+                  </p>
+                  <input
+                    type="text"
+                    value={crossContaminationAllergens}
+                    onChange={e => setCrossContaminationAllergens(e.target.value)}
+                    className="input-field"
+                    placeholder="예: 우유, 밀, 메밀, 땅콩, 게, 새우"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-3">
               <button onClick={() => setStep(0)} className="btn-secondary">이전</button>
               <button onClick={handleAIGenerate} disabled={loading}
@@ -982,6 +1044,21 @@ export default function NewLabelPage() {
                   <div className="mt-2 p-2 bg-yellow-50 rounded text-xs">
                     <strong>알레르기 유발물질:</strong>{' '}
                     {ingredients.filter(i => i.allergen && i.allergenInfo).map(i => i.allergenInfo).join(', ')}
+                  </div>
+                )}
+                {crossContaminationAllergens && (
+                  <div className="mt-2 p-2 bg-orange-50 rounded text-xs">
+                    <strong>혼입 가능:</strong> {crossContaminationAllergens}
+                  </div>
+                )}
+                {storageMethod && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
+                    <strong>보관방법:</strong> {storageMethod}
+                  </div>
+                )}
+                {shelfLife && (
+                  <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                    <strong>소비기한:</strong> {shelfLife}
                   </div>
                 )}
               </div>
@@ -1152,12 +1229,31 @@ export default function NewLabelPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* 혼입 가능 알레르기 */}
+                  {(crossContaminationAllergens || aiResult.allergens?.crossContamination?.length > 0 || aiResult.crossContaminationStatement) && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <span className="text-xs font-medium text-orange-600">혼입 가능 알레르기 (같은 제조시설)</span>
+                      {crossContaminationAllergens && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {crossContaminationAllergens.split(',').map((a: string) => a.trim()).filter(Boolean).map((a: string) => (
+                            <span key={a} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs">{a}</span>
+                          ))}
+                        </div>
+                      )}
+                      {aiResult.crossContaminationStatement && (
+                        <p className="text-xs text-orange-700 mt-2 p-2 bg-orange-50 rounded">
+                          {aiResult.crossContaminationStatement}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {aiResult.storageInstructions && (
                 <div className="card">
-                  <h3 className="text-lg font-bold mb-3">보관방법</h3>
+                  <h3 className="text-lg font-bold mb-3">보관방법 {!storageMethod ? <span className="text-xs font-normal text-blue-500 ml-2">(AI 추천)</span> : ''}</h3>
                   {targetMarkets.includes('korea') && (
                     <div className="mb-2">
                       <span className="text-xs font-medium text-gray-500">🇰🇷</span>
@@ -1174,6 +1270,25 @@ export default function NewLabelPage() {
                     <div>
                       <span className="text-xs font-medium text-gray-500">🇯🇵</span>
                       <p className="text-sm">{aiResult.storageInstructions.japan}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 소비기한 정보 */}
+              {(shelfLife || aiResult.shelfLifeRecommendation) && (
+                <div className="card">
+                  <h3 className="text-lg font-bold mb-3">소비기한</h3>
+                  {shelfLife && (
+                    <div className="mb-2 p-2 bg-gray-50 rounded">
+                      <span className="text-xs text-gray-500">입력값</span>
+                      <p className="text-sm font-medium text-gray-800">{shelfLife}</p>
+                    </div>
+                  )}
+                  {aiResult.shelfLifeRecommendation && (
+                    <div className="p-2 bg-blue-50 rounded">
+                      <span className="text-xs text-blue-500">AI 참고 안내</span>
+                      <p className="text-sm text-blue-700">{aiResult.shelfLifeRecommendation}</p>
                     </div>
                   )}
                 </div>

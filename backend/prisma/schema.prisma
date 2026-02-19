@@ -43,6 +43,9 @@ model Label {
   servingUnit   String?
   totalContent  Float?
   totalUnit     String?
+  shelfLife     String?  // 소비기한(기준 소비기한)
+  storageMethod String?  // 보관방법
+  crossContaminationAllergens String? // 혼입 가능 알레르기 유발물질
   healthClaims    Json?
   aiNotes         Json?
   labelSnapshot   Json?

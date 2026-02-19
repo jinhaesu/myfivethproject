@@ -20,6 +20,9 @@ interface Label {
   servingUnit: string | null;
   totalContent: number | null;
   totalUnit: string | null;
+  shelfLife: string | null;
+  storageMethod: string | null;
+  crossContaminationAllergens: string | null;
   healthClaims: HealthClaim[] | null;
   aiNotes: any | null;
   labelSnapshot: any | null;
@@ -532,6 +535,27 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                 <dt className="text-xs text-gray-500">수정일</dt>
                 <dd className="text-sm font-medium">{new Date(label.updatedAt).toLocaleString('ko-KR')}</dd>
               </div>
+              {label.shelfLife && (
+                <div>
+                  <dt className="text-xs text-gray-500">소비기한</dt>
+                  <dd className="text-sm font-medium">{label.shelfLife}</dd>
+                </div>
+              )}
+              {label.storageMethod && (
+                <div>
+                  <dt className="text-xs text-gray-500">보관방법</dt>
+                  <dd className="text-sm font-medium">{label.storageMethod}</dd>
+                </div>
+              )}
+              {label.crossContaminationAllergens && (
+                <div className="sm:col-span-2">
+                  <dt className="text-xs text-gray-500">혼입 가능 알레르기 유발물질</dt>
+                  <dd className="text-sm font-medium text-orange-700">{label.crossContaminationAllergens}</dd>
+                  <dd className="text-xs text-orange-600 mt-0.5">
+                    이 제품은 {label.crossContaminationAllergens}을(를) 사용한 제품과 같은 제조시설에서 제조하고 있습니다.
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
         </div>

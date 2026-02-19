@@ -133,13 +133,16 @@ const GENERATE_PROMPT = `당신은 한국 「식품등의 표시기준」(식약
   "allergens": {
     "korea": ["한국 알레르기 유발물질 - 복합원재료/캐리오버 포함 전수 검토"],
     "us": ["US allergens"],
-    "japan": ["日本アレルゲン"]
+    "japan": ["日本アレルゲン"],
+    "crossContamination": ["혼입 가능 알레르기 유발물질 (같은 시설 사용 등)"]
   },
+  "crossContaminationStatement": "이 제품은 OO, OO을(를) 사용한 제품과 같은 제조시설에서 제조하고 있습니다.",
   "storageInstructions": {
-    "korea": "한국어 보관방법",
+    "korea": "한국어 보관방법 (사용자 입력 반영 또는 AI 추천)",
     "us": "English storage instructions",
     "japan": "日本語保存方法"
   },
+  "shelfLifeRecommendation": "소비기한 관련 AI 추천 또는 안내 (미입력 시)",
   "precautions": {
     "korea": ["주의사항1", "주의사항2"],
     "us": ["Precaution 1"],
@@ -261,7 +264,7 @@ router.post('/generate-label', authenticate, async (req, res) => {
       });
     }
 
-    const { productName, productType, ingredients, servingSize, servingUnit, totalContent, totalUnit, targetMarkets } = req.body;
+    const { productName, productType, ingredients, servingSize, servingUnit, totalContent, totalUnit, targetMarkets, shelfLife, storageMethod, crossContaminationAllergens } = req.body;
 
     if (!productName || !ingredients?.length) {
       return res.status(400).json({ error: '제품명과 원재료 정보를 입력해주세요.' });
@@ -299,9 +302,15 @@ router.post('/generate-label', authenticate, async (req, res) => {
 - 1회 제공량: ${servingSize || '미정'}${servingUnit || 'g'}
 - 총 내용량: ${totalContent || '미정'}${totalUnit || 'g'}
 - 대상 시장: ${(targetMarkets || ['korea']).join(', ')}
+- 소비기한(기준 소비기한): ${shelfLife || '미입력'}
+- 보관방법: ${storageMethod || '미입력'}
+- 혼입 가능 알레르기 유발물질: ${crossContaminationAllergens || '없음'}
 
 위 정보를 바탕으로 한국 식품 표시기준에 맞는 완전한 식품 라벨 정보를 생성해주세요.
-복합원재료와 식품첨가물은 해당 규칙을 반드시 적용하고, ruleApplicationReport에 각 규칙 적용 내역을 상세히 기록해주세요.`;
+복합원재료와 식품첨가물은 해당 규칙을 반드시 적용하고, ruleApplicationReport에 각 규칙 적용 내역을 상세히 기록해주세요.
+보관방법이 미입력이면 원재료와 식품유형을 바탕으로 적절한 보관방법을 추천해주세요 (storageInstructions에 반영).
+소비기한이 미입력이면 일반적인 소비기한 권장 범위를 warnings에 info로 안내해주세요.
+혼입 가능 알레르기 유발물질이 있으면 allergens 정보에 반영하고, 라벨 표기 문구에 "이 제품은 OO을(를) 사용한 제품과 같은 제조시설에서 제조하고 있습니다" 형태의 혼입 주의문구를 포함해주세요.`;
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
