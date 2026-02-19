@@ -140,6 +140,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    extractFromLinks: (data: any) =>
+      request('/ai/extract-from-links', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
   reviews: {
     updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string; reviewerName?: string }) =>

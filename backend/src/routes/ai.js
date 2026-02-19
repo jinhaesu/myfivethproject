@@ -373,4 +373,215 @@ router.post('/check-compliance', authenticate, async (req, res) => {
   }
 });
 
+// ─── 원재료 링크에서 성분 추출 프롬프트 ───
+const EXTRACT_FROM_LINKS_PROMPT = `당신은 한국 「식품등의 표시기준」(식약처 고시) 전문가입니다.
+
+# 핵심 임무
+사용자가 원재료 판매처/공급처 웹페이지의 텍스트 내용을 제공합니다.
+각 원재료의 사용량(%)과 함께 제공됩니다.
+
+웹페이지 텍스트에서 원재료의 성분 정보를 추출하고,
+한국 식품 표시기준에 맞는 원재료 데이터를 구조화하여 반환하세요.
+
+중요: 반드시 유효한 JSON만 응답하세요. 설명이나 마크다운 없이 순수 JSON만 출력하세요.
+
+# 추출 규칙
+
+1. 웹페이지에서 제품명, 원재료명 및 함량, 알레르기 정보, 식품유형 등을 찾아 추출
+2. 복합원재료(2종 이상 원재료로 구성된 재료)인 경우:
+   - ingredientType을 "compound"로 설정
+   - subIngredients에 구성성분 목록을 기입
+3. 식품첨가물인 경우:
+   - ingredientType을 "additive"로 설정
+   - additivePurpose에 용도 기입 (합성보존료, 합성감미료, 합성착색료, 발색제, 산화방지제, 표백제, 천연향료, 합성향료, 유화제, 증점제, 산도조절제, 팽창제, 영양강화제 등)
+4. 일반 원재료는 ingredientType을 "regular"로 설정
+5. 알레르기 유발물질(19종+아몬드)이 포함되어 있으면 allergen: true, allergenInfo에 해당 물질 기입
+6. 원산지 정보가 있으면 origin에 기입
+7. 사용자가 제공한 사용량(%)을 기반으로 최종 제품에서 각 성분의 실제 비율을 계산
+   - 예: 초콜릿(사용량 30%)의 성분이 카카오매스 40%, 설탕 35%, 코코아버터 20%, 레시틴 5%인 경우
+   - 최종 제품에서 카카오매스는 30% × 40% = 12%, 설탕은 30% × 35% = 10.5% 등
+
+# 응답 JSON 형식
+
+{
+  "extractedIngredients": [
+    {
+      "sourceUrl": "원본 URL",
+      "sourceName": "원재료 제품명 (웹페이지에서 추출)",
+      "usagePercent": 30,
+      "ingredients": [
+        {
+          "name": "원재료명",
+          "ratio": "최종 제품 대비 비율(%)",
+          "origin": "원산지 (있는 경우)",
+          "allergen": false,
+          "allergenInfo": "",
+          "ingredientType": "regular | compound | additive",
+          "subIngredients": [{"name": "구성성분명"}],
+          "additivePurpose": "첨가물 용도"
+        }
+      ],
+      "sourceAllergens": ["웹페이지에 표시된 알레르기 정보"],
+      "notes": "추출 시 참고사항/불확실한 부분"
+    }
+  ],
+  "mergedIngredients": [
+    {
+      "name": "원재료명",
+      "ratio": "전체 제품 기준 비율(%)",
+      "origin": "원산지",
+      "allergen": false,
+      "allergenInfo": "",
+      "ingredientType": "regular | compound | additive",
+      "subIngredients": [{"name": "구성성분명"}],
+      "additivePurpose": ""
+    }
+  ],
+  "totalAllergens": ["전체 알레르기 유발물질 목록"],
+  "warnings": [
+    {
+      "severity": "error | warning | info",
+      "message": "경고/안내 메시지",
+      "suggestion": "해결 방안"
+    }
+  ],
+  "summary": "전체 추출 결과 요약 (한국어)"
+}
+
+# 중요 지침
+- mergedIngredients: 모든 링크에서 추출한 원재료를 최종 제품 기준 비율로 환산하여 통합
+- 동일 원재료가 여러 링크에서 나오면 비율을 합산
+- mergedIngredients는 비율 내림차순 정렬
+- 비율 합계가 100%가 되지 않으면 warnings에 안내
+- 웹페이지에서 성분 정보를 찾을 수 없으면 warnings에 error로 기록
+- 불확실한 정보에는 warnings에 warning으로 기록`;
+
+// HTML에서 텍스트 추출 (간단 구현)
+function stripHtml(html) {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 원재료 링크에서 성분 추출
+router.post('/extract-from-links', authenticate, async (req, res) => {
+  try {
+    const client = getClient();
+    if (!client) {
+      return res.status(400).json({
+        error: 'AI 기능을 사용하려면 ANTHROPIC_API_KEY 환경변수를 설정해주세요.',
+      });
+    }
+
+    const { links, productName, productType } = req.body;
+
+    if (!links || !Array.isArray(links) || links.length === 0) {
+      return res.status(400).json({ error: '원재료 링크를 1개 이상 입력해주세요.' });
+    }
+
+    // 각 URL에서 페이지 내용 가져오기
+    const fetchResults = await Promise.allSettled(
+      links.map(async (link) => {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          const response = await fetch(link.url, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; FoodLabelBot/1.0)',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+            },
+          });
+          clearTimeout(timeout);
+
+          if (!response.ok) {
+            return { url: link.url, usagePercent: link.usagePercent, error: `HTTP ${response.status}`, text: null };
+          }
+
+          const html = await response.text();
+          const text = stripHtml(html);
+          // 텍스트가 너무 길면 앞부분만 사용 (토큰 절약)
+          const truncated = text.length > 8000 ? text.substring(0, 8000) + '... (이하 생략)' : text;
+          return { url: link.url, usagePercent: link.usagePercent, text: truncated, error: null };
+        } catch (err) {
+          return { url: link.url, usagePercent: link.usagePercent, error: err.message, text: null };
+        }
+      })
+    );
+
+    const pageContents = fetchResults.map((r) => {
+      if (r.status === 'fulfilled') return r.value;
+      return { url: '', usagePercent: 0, error: r.reason?.message || '알 수 없는 오류', text: null };
+    });
+
+    // AI에게 보낼 메시지 구성
+    const linkDescriptions = pageContents
+      .map((p, i) => {
+        if (p.error && !p.text) {
+          return `\n--- 원재료 ${i + 1} ---\nURL: ${p.url}\n사용량: ${p.usagePercent}%\n[오류: 페이지를 가져올 수 없음 - ${p.error}]`;
+        }
+        return `\n--- 원재료 ${i + 1} ---\nURL: ${p.url}\n사용량: ${p.usagePercent}%\n페이지 내용:\n${p.text}`;
+      })
+      .join('\n');
+
+    const userMessage = `제품 정보:
+- 제품명: ${productName || '미정'}
+- 식품유형: ${productType || '일반가공식품'}
+
+아래는 각 원재료의 판매처/공급처 웹페이지에서 추출한 텍스트입니다.
+각 원재료의 성분 정보를 추출하고, 한국 식품 표시기준에 맞게 구조화해주세요.
+${linkDescriptions}
+
+위 원재료들을 분석하여:
+1. 각 링크별 원재료 성분을 추출하세요 (extractedIngredients)
+2. 최종 제품 기준으로 모든 원재료를 통합 정리하세요 (mergedIngredients)
+3. 알레르기 유발물질을 전수 검토하세요
+4. 정보 부족이나 불확실한 부분은 warnings에 기록하세요`;
+
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 8192,
+      system: EXTRACT_FROM_LINKS_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const text = response.content[0].text;
+    let result;
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    } catch {
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text });
+    }
+
+    // 페이지 가져오기 실패한 링크가 있으면 warnings에 추가
+    const fetchErrors = pageContents.filter((p) => p.error && !p.text);
+    if (fetchErrors.length > 0) {
+      if (!result.warnings) result.warnings = [];
+      fetchErrors.forEach((e) => {
+        result.warnings.unshift({
+          severity: 'error',
+          message: `"${e.url}" 페이지를 가져올 수 없습니다: ${e.error}`,
+          suggestion: 'URL이 올바른지 확인하고, 접근 가능한 페이지인지 확인해주세요.',
+        });
+      });
+    }
+
+    res.json({ extracted: result });
+  } catch (error) {
+    console.error('Extract from links error:', error);
+    res.status(500).json({ error: '원재료 정보 추출에 실패했습니다.' });
+  }
+});
+
 module.exports = router;

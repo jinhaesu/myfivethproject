@@ -37,6 +37,12 @@ const ADDITIVE_PURPOSES = [
   '유화제', '증점제', '산도조절제', '팽창제', '영양강화제', '기타',
 ];
 
+interface IngredientLink {
+  url: string;
+  usagePercent: string;
+  memo: string;
+}
+
 const STEPS = ['템플릿 선택', '기본 정보', 'AI 생성', '규정 검토', '최종 결과'];
 
 function HealthClaimsPanel({ claims }: { claims: HealthClaim[] }) {
@@ -111,6 +117,14 @@ export default function NewLabelPage() {
     cholesterol: '', sodium: '', vitaminA: '', vitaminC: '', calcium: '', iron: '',
   });
 
+  // 원재료 입력 모드
+  const [ingredientInputMode, setIngredientInputMode] = useState<'manual' | 'link'>('manual');
+
+  // 링크 입력 모드
+  const [ingredientLinks, setIngredientLinks] = useState<IngredientLink[]>([{ url: '', usagePercent: '', memo: '' }]);
+  const [linkExtracting, setLinkExtracting] = useState(false);
+  const [linkExtractResult, setLinkExtractResult] = useState<any>(null);
+
   // 원재료
   const [ingredients, setIngredients] = useState<Ingredient[]>([{ ...EMPTY_INGREDIENT }]);
 
@@ -155,6 +169,61 @@ export default function NewLabelPage() {
     setTargetMarkets(prev =>
       prev.includes(market) ? prev.filter(m => m !== market) : [...prev, market]
     );
+  };
+
+  const addLink = () => setIngredientLinks([...ingredientLinks, { url: '', usagePercent: '', memo: '' }]);
+  const removeLink = (idx: number) => setIngredientLinks(ingredientLinks.filter((_, i) => i !== idx));
+  const updateLink = (idx: number, field: keyof IngredientLink, value: string) => {
+    const updated = [...ingredientLinks];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setIngredientLinks(updated);
+  };
+
+  const handleExtractFromLinks = async () => {
+    const validLinks = ingredientLinks.filter(l => l.url.trim());
+    if (validLinks.length === 0) {
+      setError('원재료 링크를 1개 이상 입력해주세요.');
+      return;
+    }
+
+    const totalUsage = validLinks.reduce((sum, l) => sum + (parseFloat(l.usagePercent) || 0), 0);
+    if (totalUsage > 100) {
+      setError('사용량 합계가 100%를 초과합니다.');
+      return;
+    }
+
+    setError('');
+    setLinkExtracting(true);
+    try {
+      const data = await api.ai.extractFromLinks({
+        links: validLinks.map(l => ({
+          url: l.url.trim(),
+          usagePercent: parseFloat(l.usagePercent) || 0,
+        })),
+        productName,
+        productType,
+      });
+      setLinkExtractResult(data.extracted);
+
+      // 추출된 원재료를 ingredients 상태에 반영
+      if (data.extracted?.mergedIngredients?.length > 0) {
+        const merged: Ingredient[] = data.extracted.mergedIngredients.map((m: any) => ({
+          name: m.name || '',
+          ratio: String(m.ratio ?? ''),
+          origin: m.origin || '',
+          allergen: m.allergen || false,
+          allergenInfo: m.allergenInfo || '',
+          ingredientType: m.ingredientType || 'regular',
+          subIngredients: (m.subIngredients || []).map((s: any) => ({ name: s.name || '' })),
+          additivePurpose: m.additivePurpose || '',
+        }));
+        setIngredients(merged);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLinkExtracting(false);
+    }
   };
 
   const handleAIGenerate = async () => {
@@ -460,8 +529,213 @@ export default function NewLabelPage() {
               </div>
             </div>
 
-            {/* 원재료 */}
+            {/* 원재료 입력 모드 탭 */}
             <div className="card">
+              <div className="flex items-center gap-1 mb-4 border-b">
+                <button
+                  type="button"
+                  onClick={() => setIngredientInputMode('manual')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    ingredientInputMode === 'manual'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  직접 입력
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIngredientInputMode('link')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    ingredientInputMode === 'link'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  링크로 자동 추출
+                </button>
+              </div>
+
+              {/* 링크 입력 모드 */}
+              {ingredientInputMode === 'link' && (
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <h2 className="text-lg font-bold">원재료 링크 입력</h2>
+                    <button type="button" onClick={addLink} className="btn-secondary text-sm">+ 링크 추가</button>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-4">
+                    사용하는 원재료의 판매처/공급처 링크를 넣고 사용량(%)을 입력하세요. AI가 웹페이지에서 성분 정보를 추출하여 자동으로 원재료를 구성합니다.
+                  </p>
+
+                  <div className="space-y-3 mb-4">
+                    {ingredientLinks.map((link, idx) => (
+                      <div key={idx} className="border border-gray-200 rounded-lg p-3">
+                        <div className="grid grid-cols-12 gap-2 items-start">
+                          <div className="col-span-6">
+                            <label className="block text-xs text-gray-500 mb-0.5">판매처/공급처 URL</label>
+                            <input
+                              type="url"
+                              value={link.url}
+                              onChange={e => updateLink(idx, 'url', e.target.value)}
+                              className="input-field text-sm"
+                              placeholder="https://example.com/product/..."
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-xs text-gray-500 mb-0.5">사용량 (%)</label>
+                            <input
+                              type="number"
+                              value={link.usagePercent}
+                              onChange={e => updateLink(idx, 'usagePercent', e.target.value)}
+                              className="input-field text-sm"
+                              placeholder="30"
+                              step="any"
+                              min="0"
+                              max="100"
+                            />
+                          </div>
+                          <div className="col-span-3">
+                            <label className="block text-xs text-gray-500 mb-0.5">메모 (선택)</label>
+                            <input
+                              type="text"
+                              value={link.memo}
+                              onChange={e => updateLink(idx, 'memo', e.target.value)}
+                              className="input-field text-sm"
+                              placeholder="예: 초콜릿칩"
+                            />
+                          </div>
+                          <div className="col-span-1 flex items-end pb-1">
+                            {ingredientLinks.length > 1 && (
+                              <button type="button" onClick={() => removeLink(idx)}
+                                className="text-red-400 hover:text-red-600 text-xs">삭제</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 사용량 합계 */}
+                  <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">사용량 합계</span>
+                    <span className={`text-sm font-bold ${
+                      (() => {
+                        const total = ingredientLinks.reduce((sum, l) => sum + (parseFloat(l.usagePercent) || 0), 0);
+                        return total > 100 ? 'text-red-600' : total === 100 ? 'text-green-600' : 'text-yellow-600';
+                      })()
+                    }`}>
+                      {ingredientLinks.reduce((sum, l) => sum + (parseFloat(l.usagePercent) || 0), 0).toFixed(1)}%
+                      {(() => {
+                        const total = ingredientLinks.reduce((sum, l) => sum + (parseFloat(l.usagePercent) || 0), 0);
+                        if (total > 100) return ' (초과)';
+                        if (total < 100) return ' (나머지는 정제수 등)';
+                        return '';
+                      })()}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleExtractFromLinks}
+                    disabled={linkExtracting}
+                    className="btn-primary w-full flex items-center justify-center gap-2"
+                  >
+                    {linkExtracting ? (
+                      <><span className="animate-spin">&#8987;</span> AI가 원재료 정보를 추출하는 중...</>
+                    ) : (
+                      <><span>&#129302;</span> AI로 원재료 추출</>
+                    )}
+                  </button>
+
+                  {/* 추출 결과 */}
+                  {linkExtractResult && (
+                    <div className="mt-4 space-y-3">
+                      {/* 경고 */}
+                      {linkExtractResult.warnings && linkExtractResult.warnings.length > 0 && (
+                        <div className="border-l-4 border-yellow-400 bg-yellow-50 p-3 rounded-r-lg">
+                          <h4 className="text-sm font-bold text-yellow-800 mb-2">확인 필요 사항</h4>
+                          <div className="space-y-1">
+                            {linkExtractResult.warnings.map((w: any, i: number) => (
+                              <div key={i} className={`text-xs p-2 rounded ${
+                                w.severity === 'error' ? 'bg-red-50 text-red-700' :
+                                w.severity === 'warning' ? 'bg-yellow-50 text-yellow-700' :
+                                'bg-blue-50 text-blue-700'
+                              }`}>
+                                <p className="font-medium">{w.message}</p>
+                                {w.suggestion && <p className="text-xs mt-0.5 opacity-80">{w.suggestion}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 추출된 원재료 요약 */}
+                      {linkExtractResult.summary && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <h4 className="text-sm font-bold text-green-800 mb-1">추출 결과</h4>
+                          <p className="text-xs text-green-700">{linkExtractResult.summary}</p>
+                        </div>
+                      )}
+
+                      {/* 링크별 상세 */}
+                      {linkExtractResult.extractedIngredients && linkExtractResult.extractedIngredients.length > 0 && (
+                        <div className="border border-gray-200 rounded-lg p-3">
+                          <h4 className="text-sm font-bold text-gray-700 mb-2">링크별 추출 내역</h4>
+                          <div className="space-y-2">
+                            {linkExtractResult.extractedIngredients.map((ext: any, i: number) => (
+                              <div key={i} className="p-2 bg-gray-50 rounded text-xs">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-bold text-gray-700">{ext.sourceName || `원재료 ${i + 1}`}</span>
+                                  <span className="text-gray-400">({ext.usagePercent}%)</span>
+                                </div>
+                                <p className="text-gray-500 truncate">{ext.sourceUrl}</p>
+                                {ext.ingredients && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {ext.ingredients.slice(0, 8).map((ing: any, j: number) => (
+                                      <span key={j} className={`px-1.5 py-0.5 rounded text-xs ${
+                                        ing.ingredientType === 'compound' ? 'bg-purple-100 text-purple-700' :
+                                        ing.ingredientType === 'additive' ? 'bg-orange-100 text-orange-700' :
+                                        'bg-gray-100 text-gray-600'
+                                      }`}>{ing.name}</span>
+                                    ))}
+                                    {ext.ingredients.length > 8 && (
+                                      <span className="text-gray-400 text-xs">+{ext.ingredients.length - 8}개</span>
+                                    )}
+                                  </div>
+                                )}
+                                {ext.notes && <p className="text-yellow-600 mt-1">{ext.notes}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 전체 알레르기 */}
+                      {linkExtractResult.totalAllergens && linkExtractResult.totalAllergens.length > 0 && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <h4 className="text-sm font-bold text-red-700 mb-1">알레르기 유발물질 감지</h4>
+                          <div className="flex flex-wrap gap-1">
+                            {linkExtractResult.totalAllergens.map((a: string, i: number) => (
+                              <span key={i} className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs">{a}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-700">
+                          추출된 원재료가 아래 &quot;직접 입력&quot; 탭에 자동으로 반영되었습니다.
+                          필요시 &quot;직접 입력&quot; 탭에서 수정하거나, 바로 AI 라벨 생성을 진행하세요.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 직접 입력 모드 */}
+              {ingredientInputMode === 'manual' && (
+                <div>
               <div className="flex justify-between items-center mb-2">
                 <h2 className="text-lg font-bold">배합비 (원재료)</h2>
                 <button type="button" onClick={addIngredient} className="btn-secondary text-sm">+ 원재료 추가</button>
@@ -596,6 +870,8 @@ export default function NewLabelPage() {
                   </div>
                 ))}
               </div>
+                </div>
+              )}
             </div>
 
             {/* 영양성분 (수동 입력 가능) */}
