@@ -7,7 +7,7 @@ const isS3Configured = !!(process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID 
 let s3Client = null;
 if (isS3Configured) {
   const config = {
-    region: process.env.S3_REGION || 'auto',
+    region: (process.env.S3_REGION || 'auto').toLowerCase(),
     credentials: {
       accessKeyId: process.env.S3_ACCESS_KEY_ID,
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
