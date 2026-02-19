@@ -94,6 +94,19 @@ router.post('/:labelId/design', authenticate, upload.single('designFile'), async
   }
 });
 
+// 디자인 파일 조회 (express.static 폴백)
+router.get('/designs/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename); // path traversal 방지
+  const filePath = path.join(uploadDir, filename);
+
+  if (!fs.existsSync(filePath)) {
+    console.error('File not found:', filePath);
+    return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+  }
+
+  res.sendFile(filePath);
+});
+
 // 디자인 파일 삭제
 router.delete('/:labelId/design', authenticate, async (req, res) => {
   try {

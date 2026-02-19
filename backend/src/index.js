@@ -25,6 +25,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', uploadRoutes); // express.static 폴백: 파일 서빙 API 라우트
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

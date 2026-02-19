@@ -80,9 +80,11 @@ async function uploadFile(path: string, file: File) {
   return data;
 }
 
-export function getFileUrl(path: string): string {
-  if (!path) return '';
-  return `${BACKEND_URL}${path}`;
+export function getFileUrl(filePath: string): string {
+  if (!filePath) return '';
+  // Next.js rewrites를 통해 /uploads/* → 백엔드로 프록시
+  // 상대 경로를 반환하여 환경에 관계없이 동작하도록 함
+  return filePath;
 }
 
 export const api = {
