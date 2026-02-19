@@ -4,18 +4,19 @@ const path = require('path');
 const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const storage = require('../lib/storage');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// uploads 디렉토리 생성
+// 로컬 임시 uploads 디렉토리 생성 (multer 임시 저장용)
 const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'designs');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 // multer 설정 - PDF/이미지 파일만 허용
-const storage = multer.diskStorage({
+const multerStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
@@ -42,7 +43,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
+  storage: multerStorage,
   fileFilter,
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
@@ -56,20 +57,21 @@ router.post('/:labelId/design', authenticate, upload.single('designFile'), async
 
     const label = await prisma.label.findUnique({ where: { id: req.params.labelId } });
     if (!label) {
-      // 업로드된 파일 삭제
       fs.unlinkSync(req.file.path);
       return res.status(404).json({ error: '라벨을 찾을 수 없습니다.' });
     }
 
-    // 기존 파일 삭제
+    // 기존 파일 삭제 (S3 또는 로컬)
     if (label.designFileUrl) {
-      const oldPath = path.join(__dirname, '..', '..', label.designFileUrl);
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
-      }
+      const oldKey = label.designFileUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(oldKey); } catch (e) { console.error('Failed to delete old file:', e); }
     }
 
+    const s3Key = `designs/${req.file.filename}`;
     const fileUrl = `/uploads/designs/${req.file.filename}`;
+
+    // S3에 업로드 (S3 미설정 시 로컬 유지)
+    await storage.uploadFile(s3Key, req.file.path, req.file.mimetype);
 
     const updated = await prisma.label.update({
       where: { id: req.params.labelId },
@@ -94,17 +96,42 @@ router.post('/:labelId/design', authenticate, upload.single('designFile'), async
   }
 });
 
-// 디자인 파일 조회 (express.static 폴백)
-router.get('/designs/:filename', (req, res) => {
+// 디자인 파일 조회 (S3 또는 로컬 스트리밍)
+router.get('/designs/:filename', async (req, res) => {
   const filename = path.basename(req.params.filename); // path traversal 방지
-  const filePath = path.join(uploadDir, filename);
+  const key = `designs/${filename}`;
 
-  if (!fs.existsSync(filePath)) {
-    console.error('File not found:', filePath);
+  try {
+    const result = await storage.getFileStream(key);
+    if (!result) {
+      return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+    }
+
+    res.setHeader('Content-Type', result.contentType);
+    if (result.contentLength) {
+      res.setHeader('Content-Length', result.contentLength);
+    }
+    result.stream.pipe(res);
+  } catch (error) {
+    console.error('File serving error:', error);
     return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
   }
+});
 
-  res.sendFile(filePath);
+// HEAD 요청 지원 (프론트엔드 파일 존재 확인용)
+router.head('/designs/:filename', async (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const key = `designs/${filename}`;
+
+  try {
+    const exists = await storage.fileExists(key);
+    if (!exists) {
+      return res.status(404).end();
+    }
+    res.status(200).end();
+  } catch {
+    return res.status(404).end();
+  }
 });
 
 // 디자인 파일 삭제
@@ -116,10 +143,8 @@ router.delete('/:labelId/design', authenticate, async (req, res) => {
     }
 
     if (label.designFileUrl) {
-      const filePath = path.join(__dirname, '..', '..', label.designFileUrl);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      const key = label.designFileUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(key); } catch (e) { console.error('Failed to delete file:', e); }
     }
 
     await prisma.label.update({
