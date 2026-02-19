@@ -68,6 +68,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
   // 디자인 파일 업로드 관련
   const [uploading, setUploading] = useState(false);
   const [designCompareMode, setDesignCompareMode] = useState(false);
+  const [designFileStatus, setDesignFileStatus] = useState<'checking' | 'available' | 'unavailable'>('checking');
 
   // 수정 모드
   const [editMode, setEditMode] = useState(false);
@@ -95,6 +96,15 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
   useEffect(() => {
     fetchLabel();
   }, [id]);
+
+  useEffect(() => {
+    if (label?.designFileUrl) {
+      setDesignFileStatus('checking');
+      fetch(getFileUrl(label.designFileUrl), { method: 'HEAD' })
+        .then(res => setDesignFileStatus(res.ok ? 'available' : 'unavailable'))
+        .catch(() => setDesignFileStatus('unavailable'));
+    }
+  }, [label?.designFileUrl]);
 
   const startEdit = () => {
     if (!label) return;
@@ -663,8 +673,35 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
             )}
           </div>
 
+          {/* 파일을 불러올 수 없을 때 */}
+          {label.designFileUrl && designFileStatus === 'checking' && (
+            <div className="card text-center py-8">
+              <p className="text-gray-500">디자인 파일 확인 중...</p>
+            </div>
+          )}
+          {label.designFileUrl && designFileStatus === 'unavailable' && (
+            <div className="card text-center py-12">
+              <div className="text-5xl mb-4">{'\u26A0\uFE0F'}</div>
+              <p className="text-red-600 font-medium mb-2">디자인 파일을 불러올 수 없습니다</p>
+              <p className="text-sm text-gray-500 mb-4">
+                파일이 서버에서 삭제되었거나 접근할 수 없습니다.<br/>
+                디자인 파일을 다시 업로드해주세요.
+              </p>
+              <label className="btn-primary cursor-pointer inline-block">
+                파일 다시 업로드
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  onChange={handleDesignUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          )}
+
           {/* 비교 모드 OFF: 디자인 파일만 표시 */}
-          {!designCompareMode && label.designFileUrl && (
+          {!designCompareMode && label.designFileUrl && designFileStatus === 'available' && (
             <div className="card">
               <h3 className="text-sm font-bold mb-3">디자인 시안</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -687,7 +724,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
           )}
 
           {/* 비교 모드 ON: 좌우 나란히 */}
-          {designCompareMode && label.designFileUrl && (
+          {designCompareMode && label.designFileUrl && designFileStatus === 'available' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 왼쪽: 디자인 시안 */}
               <div className="card">
@@ -754,7 +791,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
           )}
 
           {/* 검수 체크리스트 */}
-          {label.designFileUrl && (
+          {label.designFileUrl && designFileStatus === 'available' && (
             <div className="card">
               <h3 className="text-sm font-bold mb-3">디자인 검수 체크포인트</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
