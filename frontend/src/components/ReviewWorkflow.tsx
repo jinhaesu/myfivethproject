@@ -26,6 +26,7 @@ interface ReviewCategory {
 
 interface Props {
   labelId: string;
+  productName: string;
   reviewCategories: ReviewCategory[];
   onUpdate: () => void;
 }
@@ -48,14 +49,30 @@ const DEPT_COLORS: Record<string, string> = {
   '경영팀': 'bg-indigo-100 text-indigo-700',
 };
 
-export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: Props) {
+export default function ReviewWorkflow({ labelId, productName, reviewCategories, onUpdate }: Props) {
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
   const [editingName, setEditingName] = useState<string | null>(null);
+  const [reviewerWarning, setReviewerWarning] = useState<string | null>(null);
 
-  const handleToggleItem = async (itemId: string, isCompleted: boolean) => {
+  // 이메일 알림 상태
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailDeadline, setEmailDeadline] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleToggleItem = async (itemId: string, isCompleted: boolean, reviewerName: string | null) => {
+    // 체크하려는 경우(완료 처리) 검토자 이름 필수 확인
+    if (!isCompleted && !reviewerName) {
+      setReviewerWarning(itemId);
+      setTimeout(() => setReviewerWarning(null), 3000);
+      return;
+    }
+
     setLoadingItems((prev) => ({ ...prev, [itemId]: true }));
     try {
       await api.reviews.updateItem(itemId, { isCompleted: !isCompleted });
@@ -97,11 +114,47 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!emailTo.trim()) return;
+    if (!emailDeadline.trim()) return;
+
+    setEmailSending(true);
+    setEmailResult(null);
+    try {
+      await api.reviews.sendNotification({
+        labelId,
+        productName,
+        email: emailTo.trim(),
+        deadline: emailDeadline,
+        message: emailMessage,
+      });
+      setEmailResult({ success: true, message: '검토 요청 이메일이 발송되었습니다.' });
+      setTimeout(() => {
+        setShowEmailModal(false);
+        setEmailResult(null);
+        setEmailTo('');
+        setEmailDeadline('');
+        setEmailMessage('');
+      }, 2000);
+    } catch (error: any) {
+      setEmailResult({ success: false, message: error.message || '이메일 발송에 실패했습니다.' });
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
   // 전체 진행률 계산
   const allItems = reviewCategories.flatMap((c) => c.items);
   const completedCount = allItems.filter((i) => i.isCompleted).length;
   const totalCount = allItems.length;
   const overallProgress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // 기본 마감일: 오늘 + 3일
+  const defaultDeadline = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d.toISOString().split('T')[0];
+  })();
 
   return (
     <div>
@@ -109,9 +162,23 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-bold">검토 진행 현황</h3>
-          <span className="text-sm text-gray-500">
-            {completedCount} / {totalCount} 완료
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              {completedCount} / {totalCount} 완료
+            </span>
+            <button
+              onClick={() => {
+                setShowEmailModal(true);
+                if (!emailDeadline) setEmailDeadline(defaultDeadline);
+              }}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              이메일로 검토 요청
+            </button>
+          </div>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-4">
           <div
@@ -130,6 +197,87 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
           )}
         </div>
       </div>
+
+      {/* 이메일 알림 모달 */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowEmailModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-4">검토 요청 이메일 발송</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              검토 담당자에게 &quot;{productName}&quot; 제품의 검토 요청 이메일을 발송합니다.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">받는 사람 (이메일) *</label>
+                <input
+                  type="email"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  className="input-field"
+                  placeholder="reviewer@company.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">검토 마감일 *</label>
+                <input
+                  type="date"
+                  value={emailDeadline}
+                  onChange={(e) => setEmailDeadline(e.target.value)}
+                  className="input-field"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">추가 메시지 (선택)</label>
+                <textarea
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  className="input-field"
+                  rows={3}
+                  placeholder="검토 시 참고할 사항을 입력하세요..."
+                />
+              </div>
+
+              {/* 미리보기 */}
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-500 mb-1">이메일 제목 미리보기:</p>
+                <p className="text-sm font-medium text-gray-800">
+                  [{productName}] 표기사항 검토 요청
+                </p>
+                <p className="text-xs text-gray-500 mt-2">주요 내용:</p>
+                <p className="text-xs text-gray-600">
+                  {emailDeadline ? `${emailDeadline}까지 검토 완료 요청` : '마감일 미지정'}
+                  {' | '}
+                  진행률 {overallProgress}% ({completedCount}/{totalCount})
+                </p>
+              </div>
+            </div>
+
+            {emailResult && (
+              <div className={`mt-3 p-2 rounded text-sm ${emailResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {emailResult.message}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="btn-secondary flex-1"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSendEmail}
+                disabled={emailSending || !emailTo.trim() || !emailDeadline.trim()}
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                {emailSending ? '발송 중...' : '발송하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 카테고리별 검토 */}
       <div className="space-y-4">
@@ -177,6 +325,8 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                     {category.items.map((item) => {
                       const isLoading = loadingItems[item.id];
                       const deptColor = DEPT_COLORS[item.department] || 'bg-gray-100 text-gray-700';
+                      const hasNoReviewer = !item.reviewerName;
+                      const showWarning = reviewerWarning === item.id;
 
                       return (
                         <tr
@@ -187,21 +337,31 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                         >
                           {/* 체크박스 */}
                           <td className="px-3 py-2 text-center">
-                            <button
-                              onClick={() => handleToggleItem(item.id, item.isCompleted)}
-                              disabled={isLoading}
-                              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                item.isCompleted
-                                  ? 'bg-green-500 border-green-500 text-white'
-                                  : 'border-gray-300 hover:border-blue-500'
-                              } ${isLoading ? 'opacity-50' : ''}`}
-                            >
-                              {item.isCompleted && (
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
+                            <div className="relative">
+                              <button
+                                onClick={() => handleToggleItem(item.id, item.isCompleted, item.reviewerName)}
+                                disabled={isLoading}
+                                title={hasNoReviewer && !item.isCompleted ? '검토자를 먼저 입력해주세요' : ''}
+                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                  item.isCompleted
+                                    ? 'bg-green-500 border-green-500 text-white'
+                                    : hasNoReviewer
+                                    ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                    : 'border-gray-300 hover:border-blue-500'
+                                } ${isLoading ? 'opacity-50' : ''}`}
+                              >
+                                {item.isCompleted && (
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                              {showWarning && (
+                                <div className="absolute left-6 top-0 whitespace-nowrap bg-red-600 text-white text-xs px-2 py-1 rounded shadow-lg z-10">
+                                  검토자를 먼저 입력해주세요
+                                </div>
                               )}
-                            </button>
+                            </div>
                           </td>
 
                           {/* 검토 항목명 */}
@@ -264,12 +424,14 @@ export default function ReviewWorkflow({ labelId, reviewCategories, onUpdate }: 
                                     [item.id]: item.reviewerName || '',
                                   }));
                                 }}
-                                className="text-sm text-gray-700 cursor-pointer hover:bg-gray-100 rounded px-1.5 py-1 -mx-1.5 min-h-[28px] flex items-center"
+                                className={`text-sm cursor-pointer hover:bg-gray-100 rounded px-1.5 py-1 -mx-1.5 min-h-[28px] flex items-center ${
+                                  item.reviewerName ? 'text-gray-700' : 'border border-dashed border-gray-300'
+                                }`}
                               >
                                 {item.reviewerName ? (
                                   <span>{item.reviewerName}</span>
                                 ) : (
-                                  <span className="text-gray-300 text-xs">클릭하여 입력</span>
+                                  <span className="text-gray-400 text-xs">검토자 입력 (필수)</span>
                                 )}
                               </div>
                             )}

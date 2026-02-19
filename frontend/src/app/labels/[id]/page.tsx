@@ -1052,6 +1052,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
       {activeTab === 'review' && (
         <ReviewWorkflow
           labelId={label.id}
+          productName={label.productName}
           reviewCategories={label.reviewCategories}
           onUpdate={fetchLabel}
         />

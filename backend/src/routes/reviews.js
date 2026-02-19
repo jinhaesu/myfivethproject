@@ -1,9 +1,11 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const { Resend } = require('resend');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 리뷰 항목 업데이트 (체크/해제, 검토자 이름, 비고)
 router.put('/items/:itemId', authenticate, async (req, res) => {
@@ -110,6 +112,139 @@ router.get('/progress/:labelId', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get review progress error:', error);
     res.status(500).json({ error: '검토 진행률 조회에 실패했습니다.' });
+  }
+});
+
+// 검토 요청 이메일 발송
+router.post('/send-notification', authenticate, async (req, res) => {
+  try {
+    const { labelId, productName, email, deadline, message } = req.body;
+
+    if (!email || !deadline || !productName) {
+      return res.status(400).json({ error: '이메일, 마감일, 제품명을 입력해주세요.' });
+    }
+
+    // 현재 검토 진행률 조회
+    const categories = await prisma.reviewCategory.findMany({
+      where: { labelId },
+      include: { items: true },
+    });
+
+    const totalItems = categories.reduce((acc, cat) => acc + cat.items.length, 0);
+    const completedItems = categories.reduce(
+      (acc, cat) => acc + cat.items.filter((i) => i.isCompleted).length,
+      0
+    );
+    const percentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+    // 미완료 항목 목록
+    const pendingItems = categories.flatMap((cat) =>
+      cat.items
+        .filter((i) => !i.isCompleted)
+        .map((i) => ({ category: cat.name, task: i.taskName, department: i.department }))
+    );
+
+    const deadlineDate = new Date(deadline);
+    const deadlineStr = deadlineDate.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long',
+    });
+
+    const senderName = req.user.name || req.user.email;
+    const emailFrom = process.env.EMAIL_FROM || 'noreply@joinandjoin.com';
+
+    const subject = `[${productName}] 표기사항 검토 요청`;
+
+    const pendingListHtml = pendingItems.length > 0
+      ? pendingItems
+          .map(
+            (item) =>
+              `<tr><td style="padding:6px 12px;border:1px solid #e5e7eb;font-size:13px;">${item.category}</td><td style="padding:6px 12px;border:1px solid #e5e7eb;font-size:13px;">${item.task}</td><td style="padding:6px 12px;border:1px solid #e5e7eb;font-size:13px;">${item.department}</td></tr>`
+          )
+          .join('')
+      : '<tr><td colspan="3" style="padding:12px;text-align:center;color:#6b7280;">모든 항목이 완료되었습니다.</td></tr>';
+
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#1f2937;">
+        <div style="background:#2563eb;padding:24px;border-radius:12px 12px 0 0;">
+          <h1 style="color:white;margin:0;font-size:18px;">${productName}</h1>
+          <p style="color:#bfdbfe;margin:8px 0 0;font-size:14px;">표기사항 검토 요청</p>
+        </div>
+
+        <div style="background:white;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+          <p style="font-size:14px;line-height:1.6;">안녕하세요,</p>
+          <p style="font-size:14px;line-height:1.6;">
+            <strong>${senderName}</strong>님이 <strong>&quot;${productName}&quot;</strong> 제품의 표기사항 검토를 요청하였습니다.
+          </p>
+
+          <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:16px;margin:16px 0;">
+            <p style="margin:0;font-size:14px;font-weight:bold;color:#92400e;">
+              검토 마감일: ${deadlineStr}
+            </p>
+            <p style="margin:4px 0 0;font-size:13px;color:#92400e;">
+              마감일까지 검토를 완료해주세요.
+            </p>
+          </div>
+
+          ${message ? `
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:16px 0;">
+            <p style="margin:0;font-size:13px;color:#0369a1;font-weight:bold;">추가 메시지:</p>
+            <p style="margin:8px 0 0;font-size:13px;color:#0c4a6e;">${message}</p>
+          </div>
+          ` : ''}
+
+          <div style="margin:20px 0;">
+            <p style="font-size:14px;font-weight:bold;margin-bottom:8px;">
+              현재 진행률: ${percentage}% (${completedItems}/${totalItems})
+            </p>
+            <div style="background:#e5e7eb;border-radius:8px;height:12px;overflow:hidden;">
+              <div style="background:${percentage === 100 ? '#22c55e' : '#2563eb'};height:100%;width:${percentage}%;border-radius:8px;"></div>
+            </div>
+          </div>
+
+          <p style="font-size:14px;font-weight:bold;margin:20px 0 8px;">미완료 검토 항목 (${pendingItems.length}건):</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+            <thead>
+              <tr style="background:#f3f4f6;">
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-size:12px;color:#6b7280;">카테고리</th>
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-size:12px;color:#6b7280;">검토 항목</th>
+                <th style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left;font-size:12px;color:#6b7280;">담당 부서</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pendingListHtml}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+          <p style="font-size:12px;color:#9ca3af;margin:0;">
+            본 이메일은 영양성분 표기사항 관리 시스템에서 자동 발송되었습니다.
+          </p>
+        </div>
+      </div>
+    `;
+
+    if (process.env.RESEND_API_KEY) {
+      await resend.emails.send({
+        from: emailFrom,
+        to: email,
+        subject,
+        html,
+      });
+    } else {
+      console.log(`[DEV] Review notification email to ${email}:`);
+      console.log(`  Subject: ${subject}`);
+      console.log(`  Deadline: ${deadlineStr}`);
+      console.log(`  Pending items: ${pendingItems.length}`);
+    }
+
+    res.json({ message: '검토 요청 이메일이 발송되었습니다.' });
+  } catch (error) {
+    console.error('Send notification error:', error);
+    res.status(500).json({ error: '이메일 발송에 실패했습니다.' });
   }
 });
 

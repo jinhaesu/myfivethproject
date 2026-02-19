@@ -153,6 +153,11 @@ export const api = {
         body: JSON.stringify(data),
       }),
     getProgress: (labelId: string) => request(`/reviews/progress/${labelId}`),
+    sendNotification: (data: { labelId: string; productName: string; email: string; deadline: string; message?: string }) =>
+      request('/reviews/send-notification', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>
