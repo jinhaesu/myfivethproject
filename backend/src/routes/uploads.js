@@ -92,7 +92,7 @@ router.post('/:labelId/design', authenticate, upload.single('designFile'), async
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    res.status(500).json({ error: '파일 업로드에 실패했습니다.' });
+    res.status(500).json({ error: error.message || '파일 업로드에 실패했습니다.' });
   }
 });
 

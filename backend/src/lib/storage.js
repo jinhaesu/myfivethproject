@@ -40,16 +40,24 @@ function getMimeType(filename) {
 
 async function uploadFile(key, localFilePath, contentType) {
   if (isS3Configured) {
-    const fileContent = fs.readFileSync(localFilePath);
-    await s3Client.send(new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: fileContent,
-      ContentType: contentType,
-    }));
-    // 로컬 임시 파일 삭제
-    if (fs.existsSync(localFilePath)) {
-      fs.unlinkSync(localFilePath);
+    try {
+      const fileContent = fs.readFileSync(localFilePath);
+      console.log(`S3 uploading: ${key} (${fileContent.length} bytes) to bucket ${BUCKET}`);
+      await s3Client.send(new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: fileContent,
+        ContentType: contentType,
+      }));
+      console.log(`S3 upload success: ${key}`);
+      // 로컬 임시 파일 삭제
+      if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+      }
+    } catch (error) {
+      console.error('S3 upload error:', error.name, error.message);
+      console.error('S3 config - Bucket:', BUCKET, 'Endpoint:', process.env.S3_ENDPOINT, 'Region:', process.env.S3_REGION);
+      throw new Error(`S3 업로드 실패: ${error.name} - ${error.message}`);
     }
     return;
   }
