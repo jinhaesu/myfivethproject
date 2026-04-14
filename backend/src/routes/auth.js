@@ -20,9 +20,14 @@ router.post('/send-code', async (req, res) => {
       return res.status(400).json({ error: '이메일을 입력해주세요.' });
     }
 
-    const allowedDomain = process.env.ALLOWED_EMAIL_DOMAIN || 'joinandjoin.com';
-    if (!email.endsWith(`@${allowedDomain}`)) {
-      return res.status(403).json({ error: `@${allowedDomain} 이메일만 사용할 수 있습니다.` });
+    const domainRaw = process.env.ALLOWED_EMAIL_DOMAIN || process.env.ALLOWED_EMAILS || 'joinandjoin.com';
+    const allowedDomains = domainRaw.split(',').map(d => {
+      const trimmed = d.trim().toLowerCase();
+      return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+    });
+    const emailLower = email.toLowerCase();
+    if (!allowedDomains.some(domain => emailLower.endsWith(domain))) {
+      return res.status(403).json({ error: `${allowedDomains.join(', ')} 이메일만 사용할 수 있습니다.` });
     }
 
     const code = generateCode();
