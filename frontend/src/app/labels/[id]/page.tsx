@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import AppLayout from '@/components/AppLayout';
 import NutritionLabel from '@/components/NutritionLabel';
 import PrintableLabel from '@/components/PrintableLabel';
@@ -9,6 +10,11 @@ import ReviewWorkflow from '@/components/ReviewWorkflow';
 import { api, getFileUrl } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
+  ssr: false,
+  loading: () => <div className="py-12 text-center text-gray-500 text-sm">PDF 뷰어 로딩 중...</div>,
+});
 
 interface AiDesignReviewItem {
   field: string;
@@ -718,23 +724,26 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
             </div>
 
             {label.manufacturingReportUrl && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <span className="text-2xl">{'\u{1F4C4}'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{label.manufacturingReportName}</p>
-                  <p className="text-xs text-gray-500">
-                    업로드: {label.manufacturingReportUploadedAt ? new Date(label.manufacturingReportUploadedAt).toLocaleString('ko-KR') : '-'}
-                  </p>
+              <>
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg mb-4">
+                  <span className="text-2xl">{'\u{1F4C4}'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{label.manufacturingReportName}</p>
+                    <p className="text-xs text-gray-500">
+                      업로드: {label.manufacturingReportUploadedAt ? new Date(label.manufacturingReportUploadedAt).toLocaleString('ko-KR') : '-'}
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="배합비율 컬럼은 영업비밀 보호를 위해 자동 마스킹됩니다">
+                    {'\u{1F510}'} 배합비율 마스킹 적용
+                  </span>
                 </div>
-                <a
-                  href={getFileUrl(label.manufacturingReportUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-secondary text-xs"
-                >
-                  새 탭에서 보기
-                </a>
-              </div>
+                <PdfViewer
+                  url={getFileUrl(label.manufacturingReportUrl)}
+                  maskRatioColumn={true}
+                  maxHeight="75vh"
+                  initialScale={1.2}
+                />
+              </>
             )}
           </div>
 

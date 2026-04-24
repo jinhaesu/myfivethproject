@@ -10,5 +10,10 @@ const nextConfig = {
       },
     ];
   },
+  webpack: (config) => {
+    // pdfjs-dist는 server-side에서 canvas를 optionally require — alias로 무시
+    config.resolve.alias.canvas = false;
+    return config;
+  },
 };
 module.exports = nextConfig;

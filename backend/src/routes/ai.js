@@ -640,6 +640,8 @@ const DESIGN_REVIEW_PROMPT = `당신은 한국 식품 라벨 검수 전문가입
 }`;
 
 router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) => {
+  const t0 = Date.now();
+  console.log(`[AI Review] Start labelId=${req.params.labelId}`);
   try {
     const client = getClient();
     if (!client) {
@@ -660,6 +662,7 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
 
     const designKey = label.designFileUrl.replace(/^\/uploads\//, '');
     const reportKey = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
+    console.log(`[AI Review] Loading files: designKey=${designKey}, reportKey=${reportKey}`);
 
     const [designFile, reportFile] = await Promise.all([
       storage.getFileBuffer(designKey),
@@ -668,6 +671,16 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
 
     if (!designFile) return res.status(404).json({ error: '디자인 파일을 불러올 수 없습니다.' });
     if (!reportFile) return res.status(404).json({ error: '품목제조보고서 파일을 불러올 수 없습니다.' });
+
+    const designSizeMB = designFile.buffer.length / (1024 * 1024);
+    const reportSizeMB = reportFile.buffer.length / (1024 * 1024);
+    console.log(`[AI Review] File sizes: design=${designSizeMB.toFixed(2)}MB, report=${reportSizeMB.toFixed(2)}MB`);
+
+    if (designSizeMB + reportSizeMB > 30) {
+      return res.status(413).json({
+        error: `파일 크기 합이 너무 큽니다 (${(designSizeMB + reportSizeMB).toFixed(1)}MB). Anthropic API 한도(32MB) 초과. PDF를 압축해주세요.`,
+      });
+    }
 
     const reportContent = {
       type: 'document',
@@ -703,6 +716,7 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
 위 두 문서를 비교하여 시스템 프롬프트에 정의된 JSON 스키마로 검토 결과를 작성해주세요.
 제품명: ${label.productName}`;
 
+    console.log(`[AI Review] Calling Anthropic API...`);
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4096,
@@ -716,14 +730,16 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
         ],
       }],
     });
+    console.log(`[AI Review] Anthropic responded in ${Date.now() - t0}ms`);
 
     const text = response.content[0].text;
     let result;
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch {
-      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text });
+    } catch (e) {
+      console.error(`[AI Review] JSON parse failed:`, e.message, 'raw text:', text.substring(0, 500));
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text.substring(0, 1000) });
     }
 
     const updated = await prisma.label.update({
@@ -734,13 +750,24 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
       },
     });
 
+    console.log(`[AI Review] Success, total ${Date.now() - t0}ms`);
     res.json({
       review: result,
       reviewedAt: updated.aiDesignReviewedAt,
     });
   } catch (error) {
-    console.error('Design review error:', error);
-    res.status(500).json({ error: error.message || 'AI 자동 검토에 실패했습니다.' });
+    console.error(`[AI Review] Failed after ${Date.now() - t0}ms:`, error?.name, error?.message);
+    if (error?.status) console.error(`[AI Review] HTTP status: ${error.status}, response:`, error?.error || error?.response);
+
+    let userMessage = error?.message || 'AI 자동 검토에 실패했습니다.';
+    if (error?.status === 400 && error?.message?.includes('document')) {
+      userMessage = 'AI가 PDF를 읽을 수 없습니다. PDF가 손상되지 않았는지, 페이지 수가 100페이지 이하인지 확인해주세요.';
+    } else if (error?.status === 413 || error?.message?.includes('size')) {
+      userMessage = '파일이 너무 큽니다. PDF를 압축하거나 페이지 수를 줄여주세요.';
+    } else if (error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT') {
+      userMessage = 'AI 서버 응답 시간 초과. 잠시 후 다시 시도해주세요.';
+    }
+    res.status(500).json({ error: userMessage, errorCode: error?.code, errorStatus: error?.status });
   }
 });
 
