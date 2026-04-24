@@ -27,6 +27,7 @@ interface AiDesignReviewItem {
 interface AiDesignReview {
   summary: string;
   overallStatus: 'ok' | 'needs_review' | 'critical';
+  detectedCompanies?: string[];
   items: AiDesignReviewItem[];
   criticalIssues: string[];
   recommendations: string[];
@@ -1028,6 +1029,30 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                       )}
                     </div>
                     <p className="text-sm font-medium text-gray-800">{label.aiDesignReview.summary}</p>
+                    {label.aiDesignReview.detectedCompanies && label.aiDesignReview.detectedCompanies.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200/50">
+                        <p className="text-xs text-gray-600">
+                          <span className="font-bold">디자인에서 발견된 회사:</span>{' '}
+                          {label.aiDesignReview.detectedCompanies.map((c, i) => (
+                            <span
+                              key={i}
+                              className={`inline-block mr-1 px-1.5 py-0.5 rounded text-xs ${
+                                c.includes('조인앤조인') || c.toLowerCase().includes('join')
+                                  ? 'bg-indigo-100 text-indigo-800 font-bold'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {c}
+                            </span>
+                          ))}
+                        </p>
+                        {label.aiDesignReview.detectedCompanies.length > 1 && (
+                          <p className="text-xs text-gray-500 mt-1 italic">
+                            ※ 검수는 (주)조인앤조인 데이터 기준입니다. 다른 회사 정보는 designValue 컬럼에 참고로 표시됩니다.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* 주요 데이터 비교 테이블 */}

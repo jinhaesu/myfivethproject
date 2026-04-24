@@ -23,15 +23,20 @@ interface PdfViewerProps {
   initialScale?: number;
 }
 
-const RATIO_HEADER_PATTERNS = [
+// 페이지에 "배합비율" 또는 "구성비" 같은 키워드가 있으면 마스킹 모드 활성화
+const RATIO_PAGE_KEYWORDS = [
   /배\s*합\s*비\s*율/,
   /배\s*합\s*비/,
+  /구\s*성\s*비\s*율/,
   /구\s*성\s*비/,
-  /함\s*량\s*\(%\)/,
-  /^%$/,
 ];
 
-const NUMBER_PATTERN = /^[\d.,%\s]+$/;
+// 마스킹할 셀 패턴: 숫자(소수점/콤마 가능)에 % 기호가 붙은 형태
+// 예: "28.8%", "0.1%", "100%", "1,234%"
+const PERCENT_VALUE_PATTERN = /^\s*\d+(?:[,.]\d+)?\s*%\s*$/;
+
+// 헤더 자체("배합비율(%)" 등)는 마스킹 제외
+const PERCENT_HEADER_PATTERN = /[가-힣]/;
 
 export default function PdfViewer({
   url,
@@ -81,67 +86,40 @@ export default function PdfViewer({
       const viewport = pageObj.getViewport({ scale });
       const items: any[] = textContent.items;
 
-      // "배합비율" 헤더 셀 찾기 (여러 셀로 쪼개진 경우 인접 텍스트 결합 시도)
-      let headerY = -1;
-      let headerX = -1;
-      let headerWidth = 0;
+      // 1. 페이지에 "배합비율" 키워드가 있는지 검사 (없으면 마스킹 비활성)
+      // 인접 텍스트 결합도 고려 (예: "배" + "합" + "비" + "율" 토큰 분리)
+      const allText = items.map((it: any) => (it.str || '')).join('').replace(/\s/g, '');
+      const hasKeyword = RATIO_PAGE_KEYWORDS.some((p) => p.test(allText));
 
-      for (let i = 0; i < items.length; i++) {
-        const str = (items[i].str || '').replace(/\s/g, '');
-        if (!str) continue;
-
-        // 단일 셀 매치
-        if (RATIO_HEADER_PATTERNS.some((p) => p.test(str))) {
-          const tx = pdfjs.Util.transform(viewport.transform, items[i].transform);
-          headerX = tx[4];
-          headerY = tx[5];
-          headerWidth = (items[i].width || 30) * scale;
-          break;
-        }
-
-        // 인접 두 셀 결합 (예: "배합비" + "(%)")
-        if (i + 1 < items.length) {
-          const combined = str + (items[i + 1].str || '').replace(/\s/g, '');
-          if (RATIO_HEADER_PATTERNS.some((p) => p.test(combined))) {
-            const tx = pdfjs.Util.transform(viewport.transform, items[i].transform);
-            const tx2 = pdfjs.Util.transform(viewport.transform, items[i + 1].transform);
-            headerX = Math.min(tx[4], tx2[4]);
-            headerY = Math.min(tx[5], tx2[5]);
-            headerWidth = Math.max(tx[4] + items[i].width * scale, tx2[4] + items[i + 1].width * scale) - headerX;
-            break;
-          }
-        }
-      }
-
-      if (headerY < 0) {
+      if (!hasKeyword) {
         setMaskRects([]);
         return;
       }
 
-      const colXMin = headerX - 8;
-      const colXMax = headerX + headerWidth + 16;
-
+      // 2. 페이지에서 "숫자%" 패턴을 가진 셀 모두 수집 → 마스킹
       const rects: MaskRect[] = [];
       for (const it of items) {
-        if (!it.str || !it.str.trim()) continue;
-        const trimmed = it.str.trim();
+        if (!it.str) continue;
+        const raw = it.str;
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+
+        // 숫자%만 있는 셀만 마스킹 (한글 포함 헤더는 제외)
+        if (!PERCENT_VALUE_PATTERN.test(trimmed)) continue;
+        if (PERCENT_HEADER_PATTERN.test(trimmed)) continue;
+
         const tx = pdfjs.Util.transform(viewport.transform, it.transform);
         const x = tx[4];
         const y = tx[5];
         const w = (it.width || 0) * scale;
         const h = (it.height || 12) * scale;
 
-        // 헤더보다 아래에 있고, 컬럼 X 범위 안에 있고, 숫자 패턴
-        const itemCenter = x + w / 2;
-        const inColumn = itemCenter >= colXMin && itemCenter <= colXMax;
-        if (y > headerY + 4 && inColumn && NUMBER_PATTERN.test(trimmed) && /\d/.test(trimmed)) {
-          rects.push({
-            x: x - 3,
-            y: y - h - 1,
-            w: w + 6,
-            h: h + 4,
-          });
-        }
+        rects.push({
+          x: x - 3,
+          y: y - h - 1,
+          w: Math.max(w + 6, 30),
+          h: h + 4,
+        });
       }
       setMaskRects(rects);
     } catch (e) {
