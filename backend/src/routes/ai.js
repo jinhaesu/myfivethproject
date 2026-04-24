@@ -864,13 +864,31 @@ const DESIGN_REVIEW_PROMPT = `당신은 한국 식품 라벨 검수 전문가입
 // ─── 헬퍼: 파일을 Claude content block 배열로 변환 ───
 // PDF는 페이지별 고해상도 PNG 배열로 렌더링 (Vision 파이프라인 직접 사용 → 작은 글자 정확도 ↑)
 // 이미지는 그대로 단일 이미지 블록
-async function fileToContentBlocks(fileBuffer, contentType, fileName) {
+// kind: 'design' | 'report' — 디자인은 더 높은 해상도, 빈 PNG 감지 시 document fallback
+async function fileToContentBlocks(fileBuffer, contentType, fileName, kind = 'report') {
   const isPdf = (contentType || '').includes('pdf') || /\.pdf$/i.test(fileName || '');
 
   if (isPdf) {
+    // 디자인은 보통 1-2페이지에 작은 글자 많음 → 더 높은 해상도
+    const renderOpts = kind === 'design'
+      ? { scale: 3.5, maxPages: 4, maxLongEdgePx: 3000 }
+      : { scale: 2.5, maxPages: 8, maxLongEdgePx: 2200 };
+
     try {
-      const images = await pdfToImages(fileBuffer, { scale: 2.5, maxPages: 8, maxLongEdgePx: 2200 });
-      console.log(`[AI] PDF→PNG: ${images.length} pages, sizes=${images.map(i => `${i.width}x${i.height}(${(i.buffer.length / 1024).toFixed(0)}KB)`).join(', ')}`);
+      const images = await pdfToImages(fileBuffer, renderOpts);
+      console.log(`[AI] PDF→PNG (${kind}): ${images.length} pages, sizes=${images.map(i => `${i.width}x${i.height}(${(i.buffer.length / 1024).toFixed(0)}KB)`).join(', ')}`);
+
+      // 빈 페이지 감지: PNG가 비정상적으로 작으면 (< 30KB for 큰 페이지) 렌더링 실패 의심
+      const totalBytes = images.reduce((sum, i) => sum + i.buffer.length, 0);
+      const avgKB = (totalBytes / images.length / 1024);
+      const looksBlank = images.length > 0 && avgKB < 30 && images[0].width > 800;
+      if (looksBlank) {
+        console.warn(`[AI] PDF→PNG (${kind}) 결과가 의심됨 (avg ${avgKB.toFixed(0)}KB) — document 타입 fallback`);
+        return [{
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: fileBuffer.toString('base64') },
+        }];
+      }
 
       const blocks = [];
       for (const img of images) {
@@ -886,7 +904,7 @@ async function fileToContentBlocks(fileBuffer, contentType, fileName) {
       }
       return blocks;
     } catch (err) {
-      console.error(`[AI] PDF→PNG 실패, document 타입으로 fallback:`, err.message);
+      console.error(`[AI] PDF→PNG (${kind}) 실패, document 타입으로 fallback:`, err.message);
       return [{
         type: 'document',
         source: { type: 'base64', media_type: 'application/pdf', data: fileBuffer.toString('base64') },
@@ -937,7 +955,7 @@ router.post('/extract-report/:labelId', authenticate, async (req, res) => {
     const reportFile = await storage.getFileBuffer(label.manufacturingReportUrl.replace(/^\/uploads\//, ''));
     if (!reportFile) return res.status(404).json({ error: '보고서 파일을 불러올 수 없습니다.' });
 
-    const content = await fileToContentBlocks(reportFile.buffer, reportFile.contentType, label.manufacturingReportName);
+    const content = await fileToContentBlocks(reportFile.buffer, reportFile.contentType, label.manufacturingReportName, 'report');
     const extraction = await callExtraction(client, REPORT_EXTRACT_PROMPT, content, label);
 
     await prisma.label.update({
@@ -962,7 +980,7 @@ router.post('/extract-design/:labelId', authenticate, async (req, res) => {
     const designFile = await storage.getFileBuffer(label.designFileUrl.replace(/^\/uploads\//, ''));
     if (!designFile) return res.status(404).json({ error: '디자인 파일을 불러올 수 없습니다.' });
 
-    const content = await fileToContentBlocks(designFile.buffer, designFile.contentType, label.designFileName);
+    const content = await fileToContentBlocks(designFile.buffer, designFile.contentType, label.designFileName, 'design');
     const extraction = await callExtraction(client, DESIGN_EXTRACT_PROMPT, content, label);
 
     await prisma.label.update({
@@ -1009,13 +1027,13 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
 
     // Step 1: 보고서 추출
     console.log(`[AI Review Multi-pass] Step 1: Extracting from report...`);
-    const reportContent = await fileToContentBlocks(reportFile.buffer, reportFile.contentType, label.manufacturingReportName);
+    const reportContent = await fileToContentBlocks(reportFile.buffer, reportFile.contentType, label.manufacturingReportName, 'report');
     const reportExtraction = await callExtraction(client, REPORT_EXTRACT_PROMPT, reportContent, label);
     console.log(`[AI Review Multi-pass] Step 1 done in ${Date.now() - t0}ms`);
 
     // Step 2: 디자인 추출
     console.log(`[AI Review Multi-pass] Step 2: Extracting from design...`);
-    const designContent = await fileToContentBlocks(designFile.buffer, designFile.contentType, label.designFileName);
+    const designContent = await fileToContentBlocks(designFile.buffer, designFile.contentType, label.designFileName, 'design');
     const designExtraction = await callExtraction(client, DESIGN_EXTRACT_PROMPT, designContent, label);
     console.log(`[AI Review Multi-pass] Step 2 done in ${Date.now() - t0}ms`);
 

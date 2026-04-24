@@ -1,7 +1,23 @@
 // PDF buffer → 페이지별 고해상도 PNG buffer 배열
 // pdfjs-dist (legacy) + @napi-rs/canvas (prebuilt native, Railway 호환)
+// 한국어/일본어 텍스트 렌더링을 위해 CMap + 표준 폰트 지원
 
-const { createCanvas } = require('@napi-rs/canvas');
+const fs = require('fs').promises;
+const path = require('path');
+const napiCanvas = require('@napi-rs/canvas');
+const { createCanvas } = napiCanvas;
+
+// pdfjs-dist legacy 빌드는 'canvas' npm 패키지를 require하여 DOMMatrix/Path2D 등을 polyfill하려 함.
+// 우리는 @napi-rs/canvas를 사용하므로 globalThis에 직접 주입하여 polyfill 경고 + 렌더링 깨짐 방지.
+if (typeof globalThis.DOMMatrix === 'undefined') globalThis.DOMMatrix = napiCanvas.DOMMatrix;
+if (typeof globalThis.Path2D === 'undefined') globalThis.Path2D = napiCanvas.Path2D;
+if (typeof globalThis.ImageData === 'undefined') globalThis.ImageData = napiCanvas.ImageData;
+if (typeof globalThis.DOMPoint === 'undefined') globalThis.DOMPoint = napiCanvas.DOMPoint;
+if (typeof globalThis.DOMRect === 'undefined') globalThis.DOMRect = napiCanvas.DOMRect;
+
+const PDFJS_PATH = path.dirname(require.resolve('pdfjs-dist/package.json'));
+const CMAP_PATH = path.join(PDFJS_PATH, 'cmaps');
+const FONT_PATH = path.join(PDFJS_PATH, 'standard_fonts');
 
 let pdfjsLib = null;
 function getPdfjs() {
@@ -10,7 +26,6 @@ function getPdfjs() {
   return pdfjsLib;
 }
 
-// pdfjs-dist가 요구하는 CanvasFactory 인터페이스 구현
 class NodeCanvasFactory {
   create(width, height) {
     const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
@@ -29,6 +44,23 @@ class NodeCanvasFactory {
   }
 }
 
+class NodeCMapReaderFactory {
+  async fetch({ name }) {
+    const data = await fs.readFile(path.join(CMAP_PATH, name + '.bcmap'));
+    return {
+      cMapData: new Uint8Array(data),
+      compressionType: 1, // CMapCompressionType.BINARY
+    };
+  }
+}
+
+class NodeStandardFontDataFactory {
+  async fetch({ filename }) {
+    const data = await fs.readFile(path.join(FONT_PATH, filename));
+    return new Uint8Array(data);
+  }
+}
+
 /**
  * PDF buffer를 페이지별 PNG buffer 배열로 변환.
  *
@@ -37,7 +69,7 @@ class NodeCanvasFactory {
  * @param {number} opts.scale 렌더 스케일 (기본 2.5 ≈ 180dpi)
  * @param {number} opts.maxPages 최대 페이지 수 (기본 8)
  * @param {number} opts.maxLongEdgePx 가로/세로 중 긴 쪽 최대 픽셀 (기본 2200)
- * @returns {Promise<Array<{pageNum: number, buffer: Buffer, width: number, height: number}>>}
+ * @returns {Promise<Array<{pageNum, buffer, width, height}>>}
  */
 async function pdfToImages(buffer, opts = {}) {
   const scale = opts.scale ?? 2.5;
@@ -50,9 +82,11 @@ async function pdfToImages(buffer, opts = {}) {
   const doc = await pdfjs.getDocument({
     data: new Uint8Array(buffer),
     canvasFactory: factory,
-    disableFontFace: true,
+    CMapReaderFactory: NodeCMapReaderFactory,
+    cMapPacked: true,
+    StandardFontDataFactory: NodeStandardFontDataFactory,
     useSystemFonts: false,
-    standardFontDataUrl: '',
+    disableFontFace: false, // 폰트 렌더링 활성화 (디자인 PDF의 벡터 텍스트 표시)
   }).promise;
 
   const pageCount = Math.min(doc.numPages, maxPages);
@@ -62,7 +96,6 @@ async function pdfToImages(buffer, opts = {}) {
     const page = await doc.getPage(i);
     let viewport = page.getViewport({ scale });
 
-    // 너무 크면 스케일 다운 조정
     const longEdge = Math.max(viewport.width, viewport.height);
     if (longEdge > maxLongEdge) {
       const adjustedScale = scale * (maxLongEdge / longEdge);
@@ -70,7 +103,6 @@ async function pdfToImages(buffer, opts = {}) {
     }
 
     const canvasAndContext = factory.create(viewport.width, viewport.height);
-    // 흰 배경 채우기 (투명 PDF 페이지 대응)
     canvasAndContext.context.fillStyle = '#ffffff';
     canvasAndContext.context.fillRect(0, 0, viewport.width, viewport.height);
 
