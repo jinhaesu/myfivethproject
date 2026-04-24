@@ -5,7 +5,13 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
-const { createMaskedReportPdf } = require('../lib/pdfMask');
+// pdfMask 모듈은 lazy + try-catch (native 모듈 누락 시 마스킹 비활성, 서버는 시작)
+let createMaskedReportPdf = null;
+try {
+  ({ createMaskedReportPdf } = require('../lib/pdfMask'));
+} catch (e) {
+  console.error('[Upload] createMaskedReportPdf 로드 실패 (마스킹 비활성):', e.message);
+}
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -157,6 +163,7 @@ router.post('/:labelId/manufacturing-report', authenticate, reportUpload.single(
     // 마스킹된 버전 생성 시도
     let maskedFileUrl = null;
     try {
+      if (!createMaskedReportPdf) throw new Error('createMaskedReportPdf 모듈 로드 안 됨');
       console.log(`[Mask] Processing ${req.file.originalname}...`);
       const inputBuffer = fs.readFileSync(req.file.path);
       const result = await createMaskedReportPdf(inputBuffer);

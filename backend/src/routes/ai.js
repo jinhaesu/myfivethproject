@@ -3,8 +3,19 @@ const Anthropic = require('@anthropic-ai/sdk').default;
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
-const { pdfToImages } = require('../lib/pdfToImages');
-const { prepareImageTiles } = require('../lib/imageSplit');
+// 네이티브 모듈은 lazy + try-catch로 로드: 빌드/플랫폼 문제로 누락되어도 서버는 시작
+let pdfToImages = null;
+let prepareImageTiles = null;
+try {
+  ({ pdfToImages } = require('../lib/pdfToImages'));
+} catch (e) {
+  console.error('[AI] pdfToImages 로드 실패 (PDF→PNG 비활성):', e.message);
+}
+try {
+  ({ prepareImageTiles } = require('../lib/imageSplit'));
+} catch (e) {
+  console.error('[AI] prepareImageTiles 로드 실패 (이미지 분할 비활성):', e.message);
+}
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -882,6 +893,14 @@ async function fileToContentBlocks(fileBuffer, contentType, fileName, kind = 're
   const isPdf = (contentType || '').includes('pdf') || /\.pdf$/i.test(fileName || '');
 
   if (isPdf) {
+    // 모듈 로드 실패 시 즉시 document 타입 fallback
+    if (!pdfToImages) {
+      console.warn(`[AI] pdfToImages 미사용 - document 타입으로 전송`);
+      return [{
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: fileBuffer.toString('base64') },
+      }];
+    }
     // 디자인은 보통 1-2페이지에 작은 글자 많음 → 더 높은 해상도
     const renderOpts = kind === 'design'
       ? { scale: 3.5, maxPages: 4, maxLongEdgePx: 3000 }
@@ -929,7 +948,7 @@ async function fileToContentBlocks(fileBuffer, contentType, fileName, kind = 're
   // 디자인 라벨은 작은 글자가 많아서 Claude 1568px 다운샘플링에 정보 손실 → 4분할 + sharpen
   // 보고서 이미지는 분할 안 함 (보통 단순 스캔)
   try {
-    if (kind === 'design') {
+    if (kind === 'design' && prepareImageTiles) {
       const tiles = await prepareImageTiles(fileBuffer, { divisionsThresholdPx: 1800, divisions: 2 });
       console.log(`[AI] Design image → ${tiles.length} tiles: ${tiles.map(t => `${t.label}(${t.width}x${t.height},${(t.buffer.length / 1024).toFixed(0)}KB)`).join(', ')}`);
 
