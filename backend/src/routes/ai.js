@@ -3,6 +3,67 @@ const Anthropic = require('@anthropic-ai/sdk').default;
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
+// JSON 문자열 값 안에 escape 안 된 큰따옴표를 자동으로 escape 처리
+// 예: "shelfLife": "제품에 "DDM" 표기" → "shelfLife": "제품에 \"DDM\" 표기"
+//
+// 휴리스틱: state machine으로 "key": "value" 패턴을 추적하면서
+// value 내부에 나타나는 따옴표 중 " ,\n" 또는 " }" 또는 " ]" 직전이 아닌 것을 escape
+function escapeUnescapedQuotesInValues(text) {
+  let result = '';
+  let i = 0;
+  let inString = false;
+  let isKey = true; // colon이 나오기 전이면 key, 아니면 value
+
+  while (i < text.length) {
+    const ch = text[i];
+    const prev = i > 0 ? text[i - 1] : '';
+
+    if (!inString) {
+      if (ch === '"') {
+        inString = true;
+        result += ch;
+      } else {
+        if (ch === ':') isKey = false;
+        else if (ch === ',' || ch === '{' || ch === '[') isKey = true;
+        result += ch;
+      }
+    } else {
+      // string 안
+      if (ch === '\\') {
+        // escape sequence: 다음 문자 그대로
+        result += ch + (text[i + 1] || '');
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        // string 종료 후보 - 다음 non-whitespace가 [,}\]:] 이면 진짜 종료
+        let j = i + 1;
+        while (j < text.length && /\s/.test(text[j])) j++;
+        const next = text[j];
+        const isRealEnd = !next || next === ',' || next === '}' || next === ']' || next === ':';
+        if (isRealEnd) {
+          inString = false;
+          if (next === ':') isKey = false;
+          result += ch;
+        } else {
+          // value 안의 escape 안 된 quote → escape 추가
+          if (!isKey) {
+            result += '\\"';
+          } else {
+            // key 안에 따옴표가 있으면 그냥 종료 (이상한 케이스)
+            inString = false;
+            result += ch;
+          }
+        }
+      } else {
+        result += ch;
+      }
+    }
+    i++;
+  }
+  return result;
+}
+
 // AI 응답에서 JSON을 robust하게 파싱 (다중 fallback)
 function safeParseJson(text) {
   if (!text) return null;
@@ -28,6 +89,10 @@ function safeParseJson(text) {
       .replace(/[“”]/g, '"')
       .replace(/[‘’]/g, "'");
     try { return JSON.parse(cleaned); } catch {}
+
+    // Strategy 5: value 내부에 escape 안 된 큰따옴표 자동 처리
+    try { return JSON.parse(escapeUnescapedQuotesInValues(candidate)); } catch {}
+    try { return JSON.parse(escapeUnescapedQuotesInValues(cleaned)); } catch {}
   }
 
   return null;
@@ -56,6 +121,10 @@ function getClient() {
   }
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
+
+// 모델: 검토(추출/비교) 작업은 Opus 4.7 (최고 정확도), 일반 보조는 Sonnet
+const REVIEW_MODEL = 'claude-opus-4-7';
+const ASSIST_MODEL = 'claude-sonnet-4-5-20250929';
 
 const KOREAN_ALLERGENS = [
   '난류(가금류)', '우유', '메밀', '땅콩', '대두', '밀', '고등어', '게',
@@ -1010,10 +1079,18 @@ async function callExtraction(client, systemPrompt, contentBlocks, label, instru
   const blocks = Array.isArray(contentBlocks) ? contentBlocks : [contentBlocks];
   const userText = instructionText || `위 PDF 페이지(이미지)를 한 페이지씩 꼼꼼히 정독하여 시스템 프롬프트의 JSON 스키마로 정보를 추출하세요. 작은 글자도 빠뜨리지 말고 한 글자씩 정확히 읽으세요. 제품명 참고: ${label.productName}
 
-★ 응답 형식 강제: 첫 글자부터 마지막 글자까지 순수 JSON만 출력. 마크다운 코드블록(\`\`\`) 금지. 설명 텍스트 금지. {로 시작해서 }로 끝나는 JSON만.`;
+★ 응답 형식 강제 (JSON syntax 위반 시 시스템 오류 발생):
+1. 첫 글자부터 마지막 글자까지 순수 JSON만. 마크다운 코드블록(\`\`\`), 설명 텍스트 금지.
+2. JSON 문자열 값 안에 큰따옴표(") 절대 사용 금지!
+   원본에 큰따옴표가 있으면 다음 중 하나로 대체:
+   - 단일 따옴표 (')
+   - 한국식 인용 부호 (「」 또는 『』)
+   - 또는 따옴표 자체 생략
+   예: 원본 '제품에 "DDM"으로 표기' → JSON에는 "제품에 'DDM'으로 표기" 또는 "제품에 「DDM」으로 표기"
+3. JSON 문자열 안의 줄바꿈은 반드시 \\n으로 escape (raw 줄바꿈 금지)`;
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
+    model: REVIEW_MODEL,
     max_tokens: 8192,
     system: systemPrompt,
     messages: [
@@ -1152,7 +1229,7 @@ ${JSON.stringify(designExtraction, null, 2)}
 위 두 JSON을 비교 규칙에 따라 검토하고 시스템 프롬프트의 JSON 스키마로 응답하세요.`;
 
     const compareResponse = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: REVIEW_MODEL,
       max_tokens: 8192,
       system: COMPARE_PROMPT,
       messages: [
@@ -1277,7 +1354,7 @@ detectedCompanies 필드에 발견된 모든 회사명을 나열하세요.`;
 
     console.log(`[AI Review] Calling Anthropic API...`);
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: REVIEW_MODEL,
       max_tokens: 8192,
       system: DESIGN_REVIEW_PROMPT,
       messages: [{

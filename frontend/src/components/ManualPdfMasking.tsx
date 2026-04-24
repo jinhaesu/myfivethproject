@@ -42,6 +42,7 @@ export default function ManualPdfMasking({ labelId, onSaved, onCancel }: Props) 
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [saving, setSaving] = useState(false);
   const containerRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const imgRefs = useRef<Record<number, HTMLImageElement | null>>({});
 
   useEffect(() => {
     (async () => {
@@ -57,48 +58,56 @@ export default function ManualPdfMasking({ labelId, onSaved, onCancel }: Props) 
     })();
   }, [labelId]);
 
-  // 이미지 표시 좌표(렌더된 크기) → 원본 이미지 픽셀 좌표 변환 함수
-  const toImageCoords = (page: PageImage, displayX: number, displayY: number, container: HTMLDivElement) => {
-    const rect = container.getBoundingClientRect();
-    const scale = page.renderedWidth / rect.width;
+  // 이미지 element 자체를 측정 → 가장 정확한 좌표 변환
+  // displayX/Y는 image element의 좌상단 기준
+  const toImageCoords = (page: PageImage, displayX: number, displayY: number) => {
+    const img = imgRefs.current[page.pageNum];
+    if (!img) return { x: 0, y: 0 };
+    const rect = img.getBoundingClientRect();
+    const scaleX = page.renderedWidth / rect.width;
+    const scaleY = page.renderedHeight / rect.height;
     return {
-      x: Math.round(displayX * scale),
-      y: Math.round(displayY * scale),
+      x: Math.round(displayX * scaleX),
+      y: Math.round(displayY * scaleY),
+    };
+  };
+
+  // 마우스 이벤트 좌표를 이미지 element 좌상단 기준으로 변환
+  const getDisplayCoords = (e: React.MouseEvent, page: PageImage) => {
+    const img = imgRefs.current[page.pageNum];
+    if (!img) return null;
+    const rect = img.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      maxX: rect.width,
+      maxY: rect.height,
     };
   };
 
   const handleMouseDown = (e: React.MouseEvent, page: PageImage) => {
-    const container = containerRefs.current[page.pageNum];
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setDragging({ page: page.pageNum, startX: x, startY: y, currentX: x, currentY: y });
+    const c = getDisplayCoords(e, page);
+    if (!c) return;
+    setDragging({ page: page.pageNum, startX: c.x, startY: c.y, currentX: c.x, currentY: c.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent, page: PageImage) => {
     if (!dragging || dragging.page !== page.pageNum) return;
-    const container = containerRefs.current[page.pageNum];
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    const c = getDisplayCoords(e, page);
+    if (!c) return;
+    const x = Math.max(0, Math.min(c.maxX, c.x));
+    const y = Math.max(0, Math.min(c.maxY, c.y));
     setDragging({ ...dragging, currentX: x, currentY: y });
   };
 
   const handleMouseUp = (page: PageImage) => {
-    if (!dragging || dragging.page !== page.pageNum) return;
-    const container = containerRefs.current[page.pageNum];
-    if (!container) {
+    if (!dragging || dragging.page !== page.pageNum) {
       setDragging(null);
       return;
     }
 
-    const dx = dragging.currentX - dragging.startX;
-    const dy = dragging.currentY - dragging.startY;
-    const w = Math.abs(dx);
-    const h = Math.abs(dy);
-
+    const w = Math.abs(dragging.currentX - dragging.startX);
+    const h = Math.abs(dragging.currentY - dragging.startY);
     if (w < 8 || h < 8) {
       setDragging(null);
       return;
@@ -106,21 +115,20 @@ export default function ManualPdfMasking({ labelId, onSaved, onCancel }: Props) 
 
     const displayX = Math.min(dragging.startX, dragging.currentX);
     const displayY = Math.min(dragging.startY, dragging.currentY);
-    const tl = toImageCoords(page, displayX, displayY, container);
-    const br = toImageCoords(page, displayX + w, displayY + h, container);
+    const tl = toImageCoords(page, displayX, displayY);
+    const br = toImageCoords(page, displayX + w, displayY + h);
 
-    setRects((prev) => [
-      ...prev,
-      {
-        page: page.pageNum,
-        x: tl.x,
-        y: tl.y,
-        width: br.x - tl.x,
-        height: br.y - tl.y,
-        renderedWidth: page.renderedWidth,
-        renderedHeight: page.renderedHeight,
-      },
-    ]);
+    const newRect = {
+      page: page.pageNum,
+      x: tl.x,
+      y: tl.y,
+      width: br.x - tl.x,
+      height: br.y - tl.y,
+      renderedWidth: page.renderedWidth,
+      renderedHeight: page.renderedHeight,
+    };
+    console.log('[ManualMask] new rect:', newRect, 'display:', { displayX, displayY, w, h });
+    setRects((prev) => [...prev, newRect]);
     setDragging(null);
   };
 
@@ -220,35 +228,43 @@ export default function ManualPdfMasking({ labelId, onSaved, onCancel }: Props) 
               </div>
               <div
                 ref={(el) => { containerRefs.current[page.pageNum] = el; }}
-                className="relative cursor-crosshair select-none"
+                className="relative cursor-crosshair select-none inline-block"
                 onMouseDown={(e) => handleMouseDown(e, page)}
                 onMouseMove={(e) => handleMouseMove(e, page)}
                 onMouseUp={() => handleMouseUp(page)}
                 onMouseLeave={() => handleMouseUp(page)}
-                style={{ touchAction: 'none' }}
+                style={{ touchAction: 'none', width: '100%' }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
+                  ref={(el) => { imgRefs.current[page.pageNum] = el; }}
                   src={page.imageBase64}
                   alt={`페이지 ${page.pageNum}`}
-                  className="w-full block"
+                  className="block"
+                  style={{ width: '100%', height: 'auto' }}
                   draggable={false}
                 />
-                {/* 저장된 사각형들 */}
+                {/* 저장된 사각형들 (이미지 픽셀 좌표 → display 좌표로 변환) */}
                 {pageRects.map((r, idx) => {
-                  const container = containerRefs.current[page.pageNum];
-                  if (!container) return null;
-                  const containerWidth = container.getBoundingClientRect().width;
-                  const scale = containerWidth / page.renderedWidth;
+                  const img = imgRefs.current[page.pageNum];
+                  if (!img) return null;
+                  const imgRect = img.getBoundingClientRect();
+                  const containerEl = containerRefs.current[page.pageNum];
+                  if (!containerEl) return null;
+                  const containerRect = containerEl.getBoundingClientRect();
+                  const offsetLeft = imgRect.left - containerRect.left;
+                  const offsetTop = imgRect.top - containerRect.top;
+                  const scaleX = imgRect.width / page.renderedWidth;
+                  const scaleY = imgRect.height / page.renderedHeight;
                   return (
                     <div
                       key={idx}
                       className="absolute bg-white border-2 border-red-500 group"
                       style={{
-                        left: r.x * scale,
-                        top: r.y * scale,
-                        width: r.width * scale,
-                        height: r.height * scale,
+                        left: offsetLeft + r.x * scaleX,
+                        top: offsetTop + r.y * scaleY,
+                        width: r.width * scaleX,
+                        height: r.height * scaleY,
                       }}
                     >
                       <button
@@ -266,18 +282,27 @@ export default function ManualPdfMasking({ labelId, onSaved, onCancel }: Props) 
                     </div>
                   );
                 })}
-                {/* 현재 드래그 중인 사각형 */}
-                {dragging && dragging.page === page.pageNum && (
-                  <div
-                    className="absolute bg-white/70 border-2 border-blue-500 pointer-events-none"
-                    style={{
-                      left: Math.min(dragging.startX, dragging.currentX),
-                      top: Math.min(dragging.startY, dragging.currentY),
-                      width: Math.abs(dragging.currentX - dragging.startX),
-                      height: Math.abs(dragging.currentY - dragging.startY),
-                    }}
-                  />
-                )}
+                {/* 현재 드래그 중인 사각형 (이미지 element 좌상단 기준) */}
+                {dragging && dragging.page === page.pageNum && (() => {
+                  const img = imgRefs.current[page.pageNum];
+                  const containerEl = containerRefs.current[page.pageNum];
+                  if (!img || !containerEl) return null;
+                  const imgRect = img.getBoundingClientRect();
+                  const containerRect = containerEl.getBoundingClientRect();
+                  const offsetLeft = imgRect.left - containerRect.left;
+                  const offsetTop = imgRect.top - containerRect.top;
+                  return (
+                    <div
+                      className="absolute bg-white/70 border-2 border-blue-500 pointer-events-none"
+                      style={{
+                        left: offsetLeft + Math.min(dragging.startX, dragging.currentX),
+                        top: offsetTop + Math.min(dragging.startY, dragging.currentY),
+                        width: Math.abs(dragging.currentX - dragging.startX),
+                        height: Math.abs(dragging.currentY - dragging.startY),
+                      }}
+                    />
+                  );
+                })()}
               </div>
             </div>
           );

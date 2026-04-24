@@ -165,6 +165,7 @@ async function applyManualMask(inputBuffer, pageRects) {
     const page = pages[pageNum - 1];
     const pdfWidth = page.getWidth();
     const pdfHeight = page.getHeight();
+    console.log(`[applyManualMask] page ${pageNum}: PDF ${pdfWidth.toFixed(1)}x${pdfHeight.toFixed(1)}, ${rects.length} rect(s)`);
 
     for (const r of rects) {
       const renderedW = r.renderedWidth || pdfWidth;
@@ -177,6 +178,11 @@ async function applyManualMask(inputBuffer, pageRects) {
       const pdfRectW = r.width * scaleX;
       const pdfRectH = r.height * scaleY;
       const pdfY = pdfHeight - (r.y * scaleY) - pdfRectH;
+
+      console.log(
+        `  img(${r.x},${r.y},${r.width}x${r.height}) renderedSize=${renderedW}x${renderedH} ` +
+        `→ pdf(${pdfX.toFixed(1)},${pdfY.toFixed(1)},${pdfRectW.toFixed(1)}x${pdfRectH.toFixed(1)})`
+      );
 
       page.drawRectangle({
         x: pdfX,
