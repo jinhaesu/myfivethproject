@@ -840,22 +840,22 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
           {!designCompareMode && label.designFileUrl && designFileStatus === 'available' && (
             <div className="card">
               <h3 className="text-sm font-bold mb-3">디자인 시안</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                {label.designFileName?.endsWith('.pdf') ? (
-                  <iframe
-                    src={getFileUrl(label.designFileUrl)}
-                    className="w-full"
-                    style={{ height: '80vh', minHeight: '600px' }}
-                    title="디자인 PDF"
-                  />
-                ) : (
+              {label.designFileName?.toLowerCase().endsWith('.pdf') ? (
+                <PdfViewer
+                  url={getFileUrl(label.designFileUrl)}
+                  maskRatioColumn={false}
+                  maxHeight="80vh"
+                  initialScale={1.2}
+                />
+              ) : (
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                   <img
                     src={getFileUrl(label.designFileUrl)}
                     alt="디자인 시안"
                     className="w-full h-auto max-h-[80vh] object-contain"
                   />
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -868,22 +868,22 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                   <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-bold">디자인 시안</span>
                   <span className="text-xs text-gray-500">{label.designFileName}</span>
                 </div>
-                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                  {label.designFileName?.endsWith('.pdf') ? (
-                    <iframe
-                      src={getFileUrl(label.designFileUrl)}
-                      className="w-full"
-                      style={{ height: '70vh', minHeight: '500px' }}
-                      title="디자인 PDF"
-                    />
-                  ) : (
+                {label.designFileName?.toLowerCase().endsWith('.pdf') ? (
+                  <PdfViewer
+                    url={getFileUrl(label.designFileUrl)}
+                    maskRatioColumn={false}
+                    maxHeight="70vh"
+                    initialScale={1.0}
+                  />
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                     <img
                       src={getFileUrl(label.designFileUrl)}
                       alt="디자인 시안"
                       className="w-full h-auto max-h-[70vh] object-contain"
                     />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* 오른쪽: AI 생성 라벨 */}

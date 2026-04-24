@@ -31,9 +31,12 @@ const RATIO_PAGE_KEYWORDS = [
   /구\s*성\s*비/,
 ];
 
-// 마스킹할 셀 패턴: 숫자(소수점/콤마 가능)에 % 기호가 붙은 형태
-// 예: "28.8%", "0.1%", "100%", "1,234%"
+// 단일 셀에 "숫자%"가 모두 있는 경우 (예: "28.8%", "0.1%", "100%")
 const PERCENT_VALUE_PATTERN = /^\s*\d+(?:[,.]\d+)?\s*%\s*$/;
+// 단일 셀에 숫자만 있는 경우 (예: "28.8", "0.1") - % 가 별도 셀로 분리되었을 가능성
+const NUMBER_ONLY_PATTERN = /^\s*\d+(?:[,.]\d+)?\s*$/;
+// 단일 셀에 % 만 있는 경우
+const PERCENT_ONLY_PATTERN = /^\s*%\s*$/;
 
 // 헤더 자체("배합비율(%)" 등)는 마스킹 제외
 const PERCENT_HEADER_PATTERN = /[가-힣]/;
@@ -86,47 +89,116 @@ export default function PdfViewer({
       const viewport = pageObj.getViewport({ scale });
       const items: any[] = textContent.items;
 
-      // 1. 페이지에 "배합비율" 키워드가 있는지 검사 (없으면 마스킹 비활성)
-      // 인접 텍스트 결합도 고려 (예: "배" + "합" + "비" + "율" 토큰 분리)
+      // 1. 페이지에 "배합비율" 키워드가 있는지 검사
       const allText = items.map((it: any) => (it.str || '')).join('').replace(/\s/g, '');
       const hasKeyword = RATIO_PAGE_KEYWORDS.some((p) => p.test(allText));
+
+      console.log(
+        `[PdfViewer] page=${pageNum} items=${items.length} hasRatioKeyword=${hasKeyword} ` +
+          `sampleTexts=${JSON.stringify(items.slice(0, 8).map((i: any) => i.str))}`
+      );
 
       if (!hasKeyword) {
         setMaskRects([]);
         return;
       }
 
-      // 2. 페이지에서 "숫자%" 패턴을 가진 셀 모두 수집 → 마스킹
+      // 2. 마스킹 대상 수집
+      // (a) 단일 셀 "28.8%" 패턴
+      // (b) "28.8" 셀 + 그 직후/직전/위/아래에 인접한 "%" 셀 → 결합해서 둘 다 마스킹
+      // (c) "28.8" 셀 + 같은 페이지 어딘가에 "%"만 있는 셀이 있으면 (배합비율 표 안의 숫자) 마스킹
       const rects: MaskRect[] = [];
-      for (const it of items) {
-        if (!it.str) continue;
-        const raw = it.str;
-        const trimmed = raw.trim();
-        if (!trimmed) continue;
+      const maskedIndices = new Set<number>();
 
-        // 숫자%만 있는 셀만 마스킹 (한글 포함 헤더는 제외)
-        if (!PERCENT_VALUE_PATTERN.test(trimmed)) continue;
-        if (PERCENT_HEADER_PATTERN.test(trimmed)) continue;
+      // 페이지 내 % 기호만 있는 셀 위치 모두 수집
+      const percentOnlyItems: { idx: number; x: number; y: number; w: number; h: number }[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const trimmed = (items[i].str || '').trim();
+        if (PERCENT_ONLY_PATTERN.test(trimmed)) {
+          const tx = pdfjs.Util.transform(viewport.transform, items[i].transform);
+          percentOnlyItems.push({
+            idx: i,
+            x: tx[4],
+            y: tx[5],
+            w: (items[i].width || 0) * scale,
+            h: (items[i].height || 12) * scale,
+          });
+        }
+      }
 
+      const pushRect = (it: any, idx: number) => {
+        if (maskedIndices.has(idx)) return;
+        maskedIndices.add(idx);
         const tx = pdfjs.Util.transform(viewport.transform, it.transform);
         const x = tx[4];
         const y = tx[5];
         const w = (it.width || 0) * scale;
         const h = (it.height || 12) * scale;
-
         rects.push({
           x: x - 3,
           y: y - h - 1,
-          w: Math.max(w + 6, 30),
+          w: Math.max(w + 6, 24),
           h: h + 4,
         });
+      };
+
+      for (let i = 0; i < items.length; i++) {
+        const raw = items[i].str || '';
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        if (PERCENT_HEADER_PATTERN.test(trimmed)) continue; // 한글 포함 헤더 셀 제외
+
+        // (a) 단일 셀에 "숫자%" 모두 있음
+        if (PERCENT_VALUE_PATTERN.test(trimmed)) {
+          pushRect(items[i], i);
+          continue;
+        }
+
+        // (b)/(c) 숫자만 있는 셀 — 인접 % 또는 페이지 내 % 셀과 결합 가능 시 마스킹
+        if (NUMBER_ONLY_PATTERN.test(trimmed)) {
+          // 같은 행(y 비슷)에 "%"만 있는 셀이 있는지 확인
+          const tx = pdfjs.Util.transform(viewport.transform, items[i].transform);
+          const numY = tx[5];
+          const numX = tx[4];
+          const numW = (items[i].width || 0) * scale;
+          const numH = (items[i].height || 12) * scale;
+
+          const hasNearbyPercent = percentOnlyItems.some((p) => {
+            const sameRow = Math.abs(p.y - numY) < numH * 1.2;
+            const closeX = p.x > numX && p.x - (numX + numW) < numW * 3;
+            return sameRow && closeX;
+          });
+
+          if (hasNearbyPercent) {
+            pushRect(items[i], i);
+          }
+          continue;
+        }
       }
+
+      // % 만 있는 셀들도 같이 마스킹 (헤더 셀 안에 있는 % 가 아닌 본문에 있는 것)
+      // 본문 % 셀: 위 (b)/(c)에서 숫자와 짝지어진 % 만 마스킹
+      for (const p of percentOnlyItems) {
+        const matched = rects.some(
+          (r) => Math.abs(r.y + r.h / 2 - (p.y - p.h / 2)) < p.h * 1.2 && p.x > r.x
+        );
+        if (matched) {
+          rects.push({
+            x: p.x - 2,
+            y: p.y - p.h - 1,
+            w: p.w + 4,
+            h: p.h + 4,
+          });
+        }
+      }
+
+      console.log(`[PdfViewer] masked ${rects.length} cells on page ${pageNum}`);
       setMaskRects(rects);
     } catch (e) {
-      console.error('Mask computation error:', e);
+      console.error('[PdfViewer] Mask computation error:', e);
       setMaskRects([]);
     }
-  }, [pageObj, scale, maskRatioColumn]);
+  }, [pageObj, scale, maskRatioColumn, pageNum]);
 
   useEffect(() => {
     computeMasks();
