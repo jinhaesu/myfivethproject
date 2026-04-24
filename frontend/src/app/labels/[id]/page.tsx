@@ -10,6 +10,22 @@ import { api, getFileUrl } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
 
+interface AiDesignReviewItem {
+  field: string;
+  reportValue: string | null;
+  designValue: string | null;
+  status: 'match' | 'minor' | 'mismatch' | 'not_found_in_design' | 'not_found_in_report';
+  comment: string;
+}
+
+interface AiDesignReview {
+  summary: string;
+  overallStatus: 'ok' | 'needs_review' | 'critical';
+  items: AiDesignReviewItem[];
+  criticalIssues: string[];
+  recommendations: string[];
+}
+
 interface Label {
   id: string;
   productName: string;
@@ -29,6 +45,11 @@ interface Label {
   designFileUrl: string | null;
   designFileName: string | null;
   designUploadedAt: string | null;
+  manufacturingReportUrl: string | null;
+  manufacturingReportName: string | null;
+  manufacturingReportUploadedAt: string | null;
+  aiDesignReview: AiDesignReview | null;
+  aiDesignReviewedAt: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: {
@@ -69,6 +90,11 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
   const [uploading, setUploading] = useState(false);
   const [designCompareMode, setDesignCompareMode] = useState(false);
   const [designFileStatus, setDesignFileStatus] = useState<'checking' | 'available' | 'unavailable'>('checking');
+
+  // 품목제조보고서 업로드 관련
+  const [reportUploading, setReportUploading] = useState(false);
+  const [aiReviewing, setAiReviewing] = useState(false);
+  const [aiReviewError, setAiReviewError] = useState('');
 
   // 수정 모드
   const [editMode, setEditMode] = useState(false);
@@ -185,6 +211,59 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
       setError(err.message);
     }
   };
+
+  const handleReportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReportUploading(true);
+    setError('');
+    try {
+      await api.uploads.uploadManufacturingReport(id, file);
+      await fetchLabel();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setReportUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleReportDelete = async () => {
+    if (!confirm('품목제조보고서를 삭제하시겠습니까?')) return;
+    try {
+      await api.uploads.deleteManufacturingReport(id);
+      await fetchLabel();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleAiReview = async () => {
+    setAiReviewing(true);
+    setAiReviewError('');
+    try {
+      await api.ai.reviewDesignVsReport(id);
+      await fetchLabel();
+    } catch (err: any) {
+      setAiReviewError(err.message);
+    } finally {
+      setAiReviewing(false);
+    }
+  };
+
+  // 디자인+품목제조보고서 모두 첨부되면 AI 검토 자동 트리거 (아직 검토 결과 없을 때만)
+  useEffect(() => {
+    if (
+      label?.designFileUrl &&
+      label?.manufacturingReportUrl &&
+      !label?.aiDesignReview &&
+      !aiReviewing &&
+      designFileStatus === 'available'
+    ) {
+      handleAiReview();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [label?.designFileUrl, label?.manufacturingReportUrl, designFileStatus]);
 
   const handleDelete = async () => {
     if (!confirm('이 표기사항을 삭제하시겠습니까?')) return;
@@ -612,6 +691,53 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
       {/* 디자인 검수 */}
       {activeTab === 'design' && (
         <div className="space-y-6">
+          {/* 품목제조보고서 업로드 영역 */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold">품목제조보고서 (PDF)</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  식약처/지자체 제출 공식 품목제조보고서를 첨부하면, 디자인 첨부 시 AI가 자동으로 두 문서를 비교 검토합니다.
+                </p>
+              </div>
+              <div className="flex gap-2 items-center">
+                {label.manufacturingReportUrl && (
+                  <button onClick={handleReportDelete} className="btn-danger text-xs">삭제</button>
+                )}
+                <label className="btn-primary text-sm cursor-pointer">
+                  {reportUploading ? '업로드 중...' : label.manufacturingReportUrl ? '파일 교체' : 'PDF 업로드'}
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handleReportUpload}
+                    disabled={reportUploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {label.manufacturingReportUrl && (
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <span className="text-2xl">{'\u{1F4C4}'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{label.manufacturingReportName}</p>
+                  <p className="text-xs text-gray-500">
+                    업로드: {label.manufacturingReportUploadedAt ? new Date(label.manufacturingReportUploadedAt).toLocaleString('ko-KR') : '-'}
+                  </p>
+                </div>
+                <a
+                  href={getFileUrl(label.manufacturingReportUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary text-xs"
+                >
+                  새 탭에서 보기
+                </a>
+              </div>
+            )}
+          </div>
+
           {/* 파일 업로드 영역 */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
@@ -833,6 +959,152 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                   className="hidden"
                 />
               </label>
+            </div>
+          )}
+
+          {/* AI 자동 검토 결과 */}
+          {label.designFileUrl && label.manufacturingReportUrl && (
+            <div className="card border-l-4 border-indigo-500">
+              <div className="flex items-start justify-between mb-4 gap-3">
+                <div>
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <span>{'\u{1F916}'}</span> AI 자동 검토 의견
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    품목제조보고서와 디자인 작업물의 핵심 데이터를 비교하여 일치 여부를 검토합니다.
+                  </p>
+                </div>
+                <button
+                  onClick={handleAiReview}
+                  disabled={aiReviewing}
+                  className="btn-secondary text-xs"
+                >
+                  {aiReviewing ? 'AI 분석 중...' : label.aiDesignReview ? '다시 검토' : 'AI 검토 실행'}
+                </button>
+              </div>
+
+              {aiReviewError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-3">
+                  {aiReviewError}
+                </div>
+              )}
+
+              {aiReviewing && !label.aiDesignReview && (
+                <div className="text-center py-8 text-gray-500 text-sm">
+                  AI가 두 문서를 비교 분석하고 있습니다... (보통 10-30초 소요)
+                </div>
+              )}
+
+              {label.aiDesignReview && (
+                <div className="space-y-4">
+                  {/* 요약 */}
+                  <div className={`p-4 rounded-lg border-2 ${
+                    label.aiDesignReview.overallStatus === 'critical' ? 'bg-red-50 border-red-300' :
+                    label.aiDesignReview.overallStatus === 'needs_review' ? 'bg-yellow-50 border-yellow-300' :
+                    'bg-green-50 border-green-300'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                        label.aiDesignReview.overallStatus === 'critical' ? 'bg-red-600 text-white' :
+                        label.aiDesignReview.overallStatus === 'needs_review' ? 'bg-yellow-600 text-white' :
+                        'bg-green-600 text-white'
+                      }`}>
+                        {label.aiDesignReview.overallStatus === 'critical' ? '수정 필요' :
+                         label.aiDesignReview.overallStatus === 'needs_review' ? '검토 권장' : '양호'}
+                      </span>
+                      {label.aiDesignReviewedAt && (
+                        <span className="text-xs text-gray-500">
+                          {new Date(label.aiDesignReviewedAt).toLocaleString('ko-KR')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium text-gray-800">{label.aiDesignReview.summary}</p>
+                  </div>
+
+                  {/* 주요 데이터 비교 테이블 */}
+                  {label.aiDesignReview.items && label.aiDesignReview.items.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">항목</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">품목제조보고서</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">디자인 작업물</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">상태</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">의견</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {label.aiDesignReview.items.map((item, i) => {
+                            const statusStyle: Record<string, string> = {
+                              match: 'bg-green-100 text-green-700',
+                              minor: 'bg-blue-100 text-blue-700',
+                              mismatch: 'bg-red-100 text-red-700',
+                              not_found_in_design: 'bg-orange-100 text-orange-700',
+                              not_found_in_report: 'bg-orange-100 text-orange-700',
+                            };
+                            const statusLabel: Record<string, string> = {
+                              match: '일치',
+                              minor: '경미한 차이',
+                              mismatch: '불일치',
+                              not_found_in_design: '디자인 누락',
+                              not_found_in_report: '보고서 누락',
+                            };
+                            return (
+                              <tr key={i} className="border-b last:border-b-0">
+                                <td className="px-3 py-2 font-medium text-gray-800 align-top">{item.field}</td>
+                                <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.reportValue || '-'}</td>
+                                <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.designValue || '-'}</td>
+                                <td className="px-3 py-2 align-top">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${statusStyle[item.status] || 'bg-gray-100 text-gray-700'}`}>
+                                    {statusLabel[item.status] || item.status}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.comment}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* 핵심 수정 사항 */}
+                  {label.aiDesignReview.criticalIssues && label.aiDesignReview.criticalIssues.length > 0 && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <h4 className="text-sm font-bold text-red-800 mb-2">{'⚠️'} 반드시 수정 필요</h4>
+                      <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                        {label.aiDesignReview.criticalIssues.map((issue, i) => (
+                          <li key={i}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* 권장 사항 */}
+                  {label.aiDesignReview.recommendations && label.aiDesignReview.recommendations.length > 0 && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h4 className="text-sm font-bold text-blue-800 mb-2">{'\u{1F4A1}'} 권장 개선 사항</h4>
+                      <ul className="list-disc list-inside text-sm text-blue-700 space-y-1">
+                        {label.aiDesignReview.recommendations.map((rec, i) => (
+                          <li key={i}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-400 italic">
+                    ※ AI 자동 검토 결과는 참고용입니다. 최종 승인 전 반드시 담당자가 직접 확인해주세요.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 안내: 보고서만 있고 디자인 미첨부 */}
+          {!label.designFileUrl && label.manufacturingReportUrl && (
+            <div className="card bg-blue-50 border border-blue-200 text-sm text-blue-800">
+              {'\u{1F4A1}'} 품목제조보고서가 첨부되었습니다. 디자인 파일을 업로드하면 AI가 자동으로 두 문서를 비교 검토합니다.
             </div>
           )}
         </div>

@@ -114,6 +114,39 @@ async function deleteFile(key) {
   }
 }
 
+async function getFileBuffer(key) {
+  if (isS3Configured) {
+    try {
+      const response = await s3Client.send(new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+      }));
+      const chunks = [];
+      for await (const chunk of response.Body) {
+        chunks.push(chunk);
+      }
+      return {
+        buffer: Buffer.concat(chunks),
+        contentType: response.ContentType,
+      };
+    } catch (error) {
+      if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+  // 로컬 모드
+  const filePath = path.join(LOCAL_UPLOAD_DIR, key);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  return {
+    buffer: fs.readFileSync(filePath),
+    contentType: getMimeType(key),
+  };
+}
+
 async function fileExists(key) {
   if (isS3Configured) {
     try {
@@ -134,6 +167,7 @@ async function fileExists(key) {
 module.exports = {
   uploadFile,
   getFileStream,
+  getFileBuffer,
   deleteFile,
   fileExists,
   isS3Configured,

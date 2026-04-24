@@ -52,6 +52,11 @@ model Label {
   designFileUrl   String?
   designFileName  String?
   designUploadedAt DateTime?
+  manufacturingReportUrl   String?  // 품목제조보고서 PDF URL
+  manufacturingReportName  String?
+  manufacturingReportUploadedAt DateTime?
+  aiDesignReview     Json?      // AI 자동 검토 결과 (디자인 vs 품목제조보고서)
+  aiDesignReviewedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

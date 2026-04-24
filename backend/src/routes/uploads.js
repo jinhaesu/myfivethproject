@@ -11,8 +11,12 @@ const prisma = new PrismaClient();
 
 // 로컬 임시 uploads 디렉토리 생성 (multer 임시 저장용)
 const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'designs');
+const reportDir = path.join(__dirname, '..', '..', 'uploads', 'manufacturing-reports');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+}
+if (!fs.existsSync(reportDir)) {
+  fs.mkdirSync(reportDir, { recursive: true });
 }
 
 // multer 설정 - PDF/이미지 파일만 허용
@@ -24,6 +28,17 @@ const multerStorage = multer.diskStorage({
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const ext = path.extname(file.originalname);
     cb(null, `design-${uniqueSuffix}${ext}`);
+  },
+});
+
+const reportMulterStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, reportDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname);
+    cb(null, `report-${uniqueSuffix}${ext}`);
   },
 });
 
@@ -42,9 +57,23 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const reportFileFilter = (req, file, cb) => {
+  if (file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new Error('품목제조보고서는 PDF 파일만 업로드 가능합니다.'), false);
+  }
+};
+
 const upload = multer({
   storage: multerStorage,
   fileFilter,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+});
+
+const reportUpload = multer({
+  storage: reportMulterStorage,
+  fileFilter: reportFileFilter,
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
 
@@ -93,6 +122,115 @@ router.post('/:labelId/design', authenticate, upload.single('designFile'), async
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ error: error.message || '파일 업로드에 실패했습니다.' });
+  }
+});
+
+// 품목제조보고서 PDF 업로드
+router.post('/:labelId/manufacturing-report', authenticate, reportUpload.single('reportFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'PDF 파일을 선택해주세요.' });
+    }
+
+    const label = await prisma.label.findUnique({ where: { id: req.params.labelId } });
+    if (!label) {
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: '라벨을 찾을 수 없습니다.' });
+    }
+
+    if (label.manufacturingReportUrl) {
+      const oldKey = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(oldKey); } catch (e) { console.error('Failed to delete old report:', e); }
+    }
+
+    const s3Key = `manufacturing-reports/${req.file.filename}`;
+    const fileUrl = `/uploads/manufacturing-reports/${req.file.filename}`;
+
+    await storage.uploadFile(s3Key, req.file.path, req.file.mimetype);
+
+    const updated = await prisma.label.update({
+      where: { id: req.params.labelId },
+      data: {
+        manufacturingReportUrl: fileUrl,
+        manufacturingReportName: req.file.originalname,
+        manufacturingReportUploadedAt: new Date(),
+      },
+    });
+
+    res.json({
+      manufacturingReportUrl: updated.manufacturingReportUrl,
+      manufacturingReportName: updated.manufacturingReportName,
+      manufacturingReportUploadedAt: updated.manufacturingReportUploadedAt,
+    });
+  } catch (error) {
+    console.error('Manufacturing report upload error:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: error.message || '품목제조보고서 업로드에 실패했습니다.' });
+  }
+});
+
+// 품목제조보고서 PDF 삭제
+router.delete('/:labelId/manufacturing-report', authenticate, async (req, res) => {
+  try {
+    const label = await prisma.label.findUnique({ where: { id: req.params.labelId } });
+    if (!label) {
+      return res.status(404).json({ error: '라벨을 찾을 수 없습니다.' });
+    }
+
+    if (label.manufacturingReportUrl) {
+      const key = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(key); } catch (e) { console.error('Failed to delete report:', e); }
+    }
+
+    await prisma.label.update({
+      where: { id: req.params.labelId },
+      data: {
+        manufacturingReportUrl: null,
+        manufacturingReportName: null,
+        manufacturingReportUploadedAt: null,
+      },
+    });
+
+    res.json({ message: '품목제조보고서가 삭제되었습니다.' });
+  } catch (error) {
+    console.error('Manufacturing report delete error:', error);
+    res.status(500).json({ error: '품목제조보고서 삭제에 실패했습니다.' });
+  }
+});
+
+// 품목제조보고서 PDF 조회
+router.get('/manufacturing-reports/:filename', async (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const key = `manufacturing-reports/${filename}`;
+
+  try {
+    const result = await storage.getFileStream(key);
+    if (!result) {
+      return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+    }
+
+    res.setHeader('Content-Type', result.contentType);
+    if (result.contentLength) {
+      res.setHeader('Content-Length', result.contentLength);
+    }
+    result.stream.pipe(res);
+  } catch (error) {
+    console.error('Report serving error:', error);
+    return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
+  }
+});
+
+router.head('/manufacturing-reports/:filename', async (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const key = `manufacturing-reports/${filename}`;
+  try {
+    const exists = await storage.fileExists(key);
+    if (!exists) return res.status(404).end();
+    res.status(200).end();
+  } catch {
+    return res.status(404).end();
   }
 });
 

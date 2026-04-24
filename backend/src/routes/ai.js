@@ -1,8 +1,11 @@
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk').default;
+const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const storage = require('../lib/storage');
 
 const router = express.Router();
+const prisma = new PrismaClient();
 
 function getClient() {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -590,6 +593,154 @@ ${linkDescriptions}
   } catch (error) {
     console.error('Extract from links error:', error);
     res.status(500).json({ error: '원재료 정보 추출에 실패했습니다.' });
+  }
+});
+
+// ─── 디자인 vs 품목제조보고서 AI 자동 비교 검토 ───
+const DESIGN_REVIEW_PROMPT = `당신은 한국 식품 라벨 검수 전문가입니다.
+첨부된 두 문서를 비교 검토합니다:
+  1) 품목제조보고서 (식약처/지자체 제출 공식 문서) — 기준 데이터
+  2) 디자인 작업물 (제품 패키지 시안 PDF/이미지) — 검증 대상
+
+두 문서에서 다음 핵심 항목을 추출하고 일치 여부를 판정하세요:
+- 제조사(영업소) 명칭/소재지
+- 품목제조보고번호
+- 제품명 (한글/영문 모두)
+- 식품유형 (예: 과자, 빵류, 즉석섭취식품 등)
+- 중량/내용량
+- 보관방법
+- 포장재질 (내포장재/외포장재)
+- 소비기한(유통기한) 표시 형식
+- 원재료명 (주요 5개 이상)
+- 알레르기 유발물질
+
+판정 기준:
+- match: 문구가 완전히 일치
+- minor: 표기 차이는 있으나 의미상 동일 (예: 대소문자, 띄어쓰기, 단위 표기)
+- mismatch: 의미가 다르거나 누락 — 반드시 수정 필요
+- not_found_in_design: 디자인에 해당 정보가 없음
+- not_found_in_report: 품목제조보고서에 해당 정보가 없음
+
+반드시 아래 JSON 스키마로만 응답하세요. 마크다운/설명 없이 순수 JSON만 출력:
+
+{
+  "summary": "전체 검토 한 줄 요약 (예: '7개 항목 중 5개 일치, 2개 불일치 발견 - 즉시 수정 필요')",
+  "overallStatus": "ok" | "needs_review" | "critical",
+  "items": [
+    {
+      "field": "제품명",
+      "reportValue": "품목제조보고서에서 추출한 값 (없으면 null)",
+      "designValue": "디자인에서 추출한 값 (없으면 null)",
+      "status": "match" | "minor" | "mismatch" | "not_found_in_design" | "not_found_in_report",
+      "comment": "차이점 또는 추천 조치 (한국어 1-2문장)"
+    }
+  ],
+  "criticalIssues": ["반드시 수정해야 할 핵심 사항을 한국어 문장으로 (없으면 빈 배열)"],
+  "recommendations": ["권장 개선 사항 (한국어 문장)"]
+}`;
+
+router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) => {
+  try {
+    const client = getClient();
+    if (!client) {
+      return res.status(400).json({ error: 'AI 기능을 사용하려면 ANTHROPIC_API_KEY 환경변수를 설정해주세요.' });
+    }
+
+    const labelId = req.params.labelId;
+    const label = await prisma.label.findUnique({ where: { id: labelId } });
+    if (!label) {
+      return res.status(404).json({ error: '라벨을 찾을 수 없습니다.' });
+    }
+    if (!label.designFileUrl) {
+      return res.status(400).json({ error: '디자인 파일이 첨부되지 않았습니다.' });
+    }
+    if (!label.manufacturingReportUrl) {
+      return res.status(400).json({ error: '품목제조보고서가 첨부되지 않았습니다.' });
+    }
+
+    const designKey = label.designFileUrl.replace(/^\/uploads\//, '');
+    const reportKey = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
+
+    const [designFile, reportFile] = await Promise.all([
+      storage.getFileBuffer(designKey),
+      storage.getFileBuffer(reportKey),
+    ]);
+
+    if (!designFile) return res.status(404).json({ error: '디자인 파일을 불러올 수 없습니다.' });
+    if (!reportFile) return res.status(404).json({ error: '품목제조보고서 파일을 불러올 수 없습니다.' });
+
+    const reportContent = {
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: reportFile.buffer.toString('base64'),
+      },
+    };
+
+    const designIsPdf = (designFile.contentType || '').includes('pdf') || /\.pdf$/i.test(label.designFileName || '');
+    const designContent = designIsPdf
+      ? {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: designFile.buffer.toString('base64'),
+          },
+        }
+      : {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: designFile.contentType || 'image/png',
+            data: designFile.buffer.toString('base64'),
+          },
+        };
+
+    const userMessage = `[문서1: 품목제조보고서 - 기준 데이터]
+[문서2: 디자인 작업물 - 검증 대상]
+
+위 두 문서를 비교하여 시스템 프롬프트에 정의된 JSON 스키마로 검토 결과를 작성해주세요.
+제품명: ${label.productName}`;
+
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 4096,
+      system: DESIGN_REVIEW_PROMPT,
+      messages: [{
+        role: 'user',
+        content: [
+          reportContent,
+          designContent,
+          { type: 'text', text: userMessage },
+        ],
+      }],
+    });
+
+    const text = response.content[0].text;
+    let result;
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    } catch {
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text });
+    }
+
+    const updated = await prisma.label.update({
+      where: { id: labelId },
+      data: {
+        aiDesignReview: result,
+        aiDesignReviewedAt: new Date(),
+      },
+    });
+
+    res.json({
+      review: result,
+      reviewedAt: updated.aiDesignReviewedAt,
+    });
+  } catch (error) {
+    console.error('Design review error:', error);
+    res.status(500).json({ error: error.message || 'AI 자동 검토에 실패했습니다.' });
   }
 });
 

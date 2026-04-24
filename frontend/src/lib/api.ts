@@ -44,10 +44,10 @@ async function request(path: string, options: RequestInit = {}) {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'http://localhost:4000';
 
-async function uploadFile(path: string, file: File) {
+async function uploadFile(path: string, file: File, fieldName: string = 'designFile') {
   const token = getToken();
   const formData = new FormData();
-  formData.append('designFile', file);
+  formData.append(fieldName, file);
 
   const headers: Record<string, string> = {};
   if (token) {
@@ -145,6 +145,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    reviewDesignVsReport: (labelId: string) =>
+      request(`/ai/review-design-vs-report/${labelId}`, { method: 'POST' }),
   },
   reviews: {
     updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string; reviewerName?: string }) =>
@@ -161,8 +163,12 @@ export const api = {
   },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>
-      uploadFile(`/uploads/${labelId}/design`, file),
+      uploadFile(`/uploads/${labelId}/design`, file, 'designFile'),
     deleteDesign: (labelId: string) =>
       request(`/uploads/${labelId}/design`, { method: 'DELETE' }),
+    uploadManufacturingReport: (labelId: string, file: File) =>
+      uploadFile(`/uploads/${labelId}/manufacturing-report`, file, 'reportFile'),
+    deleteManufacturingReport: (labelId: string) =>
+      request(`/uploads/${labelId}/manufacturing-report`, { method: 'DELETE' }),
   },
 };
