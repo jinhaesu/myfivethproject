@@ -138,4 +138,59 @@ async function createMaskedReportPdf(inputBuffer) {
   };
 }
 
-module.exports = { createMaskedReportPdf };
+/**
+ * 사용자가 지정한 좌표(이미지 픽셀 단위)로 PDF에 흰색 박스를 그려 영구 마스킹.
+ * 좌표는 frontend에서 받은 렌더 이미지 기준이므로 PDF 좌표로 변환.
+ *
+ * @param {Buffer} inputBuffer 원본 PDF
+ * @param {Array<{page: number, x: number, y: number, width: number, height: number, renderedWidth: number, renderedHeight: number}>} pageRects
+ *        - page: 1-based 페이지 번호
+ *        - x, y, width, height: 이미지 픽셀 좌표 (top-left 기준)
+ *        - renderedWidth, renderedHeight: 좌표 기준이 된 렌더 이미지의 크기
+ * @returns {Promise<Buffer>} 마스킹된 PDF buffer
+ */
+async function applyManualMask(inputBuffer, pageRects) {
+  const pdfLibDoc = await PDFDocument.load(inputBuffer);
+  const pages = pdfLibDoc.getPages();
+
+  // 페이지별 그룹핑
+  const byPage = new Map();
+  for (const r of pageRects) {
+    if (!byPage.has(r.page)) byPage.set(r.page, []);
+    byPage.get(r.page).push(r);
+  }
+
+  for (const [pageNum, rects] of byPage.entries()) {
+    if (pageNum < 1 || pageNum > pages.length) continue;
+    const page = pages[pageNum - 1];
+    const pdfWidth = page.getWidth();
+    const pdfHeight = page.getHeight();
+
+    for (const r of rects) {
+      const renderedW = r.renderedWidth || pdfWidth;
+      const renderedH = r.renderedHeight || pdfHeight;
+      const scaleX = pdfWidth / renderedW;
+      const scaleY = pdfHeight / renderedH;
+
+      // 이미지 좌표(top-left 기준) → PDF 좌표(bottom-left 기준)
+      const pdfX = r.x * scaleX;
+      const pdfRectW = r.width * scaleX;
+      const pdfRectH = r.height * scaleY;
+      const pdfY = pdfHeight - (r.y * scaleY) - pdfRectH;
+
+      page.drawRectangle({
+        x: pdfX,
+        y: pdfY,
+        width: pdfRectW,
+        height: pdfRectH,
+        color: rgb(1, 1, 1),
+        borderWidth: 0,
+      });
+    }
+  }
+
+  const bytes = await pdfLibDoc.save();
+  return Buffer.from(bytes);
+}
+
+module.exports = { createMaskedReportPdf, applyManualMask };

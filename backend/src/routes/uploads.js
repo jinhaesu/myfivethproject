@@ -7,10 +7,17 @@ const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
 // pdfMask 모듈은 lazy + try-catch (native 모듈 누락 시 마스킹 비활성, 서버는 시작)
 let createMaskedReportPdf = null;
+let applyManualMask = null;
+let pdfToImages = null;
 try {
-  ({ createMaskedReportPdf } = require('../lib/pdfMask'));
+  ({ createMaskedReportPdf, applyManualMask } = require('../lib/pdfMask'));
 } catch (e) {
-  console.error('[Upload] createMaskedReportPdf 로드 실패 (마스킹 비활성):', e.message);
+  console.error('[Upload] pdfMask 로드 실패 (마스킹 비활성):', e.message);
+}
+try {
+  ({ pdfToImages } = require('../lib/pdfToImages'));
+} catch (e) {
+  console.error('[Upload] pdfToImages 로드 실패:', e.message);
 }
 
 const router = express.Router();
@@ -191,6 +198,7 @@ router.post('/:labelId/manufacturing-report', authenticate, reportUpload.single(
       data: {
         manufacturingReportUrl: fileUrl,
         manufacturingReportMaskedUrl: maskedFileUrl,
+        manufacturingReportMaskingLocked: false, // 새 업로드 시 마스킹 잠금 해제
         manufacturingReportName: req.file.originalname,
         manufacturingReportUploadedAt: new Date(),
         // 새 보고서 업로드 시 기존 추출/검토 결과 초기화
@@ -212,6 +220,97 @@ router.post('/:labelId/manufacturing-report', authenticate, reportUpload.single(
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ error: error.message || '품목제조보고서 업로드에 실패했습니다.' });
+  }
+});
+
+// 품목제조보고서 페이지 이미지 (수동 마스킹 UI용)
+// 응답: 페이지별 PNG base64 + 이미지/PDF dimensions
+router.get('/:labelId/manufacturing-report/page-images', authenticate, async (req, res) => {
+  try {
+    if (!pdfToImages) return res.status(500).json({ error: 'PDF 변환 모듈을 사용할 수 없습니다.' });
+
+    const label = await prisma.label.findUnique({ where: { id: req.params.labelId } });
+    if (!label?.manufacturingReportUrl) {
+      return res.status(404).json({ error: '품목제조보고서가 없습니다.' });
+    }
+
+    const key = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
+    const file = await storage.getFileBuffer(key);
+    if (!file) return res.status(404).json({ error: 'PDF 파일을 불러올 수 없습니다.' });
+
+    const images = await pdfToImages(file.buffer, { scale: 2.0, maxPages: 8, maxLongEdgePx: 1800 });
+
+    res.json({
+      pages: images.map((img) => ({
+        pageNum: img.pageNum,
+        imageBase64: `data:image/png;base64,${img.buffer.toString('base64')}`,
+        renderedWidth: img.width,
+        renderedHeight: img.height,
+      })),
+    });
+  } catch (error) {
+    console.error('Page images error:', error);
+    res.status(500).json({ error: error.message || '페이지 이미지 생성에 실패했습니다.' });
+  }
+});
+
+// 품목제조보고서 수동 마스킹 적용 (영구, 잠금)
+// Body: { pageRects: [{ page, x, y, width, height, renderedWidth, renderedHeight }] }
+router.post('/:labelId/manufacturing-report/apply-mask', authenticate, async (req, res) => {
+  try {
+    if (!applyManualMask) return res.status(500).json({ error: '마스킹 모듈을 사용할 수 없습니다.' });
+
+    const { pageRects } = req.body;
+    if (!Array.isArray(pageRects) || pageRects.length === 0) {
+      return res.status(400).json({ error: '마스킹 영역이 1개 이상 필요합니다.' });
+    }
+
+    const label = await prisma.label.findUnique({ where: { id: req.params.labelId } });
+    if (!label?.manufacturingReportUrl) {
+      return res.status(404).json({ error: '품목제조보고서가 없습니다.' });
+    }
+    if (label.manufacturingReportMaskingLocked) {
+      return res.status(409).json({ error: '이미 마스킹이 영구 적용되어 변경할 수 없습니다.' });
+    }
+
+    const key = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
+    const file = await storage.getFileBuffer(key);
+    if (!file) return res.status(404).json({ error: '원본 PDF를 불러올 수 없습니다.' });
+
+    console.log(`[Manual Mask] Applying ${pageRects.length} rects on ${label.manufacturingReportName}`);
+    const maskedBuffer = await applyManualMask(file.buffer, pageRects);
+
+    // 기존 마스킹 파일 삭제
+    if (label.manufacturingReportMaskedUrl) {
+      const oldKey = label.manufacturingReportMaskedUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(oldKey); } catch (e) { console.error('old masked delete failed:', e.message); }
+    }
+
+    // 새 마스킹 파일 저장
+    const baseName = path.basename(key, path.extname(key));
+    const maskedFilename = `${baseName}-masked.pdf`;
+    const maskedPath = path.join(reportDir, maskedFilename);
+    fs.writeFileSync(maskedPath, maskedBuffer);
+    const maskedKey = `manufacturing-reports/${maskedFilename}`;
+    const maskedUrl = `/uploads/manufacturing-reports/${maskedFilename}`;
+    await storage.uploadFile(maskedKey, maskedPath, 'application/pdf');
+
+    const updated = await prisma.label.update({
+      where: { id: req.params.labelId },
+      data: {
+        manufacturingReportMaskedUrl: maskedUrl,
+        manufacturingReportMaskingLocked: true,
+      },
+    });
+
+    res.json({
+      manufacturingReportMaskedUrl: updated.manufacturingReportMaskedUrl,
+      manufacturingReportMaskingLocked: updated.manufacturingReportMaskingLocked,
+      maskedRectCount: pageRects.length,
+    });
+  } catch (error) {
+    console.error('Apply mask error:', error);
+    res.status(500).json({ error: error.message || '마스킹 적용에 실패했습니다.' });
   }
 });
 

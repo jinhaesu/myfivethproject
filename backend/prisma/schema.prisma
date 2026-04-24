@@ -53,7 +53,8 @@ model Label {
   designFileName  String?
   designUploadedAt DateTime?
   manufacturingReportUrl   String?  // 품목제조보고서 원본 PDF URL
-  manufacturingReportMaskedUrl String?  // 배합비율 마스킹된 PDF URL (없으면 마스킹 실패)
+  manufacturingReportMaskedUrl String?  // 마스킹된 PDF URL (자동 또는 수동)
+  manufacturingReportMaskingLocked Boolean @default(false)  // true면 사용자가 영구 마스킹 적용 → 편집 불가
   manufacturingReportName  String?
   manufacturingReportUploadedAt DateTime?
   aiReportExtraction Json?      // 1단계: 품목제조보고서에서 추출한 정보

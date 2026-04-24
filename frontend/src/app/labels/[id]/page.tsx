@@ -6,6 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import NutritionLabel from '@/components/NutritionLabel';
 import PrintableLabel from '@/components/PrintableLabel';
 import ReviewWorkflow from '@/components/ReviewWorkflow';
+import ManualPdfMasking from '@/components/ManualPdfMasking';
 import { api, getFileUrl } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
@@ -54,6 +55,7 @@ interface Label {
   designUploadedAt: string | null;
   manufacturingReportUrl: string | null;
   manufacturingReportMaskedUrl: string | null;
+  manufacturingReportMaskingLocked: boolean;
   manufacturingReportName: string | null;
   manufacturingReportUploadedAt: string | null;
   aiReportExtraction: any | null;
@@ -105,6 +107,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
   const [reportUploading, setReportUploading] = useState(false);
   const [aiReviewing, setAiReviewing] = useState(false);
   const [aiReviewError, setAiReviewError] = useState('');
+  const [maskingMode, setMaskingMode] = useState(false);
 
   // 수정 모드
   const [editMode, setEditMode] = useState(false);
@@ -737,24 +740,50 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                       업로드: {label.manufacturingReportUploadedAt ? new Date(label.manufacturingReportUploadedAt).toLocaleString('ko-KR') : '-'}
                     </p>
                   </div>
-                  {label.manufacturingReportMaskedUrl ? (
-                    <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-medium" title="서버에서 배합비율 컬럼이 마스킹된 PDF가 표시됩니다">
-                      {'\u{2705}'} 배합비율 마스킹됨
+                  {label.manufacturingReportMaskingLocked ? (
+                    <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-bold" title="사용자가 영구 마스킹 적용함. 보고서를 새로 업로드해야 변경 가능">
+                      {'\u{1F512}'} 마스킹 영구 적용됨
+                    </span>
+                  ) : label.manufacturingReportMaskedUrl ? (
+                    <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-medium" title="자동 마스킹된 PDF">
+                      {'\u{2705}'} 자동 마스킹됨
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-800 text-xs font-medium" title="이 PDF는 텍스트 레이어가 없는 스캔 이미지 PDF입니다. 자동 마스킹이 불가능합니다.">
-                      {'\u{26A0}️'} 마스킹 불가 (스캔 PDF)
+                    <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-800 text-xs font-medium" title="배합비율 자동 마스킹이 불가능합니다 (스캔 PDF). 수동 마스킹을 사용하세요">
+                      {'\u{26A0}️'} 마스킹 미적용
                     </span>
                   )}
+                  {!label.manufacturingReportMaskingLocked && !maskingMode && (
+                    <button
+                      onClick={() => setMaskingMode(true)}
+                      className="btn-secondary text-xs"
+                      title="페이지 위에 마우스로 영역을 그려 영구 마스킹"
+                    >
+                      {'\u{1F58C}️'} 수동 마스킹
+                    </button>
+                  )}
                 </div>
-                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                  <iframe
-                    src={getFileUrl(label.manufacturingReportMaskedUrl || label.manufacturingReportUrl)}
-                    className="w-full"
-                    style={{ height: '75vh', minHeight: '600px' }}
-                    title="품목제조보고서 PDF"
+
+                {/* 수동 마스킹 모드 또는 PDF 미리보기 */}
+                {maskingMode ? (
+                  <ManualPdfMasking
+                    labelId={id}
+                    onCancel={() => setMaskingMode(false)}
+                    onSaved={async () => {
+                      setMaskingMode(false);
+                      await fetchLabel();
+                    }}
                   />
-                </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                    <iframe
+                      src={getFileUrl(label.manufacturingReportMaskedUrl || label.manufacturingReportUrl)}
+                      className="w-full"
+                      style={{ height: '75vh', minHeight: '600px' }}
+                      title="품목제조보고서 PDF"
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>

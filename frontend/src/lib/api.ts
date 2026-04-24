@@ -170,5 +170,12 @@ export const api = {
       uploadFile(`/uploads/${labelId}/manufacturing-report`, file, 'reportFile'),
     deleteManufacturingReport: (labelId: string) =>
       request(`/uploads/${labelId}/manufacturing-report`, { method: 'DELETE' }),
+    getReportPageImages: (labelId: string) =>
+      request(`/uploads/${labelId}/manufacturing-report/page-images`),
+    applyReportMask: (labelId: string, pageRects: any[]) =>
+      request(`/uploads/${labelId}/manufacturing-report/apply-mask`, {
+        method: 'POST',
+        body: JSON.stringify({ pageRects }),
+      }),
   },
 };
