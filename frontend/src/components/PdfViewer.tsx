@@ -23,6 +23,14 @@ interface PdfViewerProps {
   initialScale?: number;
 }
 
+interface DiagnosticInfo {
+  itemCount: number;
+  hasRatioKeyword: boolean;
+  sampleTexts: string[];
+  maskedCount: number;
+  textLayerEmpty: boolean;
+}
+
 // 페이지에 "배합비율" 또는 "구성비" 같은 키워드가 있으면 마스킹 모드 활성화
 const RATIO_PAGE_KEYWORDS = [
   /배\s*합\s*비\s*율/,
@@ -55,6 +63,7 @@ export default function PdfViewer({
   const [loadError, setLoadError] = useState<string>('');
   const [pageWidth, setPageWidth] = useState<number>(0);
   const [pageHeight, setPageHeight] = useState<number>(0);
+  const [diag, setDiag] = useState<DiagnosticInfo | null>(null);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -92,14 +101,17 @@ export default function PdfViewer({
       // 1. 페이지에 "배합비율" 키워드가 있는지 검사
       const allText = items.map((it: any) => (it.str || '')).join('').replace(/\s/g, '');
       const hasKeyword = RATIO_PAGE_KEYWORDS.some((p) => p.test(allText));
+      const sampleTexts = items.slice(0, 12).map((i: any) => i.str);
+      const textLayerEmpty = items.length === 0;
 
       console.log(
         `[PdfViewer] page=${pageNum} items=${items.length} hasRatioKeyword=${hasKeyword} ` +
-          `sampleTexts=${JSON.stringify(items.slice(0, 8).map((i: any) => i.str))}`
+          `sampleTexts=${JSON.stringify(sampleTexts)}`
       );
 
       if (!hasKeyword) {
         setMaskRects([]);
+        setDiag({ itemCount: items.length, hasRatioKeyword: false, sampleTexts, maskedCount: 0, textLayerEmpty });
         return;
       }
 
@@ -194,9 +206,17 @@ export default function PdfViewer({
 
       console.log(`[PdfViewer] masked ${rects.length} cells on page ${pageNum}`);
       setMaskRects(rects);
+      setDiag({
+        itemCount: items.length,
+        hasRatioKeyword: hasKeyword,
+        sampleTexts,
+        maskedCount: rects.length,
+        textLayerEmpty,
+      });
     } catch (e) {
       console.error('[PdfViewer] Mask computation error:', e);
       setMaskRects([]);
+      setDiag(null);
     }
   }, [pageObj, scale, maskRatioColumn, pageNum]);
 
@@ -278,8 +298,8 @@ export default function PdfViewer({
           </button>
         </div>
         {maskRatioColumn && maskRects.length > 0 && (
-          <span className="ml-auto text-xs text-gray-500 italic">
-            배합비율 {maskRects.length}개 항목 마스킹됨
+          <span className="text-xs text-green-700 font-medium">
+            ✓ 배합비율 {maskRects.length}개 마스킹
           </span>
         )}
         <a
@@ -291,6 +311,41 @@ export default function PdfViewer({
           새 탭
         </a>
       </div>
+
+      {/* 마스킹 진단 정보 (마스킹 모드일 때만) */}
+      {maskRatioColumn && diag && (
+        <div className={`px-3 py-2 text-xs border-b ${
+          diag.textLayerEmpty
+            ? 'bg-red-50 border-red-200 text-red-700'
+            : !diag.hasRatioKeyword
+            ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+            : diag.maskedCount === 0
+            ? 'bg-orange-50 border-orange-200 text-orange-800'
+            : 'bg-green-50 border-green-200 text-green-700'
+        }`}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold">진단 (페이지 {pageNum}):</span>
+            <span>텍스트 셀 {diag.itemCount}개</span>
+            <span>·</span>
+            <span>배합비율 키워드 {diag.hasRatioKeyword ? '✓ 발견' : '✗ 없음'}</span>
+            <span>·</span>
+            <span>마스킹 {diag.maskedCount}개</span>
+            {diag.textLayerEmpty && (
+              <span className="ml-2 font-medium">
+                {'→'} 이 PDF는 텍스트 레이어가 없는 스캔 이미지 PDF입니다. 마스킹 불가능. 텍스트 PDF로 다시 출력해주세요.
+              </span>
+            )}
+            {!diag.textLayerEmpty && !diag.hasRatioKeyword && (
+              <span className="ml-2">{'→'} "배합비율" 키워드 없는 페이지 (해당 페이지로 이동하세요)</span>
+            )}
+            {!diag.textLayerEmpty && diag.hasRatioKeyword && diag.maskedCount === 0 && (
+              <span className="ml-2">
+                {'→'} 키워드는 있으나 % 패턴 셀 미발견. 샘플: {JSON.stringify(diag.sampleTexts.slice(0, 5))}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* PDF 영역 */}
       <div className="overflow-auto p-4 flex justify-center" style={{ maxHeight }}>

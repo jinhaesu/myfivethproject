@@ -20,14 +20,20 @@ interface AiDesignReviewItem {
   field: string;
   reportValue: string | null;
   designValue: string | null;
-  status: 'match' | 'minor' | 'mismatch' | 'not_found_in_design' | 'not_found_in_report';
+  status: 'match' | 'minor' | 'mismatch' | 'needs_review' | 'not_found_in_design' | 'not_found_in_report';
   comment: string;
+}
+
+interface DetectedCompany {
+  name: string;
+  role?: string;
 }
 
 interface AiDesignReview {
   summary: string;
   overallStatus: 'ok' | 'needs_review' | 'critical';
-  detectedCompanies?: string[];
+  detectedCompanies?: Array<DetectedCompany | string>;
+  reporterInfoExcluded?: string;
   items: AiDesignReviewItem[];
   criticalIssues: string[];
   recommendations: string[];
@@ -840,7 +846,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
           {!designCompareMode && label.designFileUrl && designFileStatus === 'available' && (
             <div className="card">
               <h3 className="text-sm font-bold mb-3">디자인 시안</h3>
-              {label.designFileName?.toLowerCase().endsWith('.pdf') ? (
+              {(label.designFileName?.toLowerCase().endsWith('.pdf') || label.designFileUrl?.toLowerCase().includes('.pdf')) ? (
                 <PdfViewer
                   url={getFileUrl(label.designFileUrl)}
                   maskRatioColumn={false}
@@ -868,7 +874,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                   <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-bold">디자인 시안</span>
                   <span className="text-xs text-gray-500">{label.designFileName}</span>
                 </div>
-                {label.designFileName?.toLowerCase().endsWith('.pdf') ? (
+                {(label.designFileName?.toLowerCase().endsWith('.pdf') || label.designFileUrl?.toLowerCase().includes('.pdf')) ? (
                   <PdfViewer
                     url={getFileUrl(label.designFileUrl)}
                     maskRatioColumn={false}
@@ -1033,22 +1039,30 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                       <div className="mt-2 pt-2 border-t border-gray-200/50">
                         <p className="text-xs text-gray-600">
                           <span className="font-bold">디자인에서 발견된 회사:</span>{' '}
-                          {label.aiDesignReview.detectedCompanies.map((c, i) => (
-                            <span
-                              key={i}
-                              className={`inline-block mr-1 px-1.5 py-0.5 rounded text-xs ${
-                                c.includes('조인앤조인') || c.toLowerCase().includes('join')
-                                  ? 'bg-indigo-100 text-indigo-800 font-bold'
-                                  : 'bg-gray-100 text-gray-700'
-                              }`}
-                            >
-                              {c}
-                            </span>
-                          ))}
+                          {label.aiDesignReview.detectedCompanies.map((c, i) => {
+                            const name = typeof c === 'string' ? c : c.name;
+                            const role = typeof c === 'string' ? '' : (c.role || '');
+                            const isJoin = name.includes('조인앤조인') || name.toLowerCase().includes('join');
+                            return (
+                              <span
+                                key={i}
+                                className={`inline-block mr-1 px-1.5 py-0.5 rounded text-xs ${
+                                  isJoin ? 'bg-indigo-100 text-indigo-800 font-bold' : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {name}{role && <span className="ml-1 opacity-70">({role})</span>}
+                              </span>
+                            );
+                          })}
                         </p>
                         {label.aiDesignReview.detectedCompanies.length > 1 && (
                           <p className="text-xs text-gray-500 mt-1 italic">
-                            ※ 검수는 (주)조인앤조인 데이터 기준입니다. 다른 회사 정보는 designValue 컬럼에 참고로 표시됩니다.
+                            ※ 검수는 (주)조인앤조인(제조원) 기준입니다. 다른 회사 정보는 designValue 컬럼에 참고로 표시됩니다.
+                          </p>
+                        )}
+                        {label.aiDesignReview.reporterInfoExcluded && (
+                          <p className="text-xs text-blue-700 mt-1 bg-blue-50 px-2 py-1 rounded">
+                            {'\u{2139}️'} {label.aiDesignReview.reporterInfoExcluded}
                           </p>
                         )}
                       </div>
@@ -1074,6 +1088,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                               match: 'bg-green-100 text-green-700',
                               minor: 'bg-blue-100 text-blue-700',
                               mismatch: 'bg-red-100 text-red-700',
+                              needs_review: 'bg-purple-100 text-purple-700',
                               not_found_in_design: 'bg-orange-100 text-orange-700',
                               not_found_in_report: 'bg-orange-100 text-orange-700',
                             };
@@ -1081,6 +1096,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                               match: '일치',
                               minor: '경미한 차이',
                               mismatch: '불일치',
+                              needs_review: '재확인 필요',
                               not_found_in_design: '디자인 누락',
                               not_found_in_report: '보고서 누락',
                             };
