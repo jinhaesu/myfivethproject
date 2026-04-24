@@ -5,6 +5,7 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
+const { createMaskedReportPdf } = require('../lib/pdfMask');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -142,23 +143,59 @@ router.post('/:labelId/manufacturing-report', authenticate, reportUpload.single(
       const oldKey = label.manufacturingReportUrl.replace(/^\/uploads\//, '');
       try { await storage.deleteFile(oldKey); } catch (e) { console.error('Failed to delete old report:', e); }
     }
+    if (label.manufacturingReportMaskedUrl) {
+      const oldKey = label.manufacturingReportMaskedUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(oldKey); } catch (e) { console.error('Failed to delete old masked:', e); }
+    }
 
     const s3Key = `manufacturing-reports/${req.file.filename}`;
     const fileUrl = `/uploads/manufacturing-reports/${req.file.filename}`;
 
+    // 원본 업로드
     await storage.uploadFile(s3Key, req.file.path, req.file.mimetype);
+
+    // 마스킹된 버전 생성 시도
+    let maskedFileUrl = null;
+    try {
+      console.log(`[Mask] Processing ${req.file.originalname}...`);
+      const inputBuffer = fs.readFileSync(req.file.path);
+      const result = await createMaskedReportPdf(inputBuffer);
+      console.log(`[Mask] Stats:`, result.stats);
+
+      if (result.stats.totalMasked > 0) {
+        const maskedFilename = req.file.filename.replace(/\.pdf$/i, '-masked.pdf');
+        const maskedPath = path.join(reportDir, maskedFilename);
+        fs.writeFileSync(maskedPath, result.maskedBuffer);
+        const maskedKey = `manufacturing-reports/${maskedFilename}`;
+        maskedFileUrl = `/uploads/manufacturing-reports/${maskedFilename}`;
+        await storage.uploadFile(maskedKey, maskedPath, 'application/pdf');
+        console.log(`[Mask] Saved masked PDF: ${maskedFilename} (${result.stats.totalMasked} cells)`);
+      } else if (result.stats.totalTextItems === 0) {
+        console.log(`[Mask] PDF has no extractable text layer (likely scanned image)`);
+      } else if (result.stats.pagesWithKeyword === 0) {
+        console.log(`[Mask] PDF has no "배합비율" keyword on any page`);
+      }
+    } catch (maskErr) {
+      console.error(`[Mask] Failed:`, maskErr.message);
+    }
 
     const updated = await prisma.label.update({
       where: { id: req.params.labelId },
       data: {
         manufacturingReportUrl: fileUrl,
+        manufacturingReportMaskedUrl: maskedFileUrl,
         manufacturingReportName: req.file.originalname,
         manufacturingReportUploadedAt: new Date(),
+        // 새 보고서 업로드 시 기존 추출/검토 결과 초기화
+        aiReportExtraction: null,
+        aiDesignReview: null,
+        aiDesignReviewedAt: null,
       },
     });
 
     res.json({
       manufacturingReportUrl: updated.manufacturingReportUrl,
+      manufacturingReportMaskedUrl: updated.manufacturingReportMaskedUrl,
       manufacturingReportName: updated.manufacturingReportName,
       manufacturingReportUploadedAt: updated.manufacturingReportUploadedAt,
     });

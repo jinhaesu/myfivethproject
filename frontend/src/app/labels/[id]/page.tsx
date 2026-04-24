@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import AppLayout from '@/components/AppLayout';
 import NutritionLabel from '@/components/NutritionLabel';
 import PrintableLabel from '@/components/PrintableLabel';
@@ -10,11 +9,6 @@ import ReviewWorkflow from '@/components/ReviewWorkflow';
 import { api, getFileUrl } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
-
-const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
-  ssr: false,
-  loading: () => <div className="py-12 text-center text-gray-500 text-sm">PDF 뷰어 로딩 중...</div>,
-});
 
 interface AiDesignReviewItem {
   field: string;
@@ -59,8 +53,11 @@ interface Label {
   designFileName: string | null;
   designUploadedAt: string | null;
   manufacturingReportUrl: string | null;
+  manufacturingReportMaskedUrl: string | null;
   manufacturingReportName: string | null;
   manufacturingReportUploadedAt: string | null;
+  aiReportExtraction: any | null;
+  aiDesignExtraction: any | null;
   aiDesignReview: AiDesignReview | null;
   aiDesignReviewedAt: string | null;
   createdAt: string;
@@ -740,16 +737,24 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                       업로드: {label.manufacturingReportUploadedAt ? new Date(label.manufacturingReportUploadedAt).toLocaleString('ko-KR') : '-'}
                     </p>
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="배합비율 컬럼은 영업비밀 보호를 위해 자동 마스킹됩니다">
-                    {'\u{1F510}'} 배합비율 마스킹 적용
-                  </span>
+                  {label.manufacturingReportMaskedUrl ? (
+                    <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-medium" title="서버에서 배합비율 컬럼이 마스킹된 PDF가 표시됩니다">
+                      {'\u{2705}'} 배합비율 마스킹 PDF
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="텍스트 추출 실패 (스캔 PDF). 마스킹 불가능">
+                      {'\u{26A0}️'} 마스킹 미적용 (스캔 PDF)
+                    </span>
+                  )}
                 </div>
-                <PdfViewer
-                  url={getFileUrl(label.manufacturingReportUrl)}
-                  maskRatioColumn={true}
-                  maxHeight="75vh"
-                  initialScale={1.2}
-                />
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                  <iframe
+                    src={getFileUrl(label.manufacturingReportMaskedUrl || label.manufacturingReportUrl)}
+                    className="w-full"
+                    style={{ height: '75vh', minHeight: '600px' }}
+                    title="품목제조보고서 PDF"
+                  />
+                </div>
               </>
             )}
           </div>
@@ -846,22 +851,22 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
           {!designCompareMode && label.designFileUrl && designFileStatus === 'available' && (
             <div className="card">
               <h3 className="text-sm font-bold mb-3">디자인 시안</h3>
-              {(label.designFileName?.toLowerCase().endsWith('.pdf') || label.designFileUrl?.toLowerCase().includes('.pdf')) ? (
-                <PdfViewer
-                  url={getFileUrl(label.designFileUrl)}
-                  maskRatioColumn={false}
-                  maxHeight="80vh"
-                  initialScale={1.2}
-                />
-              ) : (
-                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                {label.designFileName?.endsWith('.pdf') ? (
+                  <iframe
+                    src={getFileUrl(label.designFileUrl)}
+                    className="w-full"
+                    style={{ height: '80vh', minHeight: '600px' }}
+                    title="디자인 PDF"
+                  />
+                ) : (
                   <img
                     src={getFileUrl(label.designFileUrl)}
                     alt="디자인 시안"
                     className="w-full h-auto max-h-[80vh] object-contain"
                   />
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
@@ -874,22 +879,22 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                   <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-bold">디자인 시안</span>
                   <span className="text-xs text-gray-500">{label.designFileName}</span>
                 </div>
-                {(label.designFileName?.toLowerCase().endsWith('.pdf') || label.designFileUrl?.toLowerCase().includes('.pdf')) ? (
-                  <PdfViewer
-                    url={getFileUrl(label.designFileUrl)}
-                    maskRatioColumn={false}
-                    maxHeight="70vh"
-                    initialScale={1.0}
-                  />
-                ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                  {label.designFileName?.endsWith('.pdf') ? (
+                    <iframe
+                      src={getFileUrl(label.designFileUrl)}
+                      className="w-full"
+                      style={{ height: '70vh', minHeight: '500px' }}
+                      title="디자인 PDF"
+                    />
+                  ) : (
                     <img
                       src={getFileUrl(label.designFileUrl)}
                       alt="디자인 시안"
                       className="w-full h-auto max-h-[70vh] object-contain"
                     />
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {/* 오른쪽: AI 생성 라벨 */}
@@ -978,16 +983,46 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
             </div>
           )}
 
+          {/* AI가 추출한 정보 (멀티 패스 1·2단계 결과) */}
+          {label.designFileUrl && label.manufacturingReportUrl && (label.aiReportExtraction || label.aiDesignExtraction) && (
+            <div className="card border-l-4 border-cyan-500">
+              <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                <span>{'\u{1F4D1}'}</span> AI 추출 정보 (멀티 패스 1·2단계)
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">
+                AI가 두 PDF에서 각각 추출한 정보입니다. 비교 결과가 이상하면 여기서 추출 오류를 먼저 확인하세요.
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {label.aiReportExtraction && (
+                  <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <h4 className="text-sm font-bold mb-2 text-cyan-800">{'\u{1F4C4}'} 품목제조보고서 추출</h4>
+                    <pre className="text-xs whitespace-pre-wrap break-words text-gray-700 max-h-[400px] overflow-auto bg-white p-2 rounded">
+{JSON.stringify(label.aiReportExtraction, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {label.aiDesignExtraction && (
+                  <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <h4 className="text-sm font-bold mb-2 text-purple-800">{'\u{1F3A8}'} 디자인 작업물 추출</h4>
+                    <pre className="text-xs whitespace-pre-wrap break-words text-gray-700 max-h-[400px] overflow-auto bg-white p-2 rounded">
+{JSON.stringify(label.aiDesignExtraction, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* AI 자동 검토 결과 */}
           {label.designFileUrl && label.manufacturingReportUrl && (
             <div className="card border-l-4 border-indigo-500">
               <div className="flex items-start justify-between mb-4 gap-3">
                 <div>
                   <h3 className="text-lg font-bold flex items-center gap-2">
-                    <span>{'\u{1F916}'}</span> AI 자동 검토 의견
+                    <span>{'\u{1F916}'}</span> AI 자동 검토 의견 (멀티 패스 3단계)
                   </h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    품목제조보고서와 디자인 작업물의 핵심 데이터를 비교하여 일치 여부를 검토합니다.
+                    멀티 패스 프로세스: ① 보고서 정보 추출 → ② 디자인 정보 추출 → ③ 두 결과를 텍스트로 비교
                   </p>
                 </div>
                 <button
