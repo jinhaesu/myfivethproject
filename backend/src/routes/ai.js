@@ -3,6 +3,36 @@ const Anthropic = require('@anthropic-ai/sdk').default;
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
+// AI 응답에서 JSON을 robust하게 파싱 (다중 fallback)
+function safeParseJson(text) {
+  if (!text) return null;
+  // Strategy 1: 직접 파싱
+  try { return JSON.parse(text); } catch {}
+
+  // Strategy 2: ```json ... ``` 코드블록 안에서 추출
+  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlock) {
+    try { return JSON.parse(codeBlock[1]); } catch {}
+  }
+
+  // Strategy 3: 첫 { 부터 마지막 } 까지 추출
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const candidate = text.substring(firstBrace, lastBrace + 1);
+    try { return JSON.parse(candidate); } catch {}
+
+    // Strategy 4: trailing comma + smart quotes 정리 후 재시도
+    const cleaned = candidate
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'");
+    try { return JSON.parse(cleaned); } catch {}
+  }
+
+  return null;
+}
+
 // 네이티브 모듈은 lazy + try-catch로 로드: 빌드/플랫폼 문제로 누락되어도 서버는 시작
 let pdfToImages = null;
 let prepareImageTiles = null;
@@ -336,12 +366,10 @@ router.post('/generate-label', authenticate, async (req, res) => {
     });
 
     const text = response.content[0].text;
-    let result;
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch {
-      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text });
+    const result = safeParseJson(text);
+    if (!result) {
+      console.error(`[generate-label] JSON parse failed. Raw (처음 500자):`, text.substring(0, 500));
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.' });
     }
 
     res.json({ generated: result });
@@ -383,12 +411,10 @@ router.post('/check-compliance', authenticate, async (req, res) => {
     });
 
     const text = response.content[0].text;
-    let result;
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch {
-      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.' });
+    const result = safeParseJson(text);
+    if (!result) {
+      console.error(`[check-compliance] JSON parse failed. Raw (처음 500자):`, text.substring(0, 500));
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.' });
     }
 
     res.json({ compliance: result });
@@ -581,12 +607,10 @@ ${linkDescriptions}
     });
 
     const text = response.content[0].text;
-    let result;
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch {
-      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text });
+    const result = safeParseJson(text);
+    if (!result) {
+      console.error(`[extract-from-links] JSON parse failed. Raw (처음 500자):`, text.substring(0, 500));
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.' });
     }
 
     // 페이지 가져오기 실패한 링크가 있으면 warnings에 추가
@@ -984,23 +1008,35 @@ async function fileToContentBlocks(fileBuffer, contentType, fileName, kind = 're
 
 async function callExtraction(client, systemPrompt, contentBlocks, label, instructionText) {
   const blocks = Array.isArray(contentBlocks) ? contentBlocks : [contentBlocks];
-  const userText = instructionText || `위 PDF 페이지(이미지)를 한 페이지씩 꼼꼼히 정독하여 시스템 프롬프트의 JSON 스키마로 정보를 추출하세요. 작은 글자도 빠뜨리지 말고 한 글자씩 정확히 읽으세요. 제품명 참고: ${label.productName}`;
+  const userText = instructionText || `위 PDF 페이지(이미지)를 한 페이지씩 꼼꼼히 정독하여 시스템 프롬프트의 JSON 스키마로 정보를 추출하세요. 작은 글자도 빠뜨리지 말고 한 글자씩 정확히 읽으세요. 제품명 참고: ${label.productName}
+
+★ 응답 형식 강제: 첫 글자부터 마지막 글자까지 순수 JSON만 출력. 마크다운 코드블록(\`\`\`) 금지. 설명 텍스트 금지. {로 시작해서 }로 끝나는 JSON만.`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-5-20250929',
     max_tokens: 8192,
     system: systemPrompt,
-    messages: [{
-      role: 'user',
-      content: [
-        ...blocks,
-        { type: 'text', text: userText },
-      ],
-    }],
+    messages: [
+      {
+        role: 'user',
+        content: [
+          ...blocks,
+          { type: 'text', text: userText },
+        ],
+      },
+      // assistant prefill로 JSON 시작 강제 (마크다운/설명 차단)
+      { role: 'assistant', content: '{' },
+    ],
   });
-  const text = response.content[0].text;
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  return JSON.parse(jsonMatch ? jsonMatch[0] : text);
+  const rawText = response.content[0].text;
+  // prefill로 시작했으므로 응답 앞에 '{' 붙임
+  const text = '{' + rawText;
+  const result = safeParseJson(text);
+  if (!result) {
+    console.error(`[AI] JSON 파싱 실패. Raw response (처음 1000자):`, text.substring(0, 1000));
+    throw new Error('AI 응답을 JSON으로 파싱할 수 없습니다. 다시 시도해주세요.');
+  }
+  return result;
 }
 
 // Step 1만 단독 호출
@@ -1119,11 +1155,18 @@ ${JSON.stringify(designExtraction, null, 2)}
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 8192,
       system: COMPARE_PROMPT,
-      messages: [{ role: 'user', content: compareUserMessage }],
+      messages: [
+        { role: 'user', content: compareUserMessage + '\n\n★ 응답 형식: 순수 JSON만, 마크다운 금지' },
+        { role: 'assistant', content: '{' },
+      ],
     });
-    const compareText = compareResponse.content[0].text;
-    const compareJsonMatch = compareText.match(/\{[\s\S]*\}/);
-    const compareResult = JSON.parse(compareJsonMatch ? compareJsonMatch[0] : compareText);
+    const compareRaw = compareResponse.content[0].text;
+    const compareText = '{' + compareRaw;
+    const compareResult = safeParseJson(compareText);
+    if (!compareResult) {
+      console.error(`[AI Review Multi-pass] Compare JSON parse failed. Raw (처음 1000자):`, compareText.substring(0, 1000));
+      throw new Error('AI 비교 응답을 JSON으로 파싱할 수 없습니다. 다시 시도해주세요.');
+    }
     console.log(`[AI Review Multi-pass] Step 3 done in ${Date.now() - t0}ms (total)`);
 
     const updated = await prisma.label.update({
@@ -1249,13 +1292,10 @@ detectedCompanies 필드에 발견된 모든 회사명을 나열하세요.`;
     console.log(`[AI Review] Anthropic responded in ${Date.now() - t0}ms`);
 
     const text = response.content[0].text;
-    let result;
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    } catch (e) {
-      console.error(`[AI Review] JSON parse failed:`, e.message, 'raw text:', text.substring(0, 500));
-      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text.substring(0, 1000) });
+    const result = safeParseJson(text);
+    if (!result) {
+      console.error(`[AI Review legacy] JSON parse failed. Raw (처음 1000자):`, text.substring(0, 1000));
+      return res.status(500).json({ error: 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.' });
     }
 
     const updated = await prisma.label.update({
