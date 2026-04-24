@@ -11,10 +11,9 @@ const PERCENT_ONLY = /^\s*%\s*$/;
 const HAS_HANGUL = /[가-힣]/;
 
 let pdfjsLib = null;
-async function getPdfjs() {
+function getPdfjs() {
   if (pdfjsLib) return pdfjsLib;
-  // legacy 빌드는 Node.js 호환
-  pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
   return pdfjsLib;
 }
 
@@ -26,7 +25,7 @@ async function getPdfjs() {
  * @returns {Promise<{maskedBuffer: Buffer, stats: object} | null>}
  */
 async function createMaskedReportPdf(inputBuffer) {
-  const pdfjs = await getPdfjs();
+  const pdfjs = getPdfjs();
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(inputBuffer),

@@ -739,11 +739,11 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                   </div>
                   {label.manufacturingReportMaskedUrl ? (
                     <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-medium" title="서버에서 배합비율 컬럼이 마스킹된 PDF가 표시됩니다">
-                      {'\u{2705}'} 배합비율 마스킹 PDF
+                      {'\u{2705}'} 배합비율 마스킹됨
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="텍스트 추출 실패 (스캔 PDF). 마스킹 불가능">
-                      {'\u{26A0}️'} 마스킹 미적용 (스캔 PDF)
+                    <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-800 text-xs font-medium" title="이 PDF는 텍스트 레이어가 없는 스캔 이미지 PDF입니다. 자동 마스킹이 불가능합니다.">
+                      {'\u{26A0}️'} 마스킹 불가 (스캔 PDF)
                     </span>
                   )}
                 </div>

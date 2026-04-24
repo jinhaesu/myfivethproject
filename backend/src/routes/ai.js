@@ -3,6 +3,7 @@ const Anthropic = require('@anthropic-ai/sdk').default;
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
+const { pdfToImages } = require('../lib/pdfToImages');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -860,22 +861,54 @@ const DESIGN_REVIEW_PROMPT = `당신은 한국 식품 라벨 검수 전문가입
   "recommendations": ["권장 개선 사항"]
 }`;
 
-// ─── 헬퍼: 파일을 PDF/이미지 content block으로 변환 ───
-async function fileToContent(fileBuffer, contentType, fileName) {
+// ─── 헬퍼: 파일을 Claude content block 배열로 변환 ───
+// PDF는 페이지별 고해상도 PNG 배열로 렌더링 (Vision 파이프라인 직접 사용 → 작은 글자 정확도 ↑)
+// 이미지는 그대로 단일 이미지 블록
+async function fileToContentBlocks(fileBuffer, contentType, fileName) {
   const isPdf = (contentType || '').includes('pdf') || /\.pdf$/i.test(fileName || '');
+
   if (isPdf) {
-    return {
-      type: 'document',
-      source: { type: 'base64', media_type: 'application/pdf', data: fileBuffer.toString('base64') },
-    };
+    try {
+      const images = await pdfToImages(fileBuffer, { scale: 2.5, maxPages: 8, maxLongEdgePx: 2200 });
+      console.log(`[AI] PDF→PNG: ${images.length} pages, sizes=${images.map(i => `${i.width}x${i.height}(${(i.buffer.length / 1024).toFixed(0)}KB)`).join(', ')}`);
+
+      const blocks = [];
+      for (const img of images) {
+        blocks.push({ type: 'text', text: `[페이지 ${img.pageNum}]` });
+        blocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/png',
+            data: img.buffer.toString('base64'),
+          },
+        });
+      }
+      return blocks;
+    } catch (err) {
+      console.error(`[AI] PDF→PNG 실패, document 타입으로 fallback:`, err.message);
+      return [{
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: fileBuffer.toString('base64') },
+      }];
+    }
   }
-  return {
+
+  // 이미지 파일
+  return [{
     type: 'image',
-    source: { type: 'base64', media_type: contentType || 'image/png', data: fileBuffer.toString('base64') },
-  };
+    source: {
+      type: 'base64',
+      media_type: contentType || 'image/png',
+      data: fileBuffer.toString('base64'),
+    },
+  }];
 }
 
-async function callExtraction(client, systemPrompt, contentBlock, label) {
+async function callExtraction(client, systemPrompt, contentBlocks, label, instructionText) {
+  const blocks = Array.isArray(contentBlocks) ? contentBlocks : [contentBlocks];
+  const userText = instructionText || `위 PDF 페이지(이미지)를 한 페이지씩 꼼꼼히 정독하여 시스템 프롬프트의 JSON 스키마로 정보를 추출하세요. 작은 글자도 빠뜨리지 말고 한 글자씩 정확히 읽으세요. 제품명 참고: ${label.productName}`;
+
   const response = await client.messages.create({
     model: 'claude-sonnet-4-5-20250929',
     max_tokens: 8192,
@@ -883,8 +916,8 @@ async function callExtraction(client, systemPrompt, contentBlock, label) {
     messages: [{
       role: 'user',
       content: [
-        contentBlock,
-        { type: 'text', text: `위 PDF/이미지를 정독하여 시스템 프롬프트의 JSON 스키마로 정보를 추출하세요. 제품명 참고: ${label.productName}` },
+        ...blocks,
+        { type: 'text', text: userText },
       ],
     }],
   });
@@ -904,7 +937,7 @@ router.post('/extract-report/:labelId', authenticate, async (req, res) => {
     const reportFile = await storage.getFileBuffer(label.manufacturingReportUrl.replace(/^\/uploads\//, ''));
     if (!reportFile) return res.status(404).json({ error: '보고서 파일을 불러올 수 없습니다.' });
 
-    const content = await fileToContent(reportFile.buffer, reportFile.contentType, label.manufacturingReportName);
+    const content = await fileToContentBlocks(reportFile.buffer, reportFile.contentType, label.manufacturingReportName);
     const extraction = await callExtraction(client, REPORT_EXTRACT_PROMPT, content, label);
 
     await prisma.label.update({
@@ -929,7 +962,7 @@ router.post('/extract-design/:labelId', authenticate, async (req, res) => {
     const designFile = await storage.getFileBuffer(label.designFileUrl.replace(/^\/uploads\//, ''));
     if (!designFile) return res.status(404).json({ error: '디자인 파일을 불러올 수 없습니다.' });
 
-    const content = await fileToContent(designFile.buffer, designFile.contentType, label.designFileName);
+    const content = await fileToContentBlocks(designFile.buffer, designFile.contentType, label.designFileName);
     const extraction = await callExtraction(client, DESIGN_EXTRACT_PROMPT, content, label);
 
     await prisma.label.update({
@@ -976,13 +1009,13 @@ router.post('/review-design-vs-report/:labelId', authenticate, async (req, res) 
 
     // Step 1: 보고서 추출
     console.log(`[AI Review Multi-pass] Step 1: Extracting from report...`);
-    const reportContent = await fileToContent(reportFile.buffer, reportFile.contentType, label.manufacturingReportName);
+    const reportContent = await fileToContentBlocks(reportFile.buffer, reportFile.contentType, label.manufacturingReportName);
     const reportExtraction = await callExtraction(client, REPORT_EXTRACT_PROMPT, reportContent, label);
     console.log(`[AI Review Multi-pass] Step 1 done in ${Date.now() - t0}ms`);
 
     // Step 2: 디자인 추출
     console.log(`[AI Review Multi-pass] Step 2: Extracting from design...`);
-    const designContent = await fileToContent(designFile.buffer, designFile.contentType, label.designFileName);
+    const designContent = await fileToContentBlocks(designFile.buffer, designFile.contentType, label.designFileName);
     const designExtraction = await callExtraction(client, DESIGN_EXTRACT_PROMPT, designContent, label);
     console.log(`[AI Review Multi-pass] Step 2 done in ${Date.now() - t0}ms`);
 

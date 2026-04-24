@@ -1,0 +1,98 @@
+// PDF buffer → 페이지별 고해상도 PNG buffer 배열
+// pdfjs-dist (legacy) + @napi-rs/canvas (prebuilt native, Railway 호환)
+
+const { createCanvas } = require('@napi-rs/canvas');
+
+let pdfjsLib = null;
+function getPdfjs() {
+  if (pdfjsLib) return pdfjsLib;
+  pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+  return pdfjsLib;
+}
+
+// pdfjs-dist가 요구하는 CanvasFactory 인터페이스 구현
+class NodeCanvasFactory {
+  create(width, height) {
+    const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
+    const context = canvas.getContext('2d');
+    return { canvas, context };
+  }
+  reset(canvasAndContext, width, height) {
+    canvasAndContext.canvas.width = Math.ceil(width);
+    canvasAndContext.canvas.height = Math.ceil(height);
+  }
+  destroy(canvasAndContext) {
+    canvasAndContext.canvas.width = 0;
+    canvasAndContext.canvas.height = 0;
+    canvasAndContext.canvas = null;
+    canvasAndContext.context = null;
+  }
+}
+
+/**
+ * PDF buffer를 페이지별 PNG buffer 배열로 변환.
+ *
+ * @param {Buffer} buffer 원본 PDF
+ * @param {object} opts
+ * @param {number} opts.scale 렌더 스케일 (기본 2.5 ≈ 180dpi)
+ * @param {number} opts.maxPages 최대 페이지 수 (기본 8)
+ * @param {number} opts.maxLongEdgePx 가로/세로 중 긴 쪽 최대 픽셀 (기본 2200)
+ * @returns {Promise<Array<{pageNum: number, buffer: Buffer, width: number, height: number}>>}
+ */
+async function pdfToImages(buffer, opts = {}) {
+  const scale = opts.scale ?? 2.5;
+  const maxPages = opts.maxPages ?? 8;
+  const maxLongEdge = opts.maxLongEdgePx ?? 2200;
+
+  const pdfjs = getPdfjs();
+  const factory = new NodeCanvasFactory();
+
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    canvasFactory: factory,
+    disableFontFace: true,
+    useSystemFonts: false,
+    standardFontDataUrl: '',
+  }).promise;
+
+  const pageCount = Math.min(doc.numPages, maxPages);
+  const images = [];
+
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await doc.getPage(i);
+    let viewport = page.getViewport({ scale });
+
+    // 너무 크면 스케일 다운 조정
+    const longEdge = Math.max(viewport.width, viewport.height);
+    if (longEdge > maxLongEdge) {
+      const adjustedScale = scale * (maxLongEdge / longEdge);
+      viewport = page.getViewport({ scale: adjustedScale });
+    }
+
+    const canvasAndContext = factory.create(viewport.width, viewport.height);
+    // 흰 배경 채우기 (투명 PDF 페이지 대응)
+    canvasAndContext.context.fillStyle = '#ffffff';
+    canvasAndContext.context.fillRect(0, 0, viewport.width, viewport.height);
+
+    await page.render({
+      canvasContext: canvasAndContext.context,
+      viewport,
+      canvasFactory: factory,
+      background: '#ffffff',
+    }).promise;
+
+    const png = await canvasAndContext.canvas.encode('png');
+    images.push({
+      pageNum: i,
+      buffer: Buffer.from(png),
+      width: Math.ceil(viewport.width),
+      height: Math.ceil(viewport.height),
+    });
+    factory.destroy(canvasAndContext);
+  }
+
+  await doc.destroy();
+  return images;
+}
+
+module.exports = { pdfToImages };
