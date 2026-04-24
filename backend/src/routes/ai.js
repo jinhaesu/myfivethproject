@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
 const { pdfToImages } = require('../lib/pdfToImages');
+const { prepareImageTiles } = require('../lib/imageSplit');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -649,6 +650,18 @@ const REPORT_EXTRACT_PROMPT = `당신은 한국 「식품·식품첨가물 품�
 const DESIGN_EXTRACT_PROMPT = `당신은 한국 식품 라벨 디자인 시안 분석가입니다.
 첨부된 디자인 작업물(제품 패키지 시안 PDF/이미지)을 정독하고, 라벨에 표기된 모든 정보를 추출하세요.
 
+[★ 다중 이미지 입력 처리 ★]
+이미지 입력은 다음과 같이 여러 장으로 제공될 수 있습니다:
+  - "[전체 (overview)]": 디자인 전체 레이아웃 파악용 (어디에 무엇이 있는지)
+  - "[좌상/우상/좌하/우하 영역 확대]": 같은 디자인을 4분할한 확대 영역 (작은 글자 정밀 판독용)
+  - "[페이지 N]" (PDF인 경우): 페이지별 이미지
+
+판독 절차:
+  1. overview 또는 첫 이미지로 전체 레이아웃과 어떤 정보가 어디에 있는지 파악
+  2. 분할/확대 이미지로 작은 글자(8pt 이하 법정 의무 표기)까지 한 글자씩 정밀 판독
+  3. 같은 정보가 여러 이미지에 걸쳐 있으면 가장 선명한 이미지의 값을 사용
+  4. 작은 글자라도 절대 추측하지 말고 보이는 그대로 옮길 것 (헷갈리면 " [저신뢰도]" 표시)
+
 [★중요: 회사별 분리★]
 디자인 라벨에는 여러 회사가 다른 역할로 표시될 수 있습니다:
   - 제조원 / 제조사 / 제조처 / 제조시설 / 식품제조가공업 → 실제 제조 회사 (★검수의 핵심 비교 대상)
@@ -912,7 +925,34 @@ async function fileToContentBlocks(fileBuffer, contentType, fileName, kind = 're
     }
   }
 
-  // 이미지 파일
+  // 이미지 파일 (PNG/JPG)
+  // 디자인 라벨은 작은 글자가 많아서 Claude 1568px 다운샘플링에 정보 손실 → 4분할 + sharpen
+  // 보고서 이미지는 분할 안 함 (보통 단순 스캔)
+  try {
+    if (kind === 'design') {
+      const tiles = await prepareImageTiles(fileBuffer, { divisionsThresholdPx: 1800, divisions: 2 });
+      console.log(`[AI] Design image → ${tiles.length} tiles: ${tiles.map(t => `${t.label}(${t.width}x${t.height},${(t.buffer.length / 1024).toFixed(0)}KB)`).join(', ')}`);
+
+      const blocks = [];
+      blocks.push({ type: 'text', text: `디자인 이미지를 다음과 같이 분할하여 제공합니다 (총 ${tiles.length}장). 첫 번째는 전체 레이아웃 파악용이고, 나머지는 작은 글자까지 정밀 판독하기 위한 확대 영역입니다. 모든 이미지를 종합해서 정보를 추출하세요.` });
+      for (const tile of tiles) {
+        blocks.push({ type: 'text', text: `[${tile.label}]` });
+        blocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/png',
+            data: tile.buffer.toString('base64'),
+          },
+        });
+      }
+      return blocks;
+    }
+  } catch (e) {
+    console.error(`[AI] Image split failed, sending original:`, e.message);
+  }
+
+  // 분할 미적용: 원본 그대로
   return [{
     type: 'image',
     source: {
