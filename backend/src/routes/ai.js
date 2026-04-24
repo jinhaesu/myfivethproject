@@ -1101,13 +1101,9 @@ async function callExtraction(client, systemPrompt, contentBlocks, label, instru
           { type: 'text', text: userText },
         ],
       },
-      // assistant prefill로 JSON 시작 강제 (마크다운/설명 차단)
-      { role: 'assistant', content: '{' },
     ],
   });
-  const rawText = response.content[0].text;
-  // prefill로 시작했으므로 응답 앞에 '{' 붙임
-  const text = '{' + rawText;
+  const text = response.content[0].text;
   const result = safeParseJson(text);
   if (!result) {
     console.error(`[AI] JSON 파싱 실패. Raw response (처음 1000자):`, text.substring(0, 1000));
@@ -1233,12 +1229,10 @@ ${JSON.stringify(designExtraction, null, 2)}
       max_tokens: 8192,
       system: COMPARE_PROMPT,
       messages: [
-        { role: 'user', content: compareUserMessage + '\n\n★ 응답 형식: 순수 JSON만, 마크다운 금지' },
-        { role: 'assistant', content: '{' },
+        { role: 'user', content: compareUserMessage + '\n\n★ 응답 형식: 순수 JSON만 ({ 로 시작 } 로 끝). 마크다운 코드블록(```) 금지. 설명 텍스트 금지. JSON 문자열 안의 큰따옴표(")는 단일 따옴표(\') 또는 「」로 대체.' },
       ],
     });
-    const compareRaw = compareResponse.content[0].text;
-    const compareText = '{' + compareRaw;
+    const compareText = compareResponse.content[0].text;
     const compareResult = safeParseJson(compareText);
     if (!compareResult) {
       console.error(`[AI Review Multi-pass] Compare JSON parse failed. Raw (처음 1000자):`, compareText.substring(0, 1000));

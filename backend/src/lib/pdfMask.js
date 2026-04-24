@@ -163,25 +163,72 @@ async function applyManualMask(inputBuffer, pageRects) {
   for (const [pageNum, rects] of byPage.entries()) {
     if (pageNum < 1 || pageNum > pages.length) continue;
     const page = pages[pageNum - 1];
-    const pdfWidth = page.getWidth();
-    const pdfHeight = page.getHeight();
-    console.log(`[applyManualMask] page ${pageNum}: PDF ${pdfWidth.toFixed(1)}x${pdfHeight.toFixed(1)}, ${rects.length} rect(s)`);
+    const rotation = page.getRotation().angle; // 0/90/180/270
+    const mediaBox = page.getMediaBox(); // {x, y, width, height} - storage 좌표
+    const mbX = mediaBox.x;
+    const mbY = mediaBox.y;
+    const mbW = mediaBox.width;
+    const mbH = mediaBox.height;
+    // 사용자가 보는(viewer) 크기 = pdfjs viewport: 회전 90/270이면 width/height swap
+    const viewerW = (rotation === 90 || rotation === 270) ? mbH : mbW;
+    const viewerH = (rotation === 90 || rotation === 270) ? mbW : mbH;
+    console.log(`[applyManualMask] page ${pageNum}: rotation=${rotation}, mediaBox=(${mbX},${mbY},${mbW}x${mbH}), viewer=${viewerW}x${viewerH}, ${rects.length} rect(s)`);
 
     for (const r of rects) {
-      const renderedW = r.renderedWidth || pdfWidth;
-      const renderedH = r.renderedHeight || pdfHeight;
-      const scaleX = pdfWidth / renderedW;
-      const scaleY = pdfHeight / renderedH;
+      const renderedW = r.renderedWidth || viewerW;
+      const renderedH = r.renderedHeight || viewerH;
+      const scaleX = viewerW / renderedW;
+      const scaleY = viewerH / renderedH;
 
-      // 이미지 좌표(top-left 기준) → PDF 좌표(bottom-left 기준)
-      const pdfX = r.x * scaleX;
-      const pdfRectW = r.width * scaleX;
-      const pdfRectH = r.height * scaleY;
-      const pdfY = pdfHeight - (r.y * scaleY) - pdfRectH;
+      // viewer 좌표 (top-left origin, Y-down)
+      const vx = r.x * scaleX;
+      const vy = r.y * scaleY;
+      const vw = r.width * scaleX;
+      const vh = r.height * scaleY;
+
+      // viewer 좌표 → PDF storage 좌표 (회전 보정)
+      // PDF /Rotate=N: 화면에 N° 시계방향 회전된 채 표시됨
+      // Storage Y-up, viewer Y-down. Storage 원점 = bottom-left, viewer 원점 = top-left.
+      //
+      // 변환 공식 (검증됨):
+      //   rotation=0:   pdf_x = vx,           pdf_y = mbH - vy
+      //   rotation=90:  pdf_x = vy,           pdf_y = vx
+      //   rotation=180: pdf_x = mbW - vx,     pdf_y = vy
+      //   rotation=270: pdf_x = mbW - vy,     pdf_y = mbH - vx
+      //
+      // 사각형은 viewer 회전 후 storage에서 width/height swap (90/270)
+      let pdfX, pdfY, pdfRectW, pdfRectH;
+      if (rotation === 0) {
+        pdfX = mbX + vx;
+        pdfY = mbY + (mbH - vy - vh);
+        pdfRectW = vw;
+        pdfRectH = vh;
+      } else if (rotation === 90) {
+        pdfX = mbX + vy;
+        pdfY = mbY + vx;
+        pdfRectW = vh;
+        pdfRectH = vw;
+      } else if (rotation === 180) {
+        pdfX = mbX + (mbW - vx - vw);
+        pdfY = mbY + vy;
+        pdfRectW = vw;
+        pdfRectH = vh;
+      } else if (rotation === 270) {
+        pdfX = mbX + (mbW - vy - vh);
+        pdfY = mbY + (mbH - vx - vw);
+        pdfRectW = vh;
+        pdfRectH = vw;
+      } else {
+        pdfX = mbX + vx;
+        pdfY = mbY + (mbH - vy - vh);
+        pdfRectW = vw;
+        pdfRectH = vh;
+      }
 
       console.log(
-        `  img(${r.x},${r.y},${r.width}x${r.height}) renderedSize=${renderedW}x${renderedH} ` +
-        `→ pdf(${pdfX.toFixed(1)},${pdfY.toFixed(1)},${pdfRectW.toFixed(1)}x${pdfRectH.toFixed(1)})`
+        `  img(${r.x},${r.y},${r.width}x${r.height}) rendered=${renderedW}x${renderedH} ` +
+        `→ viewer(${vx.toFixed(1)},${vy.toFixed(1)},${vw.toFixed(1)}x${vh.toFixed(1)}) ` +
+        `→ pdf(${pdfX.toFixed(1)},${pdfY.toFixed(1)},${pdfRectW.toFixed(1)}x${pdfRectH.toFixed(1)}) [rot=${rotation}]`
       );
 
       page.drawRectangle({
