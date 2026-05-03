@@ -227,13 +227,21 @@ router.post('/send-notification', authenticate, async (req, res) => {
       </div>
     `;
 
+    let mailDelivered = false;
+    let mailError = null;
     if (process.env.RESEND_API_KEY) {
-      await resend.emails.send({
-        from: emailFrom,
-        to: email,
-        subject,
-        html,
-      });
+      try {
+        await resend.emails.send({
+          from: emailFrom,
+          to: email,
+          subject,
+          html,
+        });
+        mailDelivered = true;
+      } catch (mailErr) {
+        mailError = mailErr?.message || String(mailErr);
+        console.error('[Resend] 검토 요청 메일 전송 실패:', mailError);
+      }
     } else {
       console.log(`[DEV] Review notification email to ${email}:`);
       console.log(`  Subject: ${subject}`);
@@ -241,7 +249,14 @@ router.post('/send-notification', authenticate, async (req, res) => {
       console.log(`  Pending items: ${pendingItems.length}`);
     }
 
-    res.json({ message: '검토 요청 이메일이 발송되었습니다.' });
+    res.json({
+      message: mailDelivered
+        ? '검토 요청 이메일이 발송되었습니다.'
+        : (process.env.RESEND_API_KEY
+            ? `이메일 발송에 실패했습니다: ${mailError || '알 수 없는 오류'}`
+            : '개발 모드: 이메일은 콘솔에만 출력되었습니다.'),
+      delivered: mailDelivered,
+    });
   } catch (error) {
     console.error('Send notification error:', error);
     res.status(500).json({ error: '이메일 발송에 실패했습니다.' });
