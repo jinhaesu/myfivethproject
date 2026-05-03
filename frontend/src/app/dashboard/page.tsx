@@ -5,6 +5,24 @@ import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
+import {
+  PageHeader,
+  Card,
+  Button,
+  Input,
+  Select,
+  Field,
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+  Badge,
+  StatusPill,
+  EmptyState,
+  CenterSpinner,
+} from '@/components/ui';
 
 interface Label {
   id: string;
@@ -27,12 +45,6 @@ interface Label {
     items: Array<{ isCompleted: boolean }>;
   }>;
 }
-
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  draft: { label: '초안', color: 'bg-gray-100 text-gray-700' },
-  in_review: { label: '검토 중', color: 'bg-yellow-100 text-yellow-700' },
-  approved: { label: '승인 완료', color: 'bg-green-100 text-green-700' },
-};
 
 export default function DashboardPage() {
   const [labels, setLabels] = useState<Label[]>([]);
@@ -60,6 +72,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchLabels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -73,175 +86,203 @@ export default function DashboardPage() {
     return Math.round((allItems.filter((i) => i.isCompleted).length / allItems.length) * 100);
   };
 
+  // 상단 KPI
+  const totalCount = pagination.total;
+  const inReviewCount = labels.filter((l) => l.status === 'in_review').length;
+  const approvedCount = labels.filter((l) => l.status === 'approved').length;
+  const draftCount = labels.filter((l) => l.status === 'draft').length;
+
   return (
     <AppLayout>
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">표기사항 관리</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            영양성분 표기사항 이력을 확인하고 관리합니다.
-          </p>
-        </div>
-        <Link href="/labels/new" className="btn-primary">
-          + 새 라벨 작성
-        </Link>
+      <PageHeader
+        eyebrow="Labeling Operations"
+        title="표기사항 관리"
+        description="식품 표기사항·법령 검토 워크플로우를 한 곳에서 관리합니다."
+        actions={
+          <Link href="/labels/new">
+            <Button variant="primary" size="md">
+              + 새 라벨 작성
+            </Button>
+          </Link>
+        }
+      />
+
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Card padding="md" className="hover-lift">
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-3)]">전체</div>
+          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{totalCount}</div>
+        </Card>
+        <Card padding="md" className="hover-lift">
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-3)]">초안</div>
+          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{draftCount}</div>
+        </Card>
+        <Card padding="md" className="hover-lift">
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--warning-fg)]">검토 중</div>
+          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{inReviewCount}</div>
+        </Card>
+        <Card padding="md" className="hover-lift">
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--success-fg)]">승인</div>
+          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{approvedCount}</div>
+        </Card>
       </div>
 
-      {/* 검색 및 필터 */}
-      <div className="card mb-6">
+      {/* 검색·필터 */}
+      <Card padding="md" className="mb-5">
         <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="제품명으로 검색..."
-            className="input-field flex-1"
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="input-field sm:w-40"
-          >
-            <option value="">전체 상태</option>
-            <option value="draft">초안</option>
-            <option value="in_review">검토 중</option>
-            <option value="approved">승인 완료</option>
-          </select>
-          <button type="submit" className="btn-primary">
+          <Field className="flex-1">
+            <Input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="제품명으로 검색…"
+              inputSize="md"
+            />
+          </Field>
+          <Field className="sm:w-44">
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              inputSize="md"
+            >
+              <option value="">전체 상태</option>
+              <option value="draft">초안</option>
+              <option value="in_review">검토 중</option>
+              <option value="approved">승인 완료</option>
+            </Select>
+          </Field>
+          <Button type="submit" variant="secondary" size="md">
             검색
-          </button>
+          </Button>
         </form>
-      </div>
+      </Card>
 
       {/* 라벨 목록 */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">로딩 중...</div>
+        <CenterSpinner label="라벨 목록 불러오는 중" />
       ) : labels.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-gray-500 mb-4">등록된 표기사항이 없습니다.</p>
-          <Link href="/labels/new" className="btn-primary">
-            첫 라벨 작성하기
-          </Link>
-        </div>
+        <EmptyState
+          title="등록된 표기사항이 없습니다"
+          description="첫 라벨을 만들어 영양성분·원재료·검토 워크플로를 시작하세요."
+          action={
+            <Link href="/labels/new">
+              <Button variant="primary" size="md">
+                + 첫 라벨 작성하기
+              </Button>
+            </Link>
+          }
+        />
       ) : (
         <>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    제품명
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">
-                    강조 표기
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    상태
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">
-                    디자인
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">
-                    검토 진행률
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">
-                    작성자
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    작성일
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {labels.map((label) => {
-                  const progress = getReviewProgress(label);
-                  const statusInfo = STATUS_MAP[label.status] || STATUS_MAP.draft;
-                  const claims = (label.healthClaims as HealthClaim[]) || [];
-                  const eligibleClaims = claims.filter(c => c.eligible);
+          <Table>
+            <THead>
+              <TR>
+                <TH>제품명</TH>
+                <TH className="hidden sm:table-cell">강조 표기</TH>
+                <TH>상태</TH>
+                <TH className="hidden sm:table-cell">디자인</TH>
+                <TH className="hidden md:table-cell">검토 진행률</TH>
+                <TH className="hidden md:table-cell">작성자</TH>
+                <TH align="right">작성일</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {labels.map((label) => {
+                const progress = getReviewProgress(label);
+                const claims = (label.healthClaims as HealthClaim[]) || [];
+                const eligibleClaims = claims.filter((c) => c.eligible);
 
-                  return (
-                    <tr key={label.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
+                return (
+                  <TR key={label.id}>
+                    <TD emphasis>
+                      <Link
+                        href={`/labels/${label.id}`}
+                        className="text-[var(--brand-400)] hover:text-[var(--brand-200)] font-medium transition-colors"
+                      >
+                        {label.productName}
+                      </Link>
+                      {label.productType && (
+                        <p className="text-[11px] text-[var(--text-4)] mt-0.5">{label.productType}</p>
+                      )}
+                    </TD>
+                    <TD className="hidden sm:table-cell">
+                      {eligibleClaims.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {eligibleClaims.slice(0, 3).map((c) => (
+                            <span
+                              key={c.id}
+                              className={`px-1.5 py-0.5 rounded-full text-[10.5px] font-bold ${getClaimBadgeColor(
+                                c,
+                              )}`}
+                            >
+                              {c.name}
+                            </span>
+                          ))}
+                          {eligibleClaims.length > 3 && (
+                            <Badge tone="neutral" size="xs">
+                              +{eligibleClaims.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">—</span>
+                      )}
+                    </TD>
+                    <TD>
+                      <StatusPill status={label.status} />
+                    </TD>
+                    <TD className="hidden sm:table-cell">
+                      {label.designFileUrl ? (
                         <Link
                           href={`/labels/${label.id}`}
-                          className="text-blue-600 hover:underline font-medium"
+                          className="inline-flex"
+                          aria-label="디자인 파일 첨부됨"
                         >
-                          {label.productName}
+                          <Badge tone="violet" size="sm">
+                            {label.designFileName?.endsWith('.pdf') ? 'PDF' : 'IMG'} 첨부
+                          </Badge>
                         </Link>
-                        {label.productType && (
-                          <p className="text-xs text-gray-400 mt-0.5">{label.productType}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        {eligibleClaims.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {eligibleClaims.slice(0, 3).map(c => (
-                              <span key={c.id} className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${getClaimBadgeColor(c)}`}>
-                                {c.name}
-                              </span>
-                            ))}
-                            {eligibleClaims.length > 3 && (
-                              <span className="px-1.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">
-                                +{eligibleClaims.length - 3}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusInfo.color}`}
-                        >
-                          {statusInfo.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        {label.designFileUrl ? (
-                          <Link href={`/labels/${label.id}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                            {label.designFileName?.endsWith('.pdf') ? '\u{1F4C4}' : '\u{1F5BC}'} 첨부완료
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-gray-400">미첨부</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500">{progress}%</span>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">미첨부</span>
+                      )}
+                    </TD>
+                    <TD className="hidden md:table-cell">
+                      <div className="flex items-center gap-2">
+                        <div className="w-24 h-1.5 bg-[var(--bg-3)] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[var(--brand-500)] transition-all duration-base ease-out-soft"
+                            style={{ width: `${progress}%` }}
+                          />
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
-                        {label.createdBy.name || label.createdBy.email}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {new Date(label.createdAt).toLocaleDateString('ko-KR')}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span className="text-[11.5px] text-[var(--text-3)] tabular w-9 text-right">
+                          {progress}%
+                        </span>
+                      </div>
+                    </TD>
+                    <TD className="hidden md:table-cell" muted>
+                      {label.createdBy.name || label.createdBy.email}
+                    </TD>
+                    <TD align="right" muted numeric>
+                      {new Date(label.createdAt).toLocaleDateString('ko-KR')}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
 
           {/* 페이지네이션 */}
           {pagination.totalPages > 1 && (
-            <div className="flex justify-center mt-6 gap-2">
+            <div className="flex justify-center mt-5 gap-1">
               {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
                 <button
                   key={page}
                   onClick={() => fetchLabels(page)}
-                  className={`px-3 py-1 rounded text-sm ${
+                  className={
                     page === pagination.page
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-100 border'
-                  }`}
+                      ? 'px-2.5 py-1 rounded-md text-[12.5px] bg-[var(--brand-500)] text-white tabular'
+                      : 'px-2.5 py-1 rounded-md text-[12.5px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] tabular'
+                  }
                 >
                   {page}
                 </button>

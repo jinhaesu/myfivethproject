@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
+import { Button, Input, Field, Card } from '@/components/ui';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -47,95 +48,95 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="card">
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        {/* 브랜드 헤더 */}
+        <div className="flex items-center gap-2 mb-6 justify-center">
+          <span className="inline-block w-1.5 h-6 rounded-sm bg-[var(--brand-500)]" />
+          <span className="text-[12px] uppercase tracking-[0.16em] text-[var(--text-3)] font-semibold">
+            Compliance Console
+          </span>
+        </div>
+
+        <Card tone="elevated" padding="lg">
+          <div className="text-center mb-6">
+            <h1 className="text-[22px] font-semibold tracking-tight text-[var(--text-1)] mb-1.5">
               영양성분 표기사항 관리
             </h1>
-            <p className="text-gray-500 text-sm">
-              이메일 인증으로 로그인하세요
-            </p>
+            <p className="text-[12.5px] text-[var(--text-3)]">이메일 인증으로 로그인하세요.</p>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-md text-[12.5px] bg-[var(--danger-bg)] border border-[var(--danger-border)] text-[var(--danger-fg)]">
               {error}
             </div>
           )}
 
           {message && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+            <div className="mb-4 p-3 rounded-md text-[12.5px] bg-[var(--info-bg)] border border-[var(--info-border)] text-[var(--info-fg)]">
               {message}
             </div>
           )}
 
           {step === 'email' ? (
-            <form onSubmit={handleSendCode}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  이메일
-                </label>
-                <input
+            <form onSubmit={handleSendCode} className="flex flex-col gap-4">
+              <Field label="이메일" required>
+                <Input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@company.com"
-                  className="input-field"
+                  placeholder="email@joinandjoin.com"
+                  inputSize="md"
+                  autoFocus
                   required
                 />
-              </div>
-              <button
-                type="submit"
-                disabled={loading || !email}
-                className="btn-primary w-full"
-              >
-                {loading ? '발송 중...' : '인증 코드 받기'}
-              </button>
+              </Field>
+              <Button type="submit" loading={loading} disabled={!email} className="w-full">
+                {loading ? '발송 중…' : '인증 코드 받기'}
+              </Button>
             </form>
           ) : (
-            <form onSubmit={handleVerifyCode}>
-              <div className="mb-2">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">{email}</span>으로 발송된 인증 코드를 입력해주세요.
-                </p>
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  인증 코드
-                </label>
-                <input
+            <form onSubmit={handleVerifyCode} className="flex flex-col gap-4">
+              <p className="text-[12.5px] text-[var(--text-3)]">
+                <span className="text-[var(--text-1)] font-medium">{email}</span>으로 발송된 인증 코드를 입력하세요.
+              </p>
+              <Field label="인증 코드" required>
+                <Input
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  placeholder="6자리 인증 코드"
-                  className="input-field text-center text-2xl tracking-widest"
+                  placeholder="6자리 코드"
+                  inputSize="lg"
+                  className="text-center text-2xl tracking-[0.4em] tabular"
                   maxLength={6}
+                  autoFocus
                   required
                 />
+              </Field>
+              <div className="flex flex-col gap-2">
+                <Button type="submit" loading={loading} disabled={code.length !== 6} className="w-full">
+                  {loading ? '확인 중…' : '로그인'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setStep('email');
+                    setCode('');
+                    setMessage('');
+                  }}
+                  className="w-full"
+                >
+                  다른 이메일로 시도
+                </Button>
               </div>
-              <button
-                type="submit"
-                disabled={loading || code.length !== 6}
-                className="btn-primary w-full mb-3"
-              >
-                {loading ? '확인 중...' : '로그인'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('email');
-                  setCode('');
-                  setMessage('');
-                }}
-                className="btn-secondary w-full"
-              >
-                다른 이메일로 시도
-              </button>
             </form>
           )}
-        </div>
+        </Card>
+
+        <p className="text-center text-[11px] text-[var(--text-4)] mt-6">
+          © 조인앤조인 · 식품 표기사항·법령 검토 시스템
+        </p>
       </div>
     </div>
   );

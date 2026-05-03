@@ -45,21 +45,26 @@ router.post('/send-code', async (req, res) => {
     });
 
     if (process.env.RESEND_API_KEY) {
-      await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'noreply@joinandjoin.com',
-        to: email,
-        subject: '[영양성분 표기사항 관리] 인증 코드',
-        html: `
-          <div style="padding: 20px; font-family: sans-serif;">
-            <h2>이메일 인증</h2>
-            <p>아래 인증 코드를 입력해주세요:</p>
-            <div style="font-size: 32px; font-weight: bold; color: #2563eb; margin: 20px 0; letter-spacing: 8px;">
-              ${code}
+      try {
+        await resend.emails.send({
+          from: process.env.EMAIL_FROM || 'noreply@joinandjoin.com',
+          to: email,
+          subject: '[영양성분 표기사항 관리] 인증 코드',
+          html: `
+            <div style="padding: 20px; font-family: sans-serif;">
+              <h2>이메일 인증</h2>
+              <p>아래 인증 코드를 입력해주세요:</p>
+              <div style="font-size: 32px; font-weight: bold; color: #5E6AD2; margin: 20px 0; letter-spacing: 8px;">
+                ${code}
+              </div>
+              <p style="color: #666;">이 코드는 10분간 유효합니다.</p>
             </div>
-            <p style="color: #666;">이 코드는 10분간 유효합니다.</p>
-          </div>
-        `,
-      });
+          `,
+        });
+      } catch (mailErr) {
+        // 메일 전송 실패해도 인증코드는 DB에 저장된 상태이므로 200 응답을 유지하되 로그로 알린다.
+        console.error('[Resend] 인증코드 메일 전송 실패:', mailErr?.message || mailErr);
+      }
     } else {
       console.log(`[DEV] Verification code for ${email}: ${code}`);
     }

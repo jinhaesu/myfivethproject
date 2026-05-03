@@ -2,29 +2,286 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+ * Linear-tone Design Tokens (mysixthproject 디자인 시스템 기반)
+ * Elite operating console for shipping food-label compliance.
+ * ============================================================ */
+:root {
+  /* Surfaces (low → high) */
+  --bg-canvas: #08090A;
+  --bg-0:      #0B0C0D;
+  --bg-1:      #101113;
+  --bg-2:      #16181B;
+  --bg-3:      #1C1F23;
+  --bg-overlay: rgba(8, 9, 10, 0.72);
+
+  /* Text */
+  --text-1: #F7F8F8;
+  --text-2: #C9CED6;
+  --text-3: #8A8F98;
+  --text-4: #5C6168;
+
+  /* Borders */
+  --border-1: #1F2226;
+  --border-2: #2A2D33;
+  --border-3: #3A3E45;
+  --border-focus: #828FFF;
+
+  /* Brand (indigo / violet) */
+  --brand-50:  #EEF0FF;
+  --brand-200: #C4CAFF;
+  --brand-400: #828FFF;
+  --brand-500: #5E6AD2;
+  --brand-600: #4A55BD;
+  --brand-700: #3942A0;
+
+  /* Semantic intents */
+  --success-fg: #34D399;
+  --success-bg: rgba(52, 211, 153, 0.10);
+  --success-border: rgba(52, 211, 153, 0.28);
+
+  --warning-fg: #F5BB42;
+  --warning-bg: rgba(245, 187, 66, 0.10);
+  --warning-border: rgba(245, 187, 66, 0.28);
+
+  --danger-fg: #F87171;
+  --danger-bg: rgba(248, 113, 113, 0.10);
+  --danger-border: rgba(248, 113, 113, 0.28);
+
+  --info-fg: #60A5FA;
+  --info-bg: rgba(96, 165, 250, 0.10);
+  --info-border: rgba(96, 165, 250, 0.28);
+
+  /* Type */
+  --fs-micro:   0.6875rem;
+  --fs-caption: 0.75rem;
+  --fs-body:    0.8125rem;
+  --fs-base:    0.875rem;
+  --fs-lg:      1rem;
+  --fs-h4:      1.125rem;
+  --fs-h3:      1.3125rem;
+  --fs-h2:      1.625rem;
+  --fs-h1:      2rem;
+
+  /* Radii */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  /* Elevation (subtle on dark) */
+  --elev-1: 0 1px 0 rgba(255,255,255,0.02), 0 1px 2px rgba(0,0,0,0.40);
+  --elev-2: 0 1px 0 rgba(255,255,255,0.03), 0 4px 8px -2px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.30);
+  --elev-3: 0 1px 0 rgba(255,255,255,0.04), 0 12px 24px -6px rgba(0,0,0,0.55), 0 4px 8px rgba(0,0,0,0.30);
+  --elev-pop: 0 24px 48px -12px rgba(0,0,0,0.65), 0 8px 16px -4px rgba(0,0,0,0.45);
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --d-instant: 80ms;
+  --d-fast:    140ms;
+  --d-base:    200ms;
+  --d-slow:    320ms;
+}
+
 @layer base {
+  html {
+    color-scheme: dark;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900;
+    background: var(--bg-canvas);
+    color: var(--text-1);
+    font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont,
+                 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    font-size: var(--fs-base);
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+    font-feature-settings: 'ss01', 'cv01', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Subtle ambient glow */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(80% 60% at 18% -10%, rgba(94,106,210,0.07), transparent 60%),
+      radial-gradient(60% 60% at 92% 110%, rgba(99,102,241,0.04), transparent 60%);
+    z-index: -1;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium;
+    @apply inline-flex items-center justify-center px-3.5 py-2 rounded-md text-sm font-medium transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    background: var(--brand-500);
+    color: #fff;
+    border: 1px solid transparent;
   }
+  .btn-primary:hover:not(:disabled) { background: var(--brand-600); }
+  .btn-primary:active:not(:disabled) { background: var(--brand-700); }
+
   .btn-secondary {
-    @apply bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium;
+    @apply inline-flex items-center justify-center px-3.5 py-2 rounded-md text-sm font-medium transition-colors;
+    background: var(--bg-2);
+    color: var(--text-1);
+    border: 1px solid var(--border-2);
   }
+  .btn-secondary:hover { background: var(--bg-3); border-color: var(--border-3); }
+
   .btn-danger {
-    @apply bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium;
+    @apply inline-flex items-center justify-center px-3.5 py-2 rounded-md text-sm font-medium transition-colors;
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+    border: 1px solid var(--danger-border);
   }
+  .btn-danger:hover { background: rgba(248,113,113,0.16); }
+
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+    @apply w-full px-3 py-2 rounded-md text-sm transition-colors;
+    background: var(--bg-1);
+    color: var(--text-1);
+    border: 1px solid var(--border-2);
   }
+  .input-field::placeholder { color: var(--text-4); }
+  .input-field:focus {
+    outline: none;
+    border-color: var(--brand-500);
+    box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.18);
+  }
+
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+    padding: 1.25rem;
   }
 }
+
+@layer utilities {
+  .tabular { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1, 'cv11' 1; }
+  .surface-1 { background: var(--bg-1); border: 1px solid var(--border-1); }
+  .surface-2 { background: var(--bg-2); border: 1px solid var(--border-1); }
+
+  .hover-lift {
+    transition: transform var(--d-base) var(--ease-out),
+                box-shadow var(--d-base) var(--ease-out),
+                border-color var(--d-base) var(--ease-out),
+                background-color var(--d-base) var(--ease-out);
+  }
+  .hover-lift:hover {
+    transform: translateY(-1px);
+    border-color: var(--border-2);
+    box-shadow: var(--elev-2);
+  }
+
+  @keyframes ds-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in { animation: ds-fade-in var(--d-base) var(--ease-out) both; }
+
+  .ring-focus { transition: box-shadow var(--d-fast) var(--ease-out); }
+  .ring-focus:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bg-canvas), 0 0 0 4px var(--brand-400);
+  }
+}
+
+/* ============================================================
+ * 레거시 호환 레이어
+ * 기존 페이지(labels/[id], labels/new, ReviewWorkflow 등)는
+ * bg-white / bg-gray-50 / text-gray-* / border-gray-* 같은
+ * 라이트 톤 Tailwind 유틸을 다수 사용합니다.
+ * 이 영역에서 한 번에 다크로 매핑해 점진적 마이그레이션 부담을 낮춥니다.
+ *
+ * 모든 선택자를 :where() 로 감싸 specificity 를 0 으로 유지합니다.
+ * 인쇄용 라벨(.kr-label / .nutrition-label / .printable-label /
+ * .us-label / .japan-label) 과 .light-surface 스코프 내부의
+ * 라이트 복원 규칙(아래 별도 블록)이 우선 적용되도록 하기 위함.
+ * ============================================================ */
+
+/* 페이지 wrapper / 카드 표면 */
+:where(.bg-white) {
+  background-color: var(--bg-1) !important;
+  color: var(--text-1);
+}
+:where(.bg-gray-50) { background-color: var(--bg-canvas) !important; }
+:where(.bg-gray-100) { background-color: var(--bg-2) !important; }
+:where(.bg-gray-200) { background-color: var(--bg-3) !important; }
+
+/* 텍스트 톤 */
+:where(.text-gray-900) { color: var(--text-1) !important; }
+:where(.text-gray-800) { color: var(--text-1) !important; }
+:where(.text-gray-700) { color: var(--text-2) !important; }
+:where(.text-gray-600) { color: var(--text-2) !important; }
+:where(.text-gray-500) { color: var(--text-3) !important; }
+:where(.text-gray-400) { color: var(--text-3) !important; }
+
+/* 보더 */
+:where(.border-gray-200) { border-color: var(--border-1) !important; }
+:where(.border-gray-300) { border-color: var(--border-2) !important; }
+:where(.border-gray-100) { border-color: var(--border-1) !important; }
+:where(.divide-gray-100 > * + *) { border-color: var(--border-1) !important; }
+:where(.divide-gray-200 > * + *) { border-color: var(--border-1) !important; }
+
+/* hover 상태도 다크로 */
+:where(.hover\:bg-gray-50:hover) { background-color: var(--bg-2) !important; }
+:where(.hover\:bg-gray-100:hover) { background-color: var(--bg-3) !important; }
+
+/* 링크 강조: blue-600 → brand */
+:where(.text-blue-600) { color: var(--brand-400) !important; }
+:where(.bg-blue-600) { background-color: var(--brand-500) !important; }
+:where(.bg-blue-700) { background-color: var(--brand-600) !important; }
+:where(.hover\:bg-blue-700:hover) { background-color: var(--brand-600) !important; }
+
+/* status pill 라이트 톤 → 시맨틱 토큰 */
+:where(.bg-yellow-100) { background-color: var(--warning-bg) !important; }
+:where(.text-yellow-700) { color: var(--warning-fg) !important; }
+:where(.bg-green-100) { background-color: var(--success-bg) !important; }
+:where(.text-green-700) { color: var(--success-fg) !important; }
+:where(.bg-red-50) { background-color: var(--danger-bg) !important; }
+:where(.bg-red-100) { background-color: var(--danger-bg) !important; }
+:where(.text-red-700) { color: var(--danger-fg) !important; }
+:where(.text-red-600) { color: var(--danger-fg) !important; }
+:where(.border-red-200) { border-color: var(--danger-border) !important; }
+:where(.border-green-200) { border-color: var(--success-border) !important; }
+:where(.bg-blue-50) { background-color: var(--info-bg) !important; }
+:where(.text-blue-700) { color: var(--info-fg) !important; }
+:where(.text-blue-800) { color: var(--info-fg) !important; }
+:where(.border-blue-200) { border-color: var(--info-border) !important; }
+:where(.bg-yellow-50) { background-color: var(--warning-bg) !important; }
+:where(.border-yellow-200) { border-color: var(--warning-border) !important; }
+:where(.bg-purple-100) { background-color: rgba(168,85,247,0.15) !important; }
+:where(.text-purple-700) { color: #C084FC !important; }
+:where(.bg-orange-50) { background-color: rgba(251,146,60,0.10) !important; }
+:where(.bg-pink-100) { background-color: rgba(244,114,182,0.15) !important; }
+:where(.text-pink-700) { color: #F472B6 !important; }
+:where(.bg-indigo-100) { background-color: rgba(94,106,210,0.20) !important; }
+:where(.text-indigo-700) { color: var(--brand-200) !important; }
+
+/* shadow 절제: shadow-sm 정도만 elev-1 으로 */
+:where(.shadow-sm) { box-shadow: var(--elev-1) !important; }
+:where(.shadow) { box-shadow: var(--elev-2) !important; }
+
+/* 로그인 페이지의 그라디언트 보정 */
+:where(.from-blue-50) { --tw-gradient-from: rgba(94,106,210,0.06) !important; }
+:where(.to-indigo-100) { --tw-gradient-to: rgba(94,106,210,0.04) !important; }
+
+/* placeholder/스크롤바 */
+::placeholder { color: var(--text-4); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-3); }
 
 /* 기존 미리보기 라벨 */
 .nutrition-label {
@@ -307,4 +564,65 @@
   body * { visibility: hidden; }
   #printable-label, #printable-label * { visibility: visible; }
   #printable-label { position: absolute; left: 0; top: 0; margin: 0; }
+}
+
+/* ============================================================
+ * 인쇄용 라벨(.kr-label / .nutrition-label / .printable-label /
+ * .us-label / .japan-label) 영역은 다크 톤이 침범하지 않도록
+ * 안쪽의 라이트 Tailwind 유틸을 본래 톤으로 되돌립니다.
+ * 인쇄/캡처 결과물의 가독성을 보존하는 것이 우선.
+ *
+ * 라이트 복원 규칙은 plain class chain selector 로 작성해
+ * specificity 가 위쪽 :where() 레거시 컴팻 규칙보다 항상 높도록 보장.
+ * ============================================================ */
+.nutrition-label,
+.kr-label,
+.printable-label,
+.us-label,
+.japan-label,
+.light-surface {
+  background: #fff !important;
+  color: #111 !important;
+  color-scheme: light;
+}
+
+.nutrition-label .bg-white, .kr-label .bg-white, .printable-label .bg-white,
+.us-label .bg-white, .japan-label .bg-white, .light-surface .bg-white {
+  background-color: #fff !important;
+}
+.nutrition-label .bg-gray-50, .kr-label .bg-gray-50, .printable-label .bg-gray-50,
+.us-label .bg-gray-50, .japan-label .bg-gray-50, .light-surface .bg-gray-50 {
+  background-color: #f9fafb !important;
+}
+.nutrition-label .bg-gray-100, .kr-label .bg-gray-100, .printable-label .bg-gray-100,
+.us-label .bg-gray-100, .japan-label .bg-gray-100, .light-surface .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+.nutrition-label .text-gray-900, .kr-label .text-gray-900, .printable-label .text-gray-900,
+.us-label .text-gray-900, .japan-label .text-gray-900, .light-surface .text-gray-900 {
+  color: #111827 !important;
+}
+.nutrition-label .text-gray-800, .kr-label .text-gray-800, .printable-label .text-gray-800,
+.us-label .text-gray-800, .japan-label .text-gray-800, .light-surface .text-gray-800 {
+  color: #1f2937 !important;
+}
+.nutrition-label .text-gray-700, .kr-label .text-gray-700, .printable-label .text-gray-700,
+.us-label .text-gray-700, .japan-label .text-gray-700, .light-surface .text-gray-700 {
+  color: #374151 !important;
+}
+.nutrition-label .text-gray-600, .kr-label .text-gray-600, .printable-label .text-gray-600,
+.us-label .text-gray-600, .japan-label .text-gray-600, .light-surface .text-gray-600 {
+  color: #4b5563 !important;
+}
+.nutrition-label .text-gray-500, .kr-label .text-gray-500, .printable-label .text-gray-500,
+.us-label .text-gray-500, .japan-label .text-gray-500, .light-surface .text-gray-500 {
+  color: #6b7280 !important;
+}
+.nutrition-label .border-gray-200, .kr-label .border-gray-200, .printable-label .border-gray-200,
+.us-label .border-gray-200, .japan-label .border-gray-200, .light-surface .border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+.nutrition-label .border-gray-300, .kr-label .border-gray-300, .printable-label .border-gray-300,
+.us-label .border-gray-300, .japan-label .border-gray-300, .light-surface .border-gray-300 {
+  border-color: #d1d5db !important;
 }

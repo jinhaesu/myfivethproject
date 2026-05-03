@@ -9,6 +9,7 @@ const storage = require('../lib/storage');
 let createMaskedReportPdf = null;
 let applyManualMask = null;
 let pdfToImages = null;
+let flattenMaskedPdfToImages = null;
 try {
   ({ createMaskedReportPdf, applyManualMask } = require('../lib/pdfMask'));
 } catch (e) {
@@ -18,6 +19,11 @@ try {
   ({ pdfToImages } = require('../lib/pdfToImages'));
 } catch (e) {
   console.error('[Upload] pdfToImages 로드 실패:', e.message);
+}
+try {
+  ({ flattenMaskedPdfToImages } = require('../lib/pdfFlatten'));
+} catch (e) {
+  console.error('[Upload] pdfFlatten 로드 실패 (텍스트 레이어 제거 비활성):', e.message);
 }
 
 const router = express.Router();
@@ -177,9 +183,26 @@ router.post('/:labelId/manufacturing-report', authenticate, reportUpload.single(
       console.log(`[Mask] Stats:`, result.stats);
 
       if (result.stats.totalMasked > 0) {
+        // 보안: 흰 사각형만 그린 PDF 는 텍스트 레이어가 그대로 남아 배합비(%) 가 추출됨.
+        // 마스킹된 PDF 를 페이지 이미지로 평탄화해서 텍스트 레이어 자체를 제거.
+        let bufferToSave = result.maskedBuffer;
+        if (flattenMaskedPdfToImages) {
+          try {
+            const flat = await flattenMaskedPdfToImages(result.maskedBuffer);
+            if (flat?.flattenedBuffer) {
+              bufferToSave = flat.flattenedBuffer;
+              console.log(`[Mask] Flattened masked PDF (${flat.pageCount} pages, text layer removed)`);
+            } else {
+              console.warn('[Mask] Flatten returned null — fallback to visual-only mask (텍스트 추출 가능 위험)');
+            }
+          } catch (flatErr) {
+            console.error('[Mask] Flatten 실패 — fallback to visual-only mask:', flatErr.message);
+          }
+        }
+
         const maskedFilename = req.file.filename.replace(/\.pdf$/i, '-masked.pdf');
         const maskedPath = path.join(reportDir, maskedFilename);
-        fs.writeFileSync(maskedPath, result.maskedBuffer);
+        fs.writeFileSync(maskedPath, bufferToSave);
         const maskedKey = `manufacturing-reports/${maskedFilename}`;
         maskedFileUrl = `/uploads/manufacturing-reports/${maskedFilename}`;
         await storage.uploadFile(maskedKey, maskedPath, 'application/pdf');
@@ -280,6 +303,22 @@ router.post('/:labelId/manufacturing-report/apply-mask', authenticate, async (re
     console.log(`[Manual Mask] Applying ${pageRects.length} rects on ${label.manufacturingReportName}`);
     const maskedBuffer = await applyManualMask(file.buffer, pageRects);
 
+    // 보안: 수동 마스킹도 동일하게 텍스트 레이어 제거를 위해 페이지 이미지로 평탄화
+    let bufferToSave = maskedBuffer;
+    if (flattenMaskedPdfToImages) {
+      try {
+        const flat = await flattenMaskedPdfToImages(maskedBuffer);
+        if (flat?.flattenedBuffer) {
+          bufferToSave = flat.flattenedBuffer;
+          console.log(`[Manual Mask] Flattened masked PDF (${flat.pageCount} pages, text layer removed)`);
+        } else {
+          console.warn('[Manual Mask] Flatten returned null — fallback to visual-only mask (텍스트 추출 가능 위험)');
+        }
+      } catch (flatErr) {
+        console.error('[Manual Mask] Flatten 실패 — fallback to visual-only mask:', flatErr.message);
+      }
+    }
+
     // 기존 마스킹 파일 삭제
     if (label.manufacturingReportMaskedUrl) {
       const oldKey = label.manufacturingReportMaskedUrl.replace(/^\/uploads\//, '');
@@ -290,7 +329,7 @@ router.post('/:labelId/manufacturing-report/apply-mask', authenticate, async (re
     const baseName = path.basename(key, path.extname(key));
     const maskedFilename = `${baseName}-masked.pdf`;
     const maskedPath = path.join(reportDir, maskedFilename);
-    fs.writeFileSync(maskedPath, maskedBuffer);
+    fs.writeFileSync(maskedPath, bufferToSave);
     const maskedKey = `manufacturing-reports/${maskedFilename}`;
     const maskedUrl = `/uploads/manufacturing-reports/${maskedFilename}`;
     await storage.uploadFile(maskedKey, maskedPath, 'application/pdf');

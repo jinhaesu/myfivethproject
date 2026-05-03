@@ -16,6 +16,10 @@ const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map(u => u.trim().replace(/\/+$/, ''))
   : ['http://localhost:3000'];
 
+if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+  console.warn('[CORS] FRONTEND_URL 환경변수가 비어 있습니다. 프로덕션 도메인이 차단될 수 있습니다.');
+}
+
 console.log('Allowed CORS origins:', allowedOrigins);
 console.log('PORT:', PORT);
 
