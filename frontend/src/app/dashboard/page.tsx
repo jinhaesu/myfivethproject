@@ -33,6 +33,10 @@ interface Label {
   healthClaims: HealthClaim[] | null;
   designFileUrl: string | null;
   designFileName: string | null;
+  manufacturingReportUrl: string | null;
+  manufacturingReportName: string | null;
+  manufacturingReportMaskedUrl: string | null;
+  manufacturingReportMaskingLocked: boolean | null;
   createdAt: string;
   updatedAt: string;
   createdBy: {
@@ -181,6 +185,7 @@ export default function DashboardPage() {
                 <TH className="hidden sm:table-cell">강조 표기</TH>
                 <TH>상태</TH>
                 <TH className="hidden sm:table-cell">디자인</TH>
+                <TH className="hidden sm:table-cell">품목제조보고</TH>
                 <TH className="hidden md:table-cell">검토 진행률</TH>
                 <TH className="hidden md:table-cell">작성자</TH>
                 <TH align="right">작성일</TH>
@@ -241,6 +246,46 @@ export default function DashboardPage() {
                           <Badge tone="violet" size="sm">
                             {label.designFileName?.endsWith('.pdf') ? 'PDF' : 'IMG'} 첨부
                           </Badge>
+                        </Link>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">미첨부</span>
+                      )}
+                    </TD>
+                    <TD className="hidden sm:table-cell">
+                      {label.manufacturingReportUrl ? (
+                        <Link
+                          href={`/labels/${label.id}`}
+                          className="inline-flex items-center gap-1.5"
+                          aria-label="품목제조보고서 첨부됨"
+                        >
+                          <Badge tone="info" size="sm">
+                            PDF 첨부
+                          </Badge>
+                          {label.manufacturingReportMaskingLocked ? (
+                            <Badge
+                              tone="success"
+                              size="xs"
+                              title="배합비율 마스킹 영구 적용됨"
+                            >
+                              마스킹
+                            </Badge>
+                          ) : label.manufacturingReportMaskedUrl ? (
+                            <Badge
+                              tone="warning"
+                              size="xs"
+                              title="자동 마스킹 적용 (수동 확인 권장)"
+                            >
+                              자동
+                            </Badge>
+                          ) : (
+                            <Badge
+                              tone="warning"
+                              size="xs"
+                              title="배합비 마스킹 미적용"
+                            >
+                              미마스킹
+                            </Badge>
+                          )}
                         </Link>
                       ) : (
                         <span className="text-[11px] text-[var(--text-4)]">미첨부</span>
