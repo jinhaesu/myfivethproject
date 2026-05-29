@@ -122,8 +122,8 @@ function getClient() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
-// 모델: 검토(추출/비교) 작업은 Opus 4.7 (최고 정확도), 일반 보조는 Sonnet
-const REVIEW_MODEL = 'claude-opus-4-7';
+// 모델: 검토(추출/비교) 작업은 Opus 4.8 (최고 정확도), 일반 보조는 Sonnet
+const REVIEW_MODEL = 'claude-opus-4-8';
 const ASSIST_MODEL = 'claude-sonnet-4-5-20250929';
 
 const KOREAN_ALLERGENS = [
