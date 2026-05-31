@@ -5,7 +5,13 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+let _resend = null;
+function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 
 // 리뷰 항목 업데이트 (체크/해제, 검토자 이름, 비고)
 router.put('/items/:itemId', authenticate, async (req, res) => {
@@ -229,7 +235,8 @@ router.post('/send-notification', authenticate, async (req, res) => {
 
     let mailDelivered = false;
     let mailError = null;
-    if (process.env.RESEND_API_KEY) {
+    const resend = getResend();
+    if (resend) {
       try {
         await resend.emails.send({
           from: emailFrom,

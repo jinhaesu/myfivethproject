@@ -6,7 +6,13 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+let _resend = null;
+function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -44,7 +50,8 @@ router.post('/send-code', async (req, res) => {
       },
     });
 
-    if (process.env.RESEND_API_KEY) {
+    const resend = getResend();
+    if (resend) {
       try {
         await resend.emails.send({
           from: process.env.EMAIL_FROM || 'noreply@joinandjoin.com',
