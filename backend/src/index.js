@@ -20,6 +20,16 @@ if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
   console.warn('[CORS] FRONTEND_URL 환경변수가 비어 있습니다. 프로덕션 도메인이 차단될 수 있습니다.');
 }
 
+// 부팅 진단: 주요 환경변수가 빠지면 어떤 기능이 영향을 받는지 명시
+const envStatus = {
+  DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'MISSING (DB 접근 불가)',
+  JWT_SECRET: process.env.JWT_SECRET ? 'set' : 'MISSING (인증 토큰 발급 실패)',
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing (AI 검토 비활성)',
+  RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing (이메일 발송 비활성)',
+  AWS_S3_BUCKET: process.env.AWS_S3_BUCKET ? 'set' : 'missing (로컬 파일시스템 사용)',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'missing',
+};
+console.log('[Boot] 환경변수 상태:', envStatus);
 console.log('Allowed CORS origins:', allowedOrigins);
 console.log('PORT:', PORT);
 
