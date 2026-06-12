@@ -54,6 +54,11 @@ export interface LaunchProject {
   description: string | null;
   targetLaunchDate: string | null;
   status: string;
+  brandType: string | null;
+  salesChannels: string | null;
+  storageCondition: string | null;
+  usp: string[] | null;
+  targetShelfLife: string | null;
   createdAt: string;
   createdBy: { id: string; name: string | null; email: string; department: string | null };
   stages: LaunchStage[];
@@ -97,3 +102,21 @@ export const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
 };
 
 export const PRODUCT_TYPES = ['제과', '제빵', '케이크·디저트', '냉동생지', '기타'];
+
+export const BRAND_TYPES = [
+  { value: 'NB', label: 'NB (자사 브랜드)' },
+  { value: 'PNB', label: 'PNB (공동기획 브랜드)' },
+  { value: 'PB', label: 'PB (유통사 브랜드)' },
+];
+
+export const STORAGE_CONDITIONS = ['실온', '냉장', '냉동'];
+
+export const USP_OPTIONS = [
+  '고단백',
+  '저당',
+  '저칼로리',
+  '고식이섬유',
+  '개별인정형(식후혈당안정 등)',
+  '글루텐프리',
+  '비건',
+];

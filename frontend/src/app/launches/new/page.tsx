@@ -1,10 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
-import { PRODUCT_TYPES } from '@/lib/launch';
+import {
+  PRODUCT_TYPES,
+  BRAND_TYPES,
+  STORAGE_CONDITIONS,
+  USP_OPTIONS,
+  LaunchProject,
+} from '@/lib/launch';
 import {
   PageHeader,
   Card,
@@ -31,43 +37,89 @@ interface StageOwnerInput {
   dueDate: string;
 }
 
-export default function NewLaunchPage() {
+function NewLaunchForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const copyFromId = searchParams.get('from');
+
   const [template, setTemplate] = useState<TemplateStage[]>([]);
-  const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [copiedFrom, setCopiedFrom] = useState('');
 
   const [productName, setProductName] = useState('');
   const [productType, setProductType] = useState(PRODUCT_TYPES[0]);
   const [description, setDescription] = useState('');
   const [targetLaunchDate, setTargetLaunchDate] = useState('');
+  const [brandType, setBrandType] = useState('');
+  const [salesChannels, setSalesChannels] = useState('');
+  const [storageCondition, setStorageCondition] = useState('');
+  const [usp, setUsp] = useState<string[]>([]);
+  const [uspEtc, setUspEtc] = useState('');
+  const [targetShelfLife, setTargetShelfLife] = useState('');
   const [owners, setOwners] = useState<StageOwnerInput[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
         const data = await api.launches.getTemplate();
-        setTemplate(data.template);
-        setOwners(
-          data.template.map((s: TemplateStage) => ({
-            ownerName: '',
-            ownerEmail: '',
-            department: s.department,
-            dueDate: '',
-          }))
-        );
+        const tmpl: TemplateStage[] = data.template;
+        setTemplate(tmpl);
+
+        let base: StageOwnerInput[] = tmpl.map((s) => ({
+          ownerName: '',
+          ownerEmail: '',
+          department: s.department,
+          dueDate: '',
+        }));
+
+        // 프로젝트 복사: 기존 프로젝트의 제품·전략·단계 담당 정보를 프리필 (마감일은 새로 입력)
+        if (copyFromId) {
+          try {
+            const src = await api.launches.get(copyFromId);
+            const p: LaunchProject = src.project;
+            setProductName(`${p.productName} (복사)`);
+            if (p.productType) setProductType(p.productType);
+            setDescription(p.description || '');
+            setBrandType(p.brandType || '');
+            setSalesChannels(p.salesChannels || '');
+            setStorageCondition(p.storageCondition || '');
+            const srcUsp = p.usp || [];
+            setUsp(srcUsp.filter((u) => USP_OPTIONS.includes(u)));
+            setUspEtc(srcUsp.filter((u) => !USP_OPTIONS.includes(u)).join(', '));
+            setTargetShelfLife(p.targetShelfLife || '');
+            base = tmpl.map((s, idx) => {
+              const srcStage = p.stages.find((st) => st.sortOrder === idx);
+              return {
+                ownerName: srcStage?.ownerName || '',
+                ownerEmail: srcStage?.ownerEmail || '',
+                department: srcStage?.department || s.department,
+                dueDate: '',
+              };
+            });
+            setCopiedFrom(p.productName);
+          } catch (err) {
+            console.error('Failed to copy project:', err);
+          }
+        }
+        setOwners(base);
       } catch (err) {
         console.error('Failed to fetch launch template:', err);
         setError('단계 템플릿을 불러오지 못했습니다.');
       } finally {
-        setLoadingTemplate(false);
+        setLoading(false);
       }
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copyFromId]);
 
   const setOwner = (idx: number, patch: Partial<StageOwnerInput>) => {
     setOwners((prev) => prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
+  };
+
+  const toggleUsp = (option: string) => {
+    setUsp((prev) => (prev.includes(option) ? prev.filter((u) => u !== option) : [...prev, option]));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -76,6 +128,23 @@ export default function NewLaunchPage() {
       setError('제품명을 입력해주세요.');
       return;
     }
+    const missing = template
+      .map((s, idx) => {
+        const o = owners[idx];
+        const lacks = [];
+        if (!o?.ownerName.trim()) lacks.push('담당자 이름');
+        if (!o?.ownerEmail.trim()) lacks.push('담당자 이메일');
+        if (!o?.dueDate) lacks.push('마감일');
+        return lacks.length > 0 ? `${s.name}: ${lacks.join('·')}` : null;
+      })
+      .filter(Boolean);
+    if (missing.length > 0) {
+      setError(`모든 단계에 담당자와 마감일을 지정해야 합니다.\n${missing.join(' / ')}`);
+      return;
+    }
+
+    const uspAll = [...usp, ...uspEtc.split(',').map((s) => s.trim()).filter(Boolean)];
+
     try {
       setSubmitting(true);
       setError('');
@@ -84,12 +153,17 @@ export default function NewLaunchPage() {
         productType,
         description: description.trim() || undefined,
         targetLaunchDate: targetLaunchDate || undefined,
+        brandType: brandType || undefined,
+        salesChannels: salesChannels.trim() || undefined,
+        storageCondition: storageCondition || undefined,
+        usp: uspAll.length > 0 ? uspAll : undefined,
+        targetShelfLife: targetShelfLife.trim() || undefined,
         stageOwners: owners.map((o, idx) => ({
           sortOrder: idx,
-          ownerName: o.ownerName.trim() || undefined,
-          ownerEmail: o.ownerEmail.trim() || undefined,
+          ownerName: o.ownerName.trim(),
+          ownerEmail: o.ownerEmail.trim(),
           department: o.department.trim() || undefined,
-          dueDate: o.dueDate || undefined,
+          dueDate: o.dueDate,
         })),
       });
       router.push(`/launches/${data.project.id}`);
@@ -100,15 +174,21 @@ export default function NewLaunchPage() {
   };
 
   return (
-    <AppLayout>
+    <>
       <PageHeader
         eyebrow="Launch Operations"
         title="새 출시 프로젝트"
-        description="제과·제빵 출시 템플릿(7단계)으로 단계별 업무·체크리스트가 자동 생성됩니다."
+        description="제과·제빵 출시 템플릿(7단계)으로 단계별 업무·체크리스트가 자동 생성됩니다. 모든 단계의 담당자·마감일 지정이 필수입니다."
       />
 
+      {copiedFrom && (
+        <div className="mb-4 px-4 py-3 rounded-md bg-[var(--info-bg)] border border-[var(--info-border)] text-[13px] text-[var(--info-fg)]">
+          「{copiedFrom}」 프로젝트를 복사했습니다. 제품 정보·전략·단계 담당자가 채워졌으니 출시일과 단계 마감일만 새로 지정하세요.
+        </div>
+      )}
+
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-md bg-[var(--danger-bg)] border border-[var(--danger-border)] text-[13px] text-[var(--danger-fg)]">
+        <div className="mb-4 px-4 py-3 rounded-md bg-[var(--danger-bg)] border border-[var(--danger-border)] text-[13px] text-[var(--danger-fg)] whitespace-pre-wrap">
           {error}
         </div>
       )}
@@ -117,7 +197,7 @@ export default function NewLaunchPage() {
         <Card padding="lg">
           <CardHeader title="제품 정보" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="제품명 *">
+            <Field label="제품명" required>
               <Input
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
@@ -134,22 +214,19 @@ export default function NewLaunchPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="출시 예정일">
+            <Field label="출시 예정일" hint="설정 시 D-30/14/7/3/1/D-DAY에 담당자 전원 자동 알림">
               <Input
                 type="date"
                 value={targetLaunchDate}
                 onChange={(e) => setTargetLaunchDate(e.target.value)}
                 inputSize="md"
               />
-              <p className="mt-1 text-[11px] text-[var(--text-4)]">
-                설정 시 D-30/14/7/3/1/D-DAY에 담당자 전원에게 자동 이메일 알림이 발송됩니다.
-              </p>
             </Field>
-            <Field label="설명" className="sm:col-span-2">
+            <Field label="설명">
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="제품 컨셉, 목표 채널 등"
+                placeholder="제품 컨셉, 목표 등"
                 rows={2}
               />
             </Field>
@@ -158,10 +235,84 @@ export default function NewLaunchPage() {
 
         <Card padding="lg">
           <CardHeader
-            title="단계별 담당 지정"
-            subtitle="담당자 이메일을 지정하면 해당 단계 시작 시 체크리스트가 포함된 알림 메일이 발송됩니다."
+            title="출시 전략"
+            subtitle="브랜드 유형·영업채널·보관조건·USP·타겟 소비기한 — 단계 알림과 샘플 요청 메일에 자동 포함됩니다."
           />
-          {loadingTemplate ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="브랜드 유형">
+              <Select value={brandType} onChange={(e) => setBrandType(e.target.value)} inputSize="md">
+                <option value="">선택…</option>
+                {BRAND_TYPES.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="영업채널" hint="쉼표로 구분해 여러 채널 입력">
+              <Input
+                value={salesChannels}
+                onChange={(e) => setSalesChannels(e.target.value)}
+                placeholder="예: 자사몰, 쿠팡 로켓프레시, ○○마트 PB"
+                inputSize="md"
+              />
+            </Field>
+            <Field label="보관 조건">
+              <Select
+                value={storageCondition}
+                onChange={(e) => setStorageCondition(e.target.value)}
+                inputSize="md"
+              >
+                <option value="">선택…</option>
+                {STORAGE_CONDITIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="타겟 소비기한">
+              <Input
+                value={targetShelfLife}
+                onChange={(e) => setTargetShelfLife(e.target.value)}
+                placeholder="예: 냉장 30일 / 실온 6개월"
+                inputSize="md"
+              />
+            </Field>
+            <Field label="USP (복수 선택)" className="sm:col-span-2">
+              <div className="flex flex-wrap gap-2">
+                {USP_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => toggleUsp(option)}
+                    className={
+                      usp.includes(option)
+                        ? 'px-2.5 py-1 rounded-full text-[12px] bg-[var(--brand-500)] text-white border border-[var(--brand-500)] transition-colors'
+                        : 'px-2.5 py-1 rounded-full text-[12px] text-[var(--text-3)] border border-[var(--border-2)] hover:border-[var(--brand-500)] hover:text-[var(--text-1)] transition-colors'
+                    }
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <Input
+                value={uspEtc}
+                onChange={(e) => setUspEtc(e.target.value)}
+                placeholder="기타 USP (쉼표 구분)"
+                inputSize="sm"
+                className="mt-2"
+              />
+            </Field>
+          </div>
+        </Card>
+
+        <Card padding="lg">
+          <CardHeader
+            title="단계별 담당 지정 (필수)"
+            subtitle="모든 단계에 담당자 이름·이메일·마감일을 지정해야 프로젝트를 생성할 수 있습니다. 단계 시작 시 체크리스트가 포함된 알림 메일이 발송됩니다."
+          />
+          {loading ? (
             <CenterSpinner label="템플릿 불러오는 중" />
           ) : (
             <div className="space-y-3">
@@ -184,29 +335,32 @@ export default function NewLaunchPage() {
                         inputSize="sm"
                       />
                     </Field>
-                    <Field label="담당자 이름">
+                    <Field label="담당자 이름" required>
                       <Input
                         value={owners[idx]?.ownerName ?? ''}
                         onChange={(e) => setOwner(idx, { ownerName: e.target.value })}
                         placeholder="홍길동"
                         inputSize="sm"
+                        invalid={!!error && !owners[idx]?.ownerName.trim()}
                       />
                     </Field>
-                    <Field label="담당자 이메일">
+                    <Field label="담당자 이메일" required>
                       <Input
                         type="email"
                         value={owners[idx]?.ownerEmail ?? ''}
                         onChange={(e) => setOwner(idx, { ownerEmail: e.target.value })}
                         placeholder="user@joinandjoin.com"
                         inputSize="sm"
+                        invalid={!!error && !owners[idx]?.ownerEmail.trim()}
                       />
                     </Field>
-                    <Field label="단계 마감일">
+                    <Field label="단계 마감일" required>
                       <Input
                         type="date"
                         value={owners[idx]?.dueDate ?? ''}
                         onChange={(e) => setOwner(idx, { dueDate: e.target.value })}
                         inputSize="sm"
+                        invalid={!!error && !owners[idx]?.dueDate}
                       />
                     </Field>
                   </div>
@@ -233,11 +387,21 @@ export default function NewLaunchPage() {
           <Button type="button" variant="ghost" size="md" onClick={() => router.push('/launches')}>
             취소
           </Button>
-          <Button type="submit" variant="primary" size="md" disabled={submitting || loadingTemplate}>
+          <Button type="submit" variant="primary" size="md" disabled={submitting || loading}>
             {submitting ? '생성 중…' : '출시 프로젝트 생성'}
           </Button>
         </div>
       </form>
+    </>
+  );
+}
+
+export default function NewLaunchPage() {
+  return (
+    <AppLayout>
+      <Suspense fallback={<CenterSpinner label="로딩 중" />}>
+        <NewLaunchForm />
+      </Suspense>
     </AppLayout>
   );
 }

@@ -12,6 +12,28 @@ function kstDateStr(date) {
   });
 }
 
+// 출시 전략 요약 (브랜드 유형 · 보관조건 · USP · 타겟 소비기한 · 영업채널)
+function strategyPairs(project) {
+  const uspList = Array.isArray(project.usp) ? project.usp.join(', ') : null;
+  return [
+    ['브랜드 유형', project.brandType],
+    ['영업채널', project.salesChannels],
+    ['보관 조건', project.storageCondition],
+    ['USP', uspList],
+    ['타겟 소비기한', project.targetShelfLife],
+  ].filter(([, v]) => v);
+}
+
+function strategyLine(project) {
+  const pairs = strategyPairs(project);
+  if (pairs.length === 0) return '';
+  const text = pairs.map(([k, v]) => `${k}: ${v}`).join(' · ');
+  return `
+    <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 14px;margin:14px 0;">
+      <p style="margin:0;font-size:12.5px;color:#5b21b6;line-height:1.7;">${text}</p>
+    </div>`;
+}
+
 function footer() {
   return `
     <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
@@ -62,6 +84,7 @@ function buildStageEmailHtml(project, stage, { type = 'stage_start', message } =
           <strong>${stage.ownerName || stage.department}</strong>님, 담당하신
           <strong>「${stage.name}」</strong> (${stage.department}) 단계의 업무를 확인해주세요.
         </p>
+        ${strategyLine(project)}
         ${launchStr ? `
         <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:16px 0;">
           <p style="margin:0;font-size:13px;font-weight:bold;color:#92400e;">출시 예정일: ${launchStr}</p>
@@ -109,6 +132,7 @@ function buildScheduleEmailHtml(project, daysLeft, stagesSummary) {
           출시까지 <strong>${daysLeft === 0 ? '오늘이 출시일' : `${daysLeft}일 남았습니다`}</strong>.
           단계별 진행 상황을 확인하고 미완료 업무를 점검해주세요.
         </p>
+        ${strategyLine(project)}
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <thead>
             <tr style="background:#f3f4f6;">
@@ -136,6 +160,7 @@ function buildSampleRequestEmailHtml(project, request, requesterName) {
     ['중량 / 규격', request.weightSpec],
     ['스펙 상세', request.specDetails],
     ['제안 판매채널', request.salesChannel],
+    ...strategyPairs(project),
     ['출시 예정일', launchStr],
   ]
     .filter(([, v]) => v)

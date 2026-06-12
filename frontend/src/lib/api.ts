@@ -170,6 +170,11 @@ export const api = {
       productType?: string;
       description?: string;
       targetLaunchDate?: string;
+      brandType?: string;
+      salesChannels?: string;
+      storageCondition?: string;
+      usp?: string[];
+      targetShelfLife?: string;
       stageOwners?: Array<{ sortOrder: number; ownerName?: string; ownerEmail?: string; department?: string; dueDate?: string }>;
     }) =>
       request('/launches', {

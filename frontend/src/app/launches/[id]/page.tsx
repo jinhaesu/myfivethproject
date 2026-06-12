@@ -60,7 +60,7 @@ function SampleRequestSection({
     quantity: '',
     weightSpec: '',
     specDetails: '',
-    salesChannel: '',
+    salesChannel: project.salesChannels || '',
     message: '',
   });
 
@@ -114,7 +114,7 @@ function SampleRequestSection({
     <Card padding="lg" className="mt-6">
       <CardHeader
         title="샘플 요청 (영업 선제안)"
-        subtitle="기획·컨셉 단계 완료 후, 판매채널 제안용 샘플 제작을 담당자에게 요청합니다. 요청 즉시 상세 내역이 이메일로 발송됩니다."
+        subtitle="기획·컨셉 단계 완료 후, 판매채널 제안용 샘플 제작을 담당자에게 요청합니다. 브랜드 유형·보관조건·USP·타겟 소비기한 등 출시 전략 정보가 요청 메일에 자동 포함됩니다."
         actions={
           canRequest ? (
             <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
@@ -562,12 +562,67 @@ export default function LaunchDetailPage() {
                 보류
               </Button>
             ) : null}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => router.push(`/launches/new?from=${project.id}`)}
+            >
+              프로젝트 복사
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleDelete}>
               삭제
             </Button>
           </div>
         }
       />
+
+      {/* 출시 전략 */}
+      {(project.brandType ||
+        project.salesChannels ||
+        project.storageCondition ||
+        (project.usp && project.usp.length > 0) ||
+        project.targetShelfLife) && (
+        <Card padding="md" className="mb-5">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            {project.brandType && (
+              <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)]">
+                브랜드
+                <Badge tone="violet" size="sm">
+                  {project.brandType}
+                </Badge>
+              </span>
+            )}
+            {project.storageCondition && (
+              <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)]">
+                보관
+                <Badge tone="info" size="sm">
+                  {project.storageCondition}
+                </Badge>
+              </span>
+            )}
+            {project.targetShelfLife && (
+              <span className="text-[12.5px] text-[var(--text-3)]">
+                타겟 소비기한 <span className="text-[var(--text-1)]">{project.targetShelfLife}</span>
+              </span>
+            )}
+            {project.salesChannels && (
+              <span className="text-[12.5px] text-[var(--text-3)]">
+                영업채널 <span className="text-[var(--text-1)]">{project.salesChannels}</span>
+              </span>
+            )}
+            {project.usp && project.usp.length > 0 && (
+              <span className="flex items-center gap-1.5 flex-wrap text-[12.5px] text-[var(--text-3)]">
+                USP
+                {project.usp.map((u) => (
+                  <Badge key={u} tone="success" size="xs">
+                    {u}
+                  </Badge>
+                ))}
+              </span>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* 단계 파이프라인 요약 */}
       <Card padding="md" className="mb-5">
