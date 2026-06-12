@@ -198,6 +198,28 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    createSampleRequest: (
+      id: string,
+      data: {
+        recipientName?: string;
+        recipientEmail: string;
+        dueDate: string;
+        quantity?: string;
+        weightSpec?: string;
+        specDetails?: string;
+        salesChannel?: string;
+        message?: string;
+      }
+    ) =>
+      request(`/launches/${id}/sample-requests`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    updateSampleRequest: (requestId: string, data: { status: string }) =>
+      request(`/launches/sample-requests/${requestId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>

@@ -20,6 +20,7 @@ model User {
   reviews     ReviewItem[]
   verificationCodes EmailVerification[]
   launchProjects LaunchProject[]
+  sampleRequests SampleRequest[]
 }
 
 model EmailVerification {
@@ -135,8 +136,31 @@ model LaunchProject {
   createdBy   User   @relation(fields: [createdById], references: [id])
   createdById String
 
-  stages        LaunchStage[]
-  notifications LaunchNotificationLog[]
+  stages         LaunchStage[]
+  notifications  LaunchNotificationLog[]
+  sampleRequests SampleRequest[]
+}
+
+// 영업 선제안용 샘플 요청 — 기획·컨셉 단계 완료 후에만 생성 가능
+model SampleRequest {
+  id             String   @id @default(uuid())
+  recipientName  String?
+  recipientEmail String
+  dueDate        DateTime // 납기 (언제까지)
+  quantity       String?  // 수량
+  weightSpec     String?  // 중량/규격
+  specDetails    String?  // 스펙 상세
+  salesChannel   String?  // 제안 판매채널
+  message        String?  // 요청 메시지
+  status         String   @default("requested") // requested, in_progress, delivered, canceled
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  requestedBy   User   @relation(fields: [requestedById], references: [id])
+  requestedById String
+
+  project   LaunchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
 }
 
 model LaunchStage {
