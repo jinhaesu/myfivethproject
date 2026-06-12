@@ -20,9 +20,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.replace('/login');
+      // 로그인 후 원래 가려던 화면으로 복귀 (이메일 딥링크 대응)
+      const next =
+        pathname && pathname !== '/' && pathname !== '/dashboard'
+          ? `?next=${encodeURIComponent(pathname)}`
+          : '';
+      router.replace(`/login${next}`);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, pathname]);
 
   if (loading) {
     return (
