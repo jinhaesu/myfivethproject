@@ -139,6 +139,57 @@ router.post('/verify-code', async (req, res) => {
   }
 });
 
+// 매직 링크(1회용 자동 로그인) 토큰 교환
+router.post('/magic-login', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: '유효하지 않은 링크입니다.' });
+    }
+
+    const record = await prisma.magicLinkToken.findUnique({ where: { token } });
+    if (!record) {
+      return res.status(401).json({ error: '유효하지 않은 링크입니다. 이메일 인증으로 로그인해주세요.' });
+    }
+
+    // 원자적 1회 사용 처리 (동시 클릭/중복 사용 방지)
+    const claimed = await prisma.magicLinkToken.updateMany({
+      where: { token, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() },
+    });
+    if (claimed.count !== 1) {
+      const reason = record.usedAt ? '이미 사용된 링크입니다.' : '만료된 링크입니다.';
+      return res.status(401).json({ error: `${reason} 이메일 인증으로 로그인해주세요.` });
+    }
+
+    let user = await prisma.user.findUnique({ where: { email: record.email } });
+    if (!user) {
+      user = await prisma.user.create({ data: { email: record.email } });
+    }
+
+    const jwtToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token: jwtToken,
+      redirectPath: record.redirectPath,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Magic login error:', error);
+    res.status(500).json({ error: '자동 로그인에 실패했습니다.' });
+  }
+});
+
 // 사용자 프로필 조회
 router.get('/me', authenticate, async (req, res) => {
   res.json({

@@ -99,6 +99,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ email, code }),
       }),
+    magicLogin: (token: string) =>
+      request('/auth/magic-login', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
     getMe: () => request('/auth/me'),
     updateProfile: (data: { name?: string; department?: string }) =>
       request('/auth/me', {

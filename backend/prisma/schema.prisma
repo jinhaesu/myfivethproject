@@ -23,6 +23,17 @@ model User {
   sampleRequests SampleRequest[]
 }
 
+// 메일 CTA용 1회용 자동 로그인 토큰 (매직 링크)
+model MagicLinkToken {
+  id           String    @id @default(uuid())
+  token        String    @unique
+  email        String
+  redirectPath String
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+}
+
 model EmailVerification {
   id        String   @id @default(uuid())
   email     String
