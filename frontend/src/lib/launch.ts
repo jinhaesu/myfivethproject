@@ -32,6 +32,21 @@ export interface LaunchNotification {
   sentAt: string;
 }
 
+export interface SampleRequest {
+  id: string;
+  recipientName: string | null;
+  recipientEmail: string;
+  dueDate: string;
+  quantity: string | null;
+  weightSpec: string | null;
+  specDetails: string | null;
+  salesChannel: string | null;
+  message: string | null;
+  status: string;
+  createdAt: string;
+  requestedBy: { id: string; name: string | null; email: string; department: string | null };
+}
+
 export interface LaunchProject {
   id: string;
   productName: string;
@@ -43,6 +58,7 @@ export interface LaunchProject {
   createdBy: { id: string; name: string | null; email: string; department: string | null };
   stages: LaunchStage[];
   notifications?: LaunchNotification[];
+  sampleRequests?: SampleRequest[];
 }
 
 export function getDday(targetLaunchDate: string | null): number | null {
@@ -60,9 +76,18 @@ export const STAGE_STATUS_LABEL: Record<string, string> = {
   completed: '완료',
 };
 
+export const SAMPLE_STATUS_LABEL: Record<string, string> = {
+  requested: '요청됨',
+  in_progress: '제작 중',
+  delivered: '전달 완료',
+  canceled: '취소',
+};
+
 export const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   stage_start: '단계 시작 알림',
   manual: '수동 리마인드',
+  sample_request: '샘플 제작 요청',
+  sample_delivered: '샘플 전달 완료 회신',
   schedule_d30: '출시 D-30 알림',
   schedule_d14: '출시 D-14 알림',
   schedule_d7: '출시 D-7 알림',

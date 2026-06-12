@@ -3,7 +3,13 @@ const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
 const { authenticate } = require('../middleware/auth');
 const { LAUNCH_STAGE_TEMPLATE } = require('../lib/launchTemplate');
-const { buildStageEmailHtml, buildScheduleEmailHtml } = require('../lib/launchEmails');
+const {
+  buildStageEmailHtml,
+  buildScheduleEmailHtml,
+  buildSampleRequestEmailHtml,
+  buildSampleDeliveredEmailHtml,
+  kstDateStr,
+} = require('../lib/launchEmails');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -47,6 +53,10 @@ const PROJECT_INCLUDE = {
   stages: {
     orderBy: { sortOrder: 'asc' },
     include: { tasks: { orderBy: { sortOrder: 'asc' } } },
+  },
+  sampleRequests: {
+    orderBy: { createdAt: 'desc' },
+    include: { requestedBy: { select: { id: true, name: true, email: true, department: true } } },
   },
 };
 
@@ -334,6 +344,143 @@ router.post('/:id/notify', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Launch notify error:', error);
     res.status(500).json({ error: '알림 발송에 실패했습니다.' });
+  }
+});
+
+// 샘플 요청 생성 — 기획·컨셉(1단계) 완료 후에만 가능, 담당자 이메일로 상세 발송
+router.post('/:id/sample-requests', authenticate, async (req, res) => {
+  try {
+    const { recipientName, recipientEmail, dueDate, quantity, weightSpec, specDetails, salesChannel, message } = req.body;
+
+    if (!recipientEmail || !dueDate) {
+      return res.status(400).json({ error: '담당자 이메일과 납기일을 입력해주세요.' });
+    }
+
+    const project = await prisma.launchProject.findUnique({
+      where: { id: req.params.id },
+      include: { stages: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!project) {
+      return res.status(404).json({ error: '출시 프로젝트를 찾을 수 없습니다.' });
+    }
+
+    // 게이트: 첫 단계(기획·컨셉)가 완료되어야 샘플 요청 가능
+    const firstStage = project.stages[0];
+    if (!firstStage || firstStage.status !== 'completed') {
+      return res.status(400).json({
+        error: `샘플 요청은 「${firstStage ? firstStage.name : '기획·컨셉'}」 단계의 체크리스트를 모두 완료한 후에 가능합니다.`,
+      });
+    }
+
+    const request = await prisma.sampleRequest.create({
+      data: {
+        recipientName: recipientName || null,
+        recipientEmail,
+        dueDate: new Date(dueDate),
+        quantity: quantity || null,
+        weightSpec: weightSpec || null,
+        specDetails: specDetails || null,
+        salesChannel: salesChannel || null,
+        message: message || null,
+        requestedById: req.user.id,
+        projectId: project.id,
+      },
+      include: { requestedBy: { select: { id: true, name: true, email: true, department: true } } },
+    });
+
+    // 담당자 이메일 발송
+    const requesterName = req.user.name || req.user.email;
+    const subject = `[${project.productName}] 샘플 제작 요청 (납기 ${kstDateStr(request.dueDate)})`;
+    const html = buildSampleRequestEmailHtml(project, request, requesterName);
+
+    let mailDelivered = false;
+    const resend = getResend();
+    if (!resend) {
+      console.log(`[DEV] Sample request email to ${recipientEmail}: ${subject}`);
+      mailDelivered = true;
+    } else {
+      try {
+        await resend.emails.send({ from: EMAIL_FROM(), to: recipientEmail, subject, html });
+        mailDelivered = true;
+      } catch (err) {
+        console.error('[Resend] 샘플 요청 메일 전송 실패:', err?.message || err);
+      }
+    }
+
+    if (mailDelivered) {
+      await prisma.launchNotificationLog.create({
+        data: { projectId: project.id, type: 'sample_request', sentTo: recipientEmail },
+      });
+    }
+
+    res.status(201).json({
+      request,
+      mailDelivered,
+      message: mailDelivered
+        ? '샘플 요청이 등록되고 담당자에게 이메일이 발송되었습니다.'
+        : '샘플 요청은 등록되었으나 이메일 발송에 실패했습니다. 리마인드를 다시 시도해주세요.',
+    });
+  } catch (error) {
+    console.error('Create sample request error:', error);
+    res.status(500).json({ error: '샘플 요청 등록에 실패했습니다.' });
+  }
+});
+
+// 샘플 요청 상태 변경 (requested → in_progress → delivered / canceled)
+// delivered 처리 시 요청자에게 회신 메일
+router.put('/sample-requests/:requestId', authenticate, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowed = ['requested', 'in_progress', 'delivered', 'canceled'];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: '유효하지 않은 상태입니다.' });
+    }
+
+    const existing = await prisma.sampleRequest.findUnique({
+      where: { id: req.params.requestId },
+      include: {
+        project: true,
+        requestedBy: { select: { name: true, email: true } },
+      },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: '샘플 요청을 찾을 수 없습니다.' });
+    }
+
+    const request = await prisma.sampleRequest.update({
+      where: { id: req.params.requestId },
+      data: { status },
+      include: { requestedBy: { select: { id: true, name: true, email: true, department: true } } },
+    });
+
+    // 전달 완료 → 요청자에게 회신
+    if (status === 'delivered' && existing.requestedBy?.email) {
+      const resend = getResend();
+      const subject = `[${existing.project.productName}] 샘플 전달 완료`;
+      const html = buildSampleDeliveredEmailHtml(existing.project, existing);
+      if (!resend) {
+        console.log(`[DEV] Sample delivered email to ${existing.requestedBy.email}: ${subject}`);
+      } else {
+        try {
+          await resend.emails.send({
+            from: EMAIL_FROM(),
+            to: existing.requestedBy.email,
+            subject,
+            html,
+          });
+          await prisma.launchNotificationLog.create({
+            data: { projectId: existing.projectId, type: 'sample_delivered', sentTo: existing.requestedBy.email },
+          });
+        } catch (err) {
+          console.error('[Resend] 샘플 완료 회신 메일 전송 실패:', err?.message || err);
+        }
+      }
+    }
+
+    res.json({ request });
+  } catch (error) {
+    console.error('Update sample request error:', error);
+    res.status(500).json({ error: '샘플 요청 상태 변경에 실패했습니다.' });
   }
 });
 

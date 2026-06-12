@@ -125,4 +125,81 @@ function buildScheduleEmailHtml(project, daysLeft, stagesSummary) {
     </div>`;
 }
 
-module.exports = { buildStageEmailHtml, buildScheduleEmailHtml, kstDateStr };
+// 샘플 요청 메일 (담당자에게 요청 상세 전달)
+function buildSampleRequestEmailHtml(project, request, requesterName) {
+  const dueStr = kstDateStr(request.dueDate);
+  const launchStr = kstDateStr(project.targetLaunchDate);
+
+  const detailRows = [
+    ['납기 (요청 기한)', `<strong style="color:#92400e;">${dueStr}</strong>`],
+    ['수량', request.quantity],
+    ['중량 / 규격', request.weightSpec],
+    ['스펙 상세', request.specDetails],
+    ['제안 판매채널', request.salesChannel],
+    ['출시 예정일', launchStr],
+  ]
+    .filter(([, v]) => v)
+    .map(
+      ([k, v]) => `
+      <tr>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;font-size:12.5px;color:#6b7280;background:#f9fafb;width:130px;white-space:nowrap;">${k}</td>
+        <td style="padding:8px 12px;border:1px solid #e5e7eb;font-size:13px;">${v}</td>
+      </tr>`
+    )
+    .join('');
+
+  return `
+    <div style="max-width:600px;margin:0 auto;font-family:${FONT};color:#1f2937;">
+      <div style="background:#0891b2;padding:24px;border-radius:12px 12px 0 0;">
+        <h1 style="color:white;margin:0;font-size:18px;">${project.productName}</h1>
+        <p style="color:#cffafe;margin:8px 0 0;font-size:14px;">샘플 제작 요청</p>
+      </div>
+      <div style="background:white;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+        <p style="font-size:14px;line-height:1.6;">
+          <strong>${request.recipientName || '담당자'}</strong>님,
+          <strong>${requesterName}</strong>님이 영업 채널 제안용 샘플 제작을 요청하였습니다.
+        </p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          ${detailRows}
+        </table>
+        ${request.message ? `
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;margin:16px 0;">
+          <p style="margin:0;font-size:13px;color:#0369a1;font-weight:bold;">요청 메시지:</p>
+          <p style="margin:6px 0 0;font-size:13px;color:#0c4a6e;white-space:pre-wrap;">${request.message}</p>
+        </div>` : ''}
+        <p style="font-size:12.5px;color:#6b7280;line-height:1.6;">
+          ※ 기획·컨셉 단계가 완료된 제품입니다. 샘플 제작 진행 상황은 시스템의 출시 프로젝트 상세 화면에서 업데이트해주세요.
+        </p>
+      </div>
+      ${footer()}
+    </div>`;
+}
+
+// 샘플 전달 완료 회신 메일 (요청자에게)
+function buildSampleDeliveredEmailHtml(project, request) {
+  return `
+    <div style="max-width:600px;margin:0 auto;font-family:${FONT};color:#1f2937;">
+      <div style="background:#16a34a;padding:24px;border-radius:12px 12px 0 0;">
+        <h1 style="color:white;margin:0;font-size:18px;">${project.productName}</h1>
+        <p style="color:#dcfce7;margin:8px 0 0;font-size:14px;">샘플 전달 완료</p>
+      </div>
+      <div style="background:white;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+        <p style="font-size:14px;line-height:1.6;">
+          요청하신 샘플(납기 ${kstDateStr(request.dueDate)})이 <strong>전달 완료</strong> 처리되었습니다.
+          ${request.salesChannel ? `제안 채널: <strong>${request.salesChannel}</strong>` : ''}
+        </p>
+        <p style="font-size:13px;color:#6b7280;line-height:1.6;">
+          판매처 확정 시 시스템에서 표기사항(라벨) 검토 워크플로를 진행해주세요.
+        </p>
+      </div>
+      ${footer()}
+    </div>`;
+}
+
+module.exports = {
+  buildStageEmailHtml,
+  buildScheduleEmailHtml,
+  buildSampleRequestEmailHtml,
+  buildSampleDeliveredEmailHtml,
+  kstDateStr,
+};

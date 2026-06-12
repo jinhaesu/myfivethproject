@@ -7,8 +7,10 @@ import { api } from '@/lib/api';
 import {
   LaunchProject,
   LaunchStage,
+  SampleRequest,
   getDday,
   STAGE_STATUS_LABEL,
+  SAMPLE_STATUS_LABEL,
   NOTIFICATION_TYPE_LABEL,
 } from '@/lib/launch';
 import {
@@ -17,6 +19,7 @@ import {
   CardHeader,
   Button,
   Input,
+  Textarea,
   Field,
   Badge,
   StatusPill,
@@ -28,6 +31,244 @@ const STAGE_TONE: Record<string, 'neutral' | 'info' | 'success'> = {
   in_progress: 'info',
   completed: 'success',
 };
+
+const SAMPLE_TONE: Record<string, 'neutral' | 'info' | 'success' | 'warning' | 'danger'> = {
+  requested: 'warning',
+  in_progress: 'info',
+  delivered: 'success',
+  canceled: 'neutral',
+};
+
+function SampleRequestSection({
+  project,
+  onChanged,
+}: {
+  project: LaunchProject;
+  onChanged: () => void;
+}) {
+  const firstStage = project.stages[0];
+  const canRequest = firstStage?.status === 'completed';
+  const devStage = project.stages[1]; // 배합·시제품 개발 단계 — 기본 수신 담당자
+
+  const [showForm, setShowForm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [form, setForm] = useState({
+    recipientName: devStage?.ownerName || '',
+    recipientEmail: devStage?.ownerEmail || '',
+    dueDate: '',
+    quantity: '',
+    weightSpec: '',
+    specDetails: '',
+    salesChannel: '',
+    message: '',
+  });
+
+  const setField = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.recipientEmail.trim() || !form.dueDate) {
+      setNotice('담당자 이메일과 납기일은 필수입니다.');
+      return;
+    }
+    try {
+      setBusy(true);
+      setNotice('');
+      const res = await api.launches.createSampleRequest(project.id, {
+        recipientName: form.recipientName.trim() || undefined,
+        recipientEmail: form.recipientEmail.trim(),
+        dueDate: form.dueDate,
+        quantity: form.quantity.trim() || undefined,
+        weightSpec: form.weightSpec.trim() || undefined,
+        specDetails: form.specDetails.trim() || undefined,
+        salesChannel: form.salesChannel.trim() || undefined,
+        message: form.message.trim() || undefined,
+      });
+      setNotice(res.message);
+      setShowForm(false);
+      setForm((f) => ({ ...f, dueDate: '', quantity: '', weightSpec: '', specDetails: '', salesChannel: '', message: '' }));
+      onChanged();
+    } catch (err: any) {
+      setNotice(err.message || '샘플 요청에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateStatus = async (requestId: string, status: string) => {
+    try {
+      setBusy(true);
+      await api.launches.updateSampleRequest(requestId, { status });
+      onChanged();
+    } catch (err: any) {
+      setNotice(err.message || '상태 변경에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requests = project.sampleRequests || [];
+
+  return (
+    <Card padding="lg" className="mt-6">
+      <CardHeader
+        title="샘플 요청 (영업 선제안)"
+        subtitle="기획·컨셉 단계 완료 후, 판매채널 제안용 샘플 제작을 담당자에게 요청합니다. 요청 즉시 상세 내역이 이메일로 발송됩니다."
+        actions={
+          canRequest ? (
+            <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
+              {showForm ? '닫기' : '+ 샘플 요청'}
+            </Button>
+          ) : (
+            <Badge tone="warning" size="sm">
+              {firstStage ? `${firstStage.name.replace(/^\d+\.\s*/, '')} 단계 완료 후 요청 가능` : '단계 없음'}
+            </Badge>
+          )
+        }
+      />
+
+      {notice && <p className="text-[12px] text-[var(--warning-fg)] mb-3">{notice}</p>}
+
+      {showForm && canRequest && (
+        <form
+          onSubmit={submit}
+          className="mb-5 p-4 rounded-md bg-[var(--bg-2)] border border-[var(--border-1)] space-y-3"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="담당자 이름">
+              <Input
+                value={form.recipientName}
+                onChange={(e) => setField({ recipientName: e.target.value })}
+                placeholder={devStage?.ownerName || '샘플 제작 담당자'}
+                inputSize="sm"
+              />
+            </Field>
+            <Field label="담당자 이메일" required>
+              <Input
+                type="email"
+                value={form.recipientEmail}
+                onChange={(e) => setField({ recipientEmail: e.target.value })}
+                placeholder="rd@joinandjoin.com"
+                inputSize="sm"
+              />
+            </Field>
+            <Field label="납기일 (언제까지)" required>
+              <Input
+                type="date"
+                value={form.dueDate}
+                onChange={(e) => setField({ dueDate: e.target.value })}
+                inputSize="sm"
+              />
+            </Field>
+            <Field label="수량">
+              <Input
+                value={form.quantity}
+                onChange={(e) => setField({ quantity: e.target.value })}
+                placeholder="예: 20개 (채널 3곳 × 6개 + 여분)"
+                inputSize="sm"
+              />
+            </Field>
+            <Field label="중량 / 규격">
+              <Input
+                value={form.weightSpec}
+                onChange={(e) => setField({ weightSpec: e.target.value })}
+                placeholder="예: 개당 80g, 4입 트레이 포장"
+                inputSize="sm"
+              />
+            </Field>
+            <Field label="제안 판매채널">
+              <Input
+                value={form.salesChannel}
+                onChange={(e) => setField({ salesChannel: e.target.value })}
+                placeholder="예: 쿠팡 로켓프레시, ○○백화점 B2B"
+                inputSize="sm"
+              />
+            </Field>
+          </div>
+          <Field label="스펙 상세">
+            <Textarea
+              value={form.specDetails}
+              onChange={(e) => setField({ specDetails: e.target.value })}
+              placeholder="맛/식감 방향, 포장 형태, 라벨 가안 필요 여부 등"
+              rows={2}
+            />
+          </Field>
+          <Field label="요청 메시지">
+            <Textarea
+              value={form.message}
+              onChange={(e) => setField({ message: e.target.value })}
+              placeholder="제안 일정·바이어 미팅 정보 등 담당자가 알아야 할 내용"
+              rows={2}
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button type="submit" variant="primary" size="sm" disabled={busy}>
+              {busy ? '발송 중…' : '요청 등록 + 이메일 발송'}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {requests.length === 0 ? (
+        <p className="text-[12.5px] text-[var(--text-4)]">등록된 샘플 요청이 없습니다.</p>
+      ) : (
+        <ul className="divide-y divide-[var(--border-1)]">
+          {requests.map((r: SampleRequest) => (
+            <li key={r.id} className="py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge tone={SAMPLE_TONE[r.status] || 'neutral'} size="sm" dot={r.status === 'in_progress'}>
+                    {SAMPLE_STATUS_LABEL[r.status] || r.status}
+                  </Badge>
+                  <span className="text-[13px] text-[var(--text-1)] font-medium">
+                    납기 {new Date(r.dueDate).toLocaleDateString('ko-KR')}
+                  </span>
+                  <span className="text-[12px] text-[var(--text-3)]">
+                    → {r.recipientName || r.recipientEmail}
+                    {r.recipientName ? ` (${r.recipientEmail})` : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {r.status === 'requested' && (
+                    <Button variant="secondary" size="xs" onClick={() => updateStatus(r.id, 'in_progress')} disabled={busy}>
+                      제작 시작
+                    </Button>
+                  )}
+                  {r.status === 'in_progress' && (
+                    <Button variant="primary" size="xs" onClick={() => updateStatus(r.id, 'delivered')} disabled={busy}>
+                      전달 완료
+                    </Button>
+                  )}
+                  {(r.status === 'requested' || r.status === 'in_progress') && (
+                    <Button variant="ghost" size="xs" onClick={() => updateStatus(r.id, 'canceled')} disabled={busy}>
+                      취소
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-1.5 text-[12px] text-[var(--text-3)] space-x-3">
+                {r.quantity && <span>수량: {r.quantity}</span>}
+                {r.weightSpec && <span>중량/규격: {r.weightSpec}</span>}
+                {r.salesChannel && <span>채널: {r.salesChannel}</span>}
+                <span className="text-[var(--text-4)]">
+                  요청 {r.requestedBy?.name || r.requestedBy?.email} ·{' '}
+                  {new Date(r.createdAt).toLocaleDateString('ko-KR')}
+                </span>
+              </div>
+              {r.specDetails && (
+                <p className="mt-1 text-[12px] text-[var(--text-4)]">스펙: {r.specDetails}</p>
+              )}
+              {r.message && (
+                <p className="mt-1 text-[12px] text-[var(--text-4)] whitespace-pre-wrap">메시지: {r.message}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
 
 function StageCard({
   stage,
@@ -359,6 +600,9 @@ export default function LaunchDetailPage() {
           </div>
         ))}
       </div>
+
+      {/* 샘플 요청 (영업 선제안) */}
+      <SampleRequestSection project={project} onChanged={fetchProject} />
 
       {/* 알림 이력 */}
       <Card padding="lg" className="mt-6">
