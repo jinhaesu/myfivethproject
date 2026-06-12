@@ -4,6 +4,7 @@
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
 const { buildScheduleEmailHtml } = require('./launchEmails');
+const { createMagicLink, cleanupExpiredMagicLinks } = require('./magicLink');
 
 const prisma = new PrismaClient();
 
@@ -75,37 +76,49 @@ async function checkLaunchSchedules() {
 
     const dLabel = daysLeft === 0 ? 'D-DAY' : `D-${daysLeft}`;
     const subject = `[${project.productName}] 출시 ${dLabel} — 단계별 진행 점검`;
-    const html = buildScheduleEmailHtml(project, daysLeft, stagesSummary);
 
     const resend = getResend();
-    if (!resend) {
-      console.log(`[DEV] Launch schedule ${dLabel} email to ${recipients.join(', ')}: ${subject}`);
-    } else {
+    const sent = [];
+    // 수신자별 개인 매직 링크(1회용 자동 로그인)를 담아 개별 발송
+    for (const recipient of recipients) {
+      const ctaUrl = await createMagicLink(recipient, `/launches/${project.id}`);
+      const html = buildScheduleEmailHtml(project, daysLeft, stagesSummary, { ctaUrl });
+      if (!resend) {
+        console.log(`[DEV] Launch schedule ${dLabel} email to ${recipient}: ${subject}`);
+        sent.push(recipient);
+        continue;
+      }
       try {
         await resend.emails.send({
           from: process.env.EMAIL_FROM || 'noreply@joinandjoin.com',
-          to: recipients,
+          to: recipient,
           subject,
           html,
         });
+        sent.push(recipient);
       } catch (err) {
-        console.error(`[Resend] 출시 일정(${dLabel}) 메일 전송 실패:`, err?.message || err);
-        continue; // 로그 미기록 → 다음 시간에 재시도
+        console.error(`[Resend] 출시 일정(${dLabel}) 메일 전송 실패 (${recipient}):`, err?.message || err);
       }
     }
 
+    if (sent.length === 0) continue; // 전원 실패 → 로그 미기록, 다음 시간에 재시도
+
     await prisma.launchNotificationLog.create({
-      data: { projectId: project.id, type, sentTo: recipients.join(', ') },
+      data: { projectId: project.id, type, sentTo: sent.join(', ') },
     });
-    console.log(`[LaunchScheduler] ${project.productName} ${dLabel} 알림 발송 (${recipients.length}명)`);
+    console.log(`[LaunchScheduler] ${project.productName} ${dLabel} 알림 발송 (${sent.length}/${recipients.length}명)`);
   }
 }
 
 function startLaunchScheduler() {
-  const run = () =>
+  const run = () => {
     checkLaunchSchedules().catch((err) =>
       console.error('[LaunchScheduler] 체크 실패:', err?.message || err)
     );
+    cleanupExpiredMagicLinks().catch((err) =>
+      console.error('[LaunchScheduler] 매직링크 정리 실패:', err?.message || err)
+    );
+  };
   setTimeout(run, 30 * 1000); // 부팅 30초 후 첫 체크 (마이그레이션 완료 대기)
   setInterval(run, CHECK_INTERVAL_MS);
   console.log('[LaunchScheduler] 출시 일정 알림 스케줄러 시작 (1시간 간격, D-30/14/7/3/1/0)');

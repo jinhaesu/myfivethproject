@@ -10,6 +10,7 @@ const {
   buildSampleDeliveredEmailHtml,
   kstDateStr,
 } = require('../lib/launchEmails');
+const { createMagicLink } = require('../lib/magicLink');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -30,7 +31,8 @@ async function sendStageNotification(project, stage, { type = 'stage_start', mes
     type === 'stage_start'
       ? `[${project.productName}] 출시 단계 시작: ${stage.name}`
       : `[${project.productName}] 출시 업무 리마인드: ${stage.name}`;
-  const html = buildStageEmailHtml(project, stage, { type, message });
+  const ctaUrl = await createMagicLink(stage.ownerEmail, `/launches/${project.id}#stage-${stage.sortOrder}`);
+  const html = buildStageEmailHtml(project, stage, { type, message, ctaUrl });
 
   if (!resend) {
     console.log(`[DEV] Launch stage email to ${stage.ownerEmail}: ${subject}`);
@@ -433,7 +435,8 @@ router.post('/:id/sample-requests', authenticate, async (req, res) => {
     // 담당자 이메일 발송
     const requesterName = req.user.name || req.user.email;
     const subject = `[${project.productName}] 샘플 제작 요청 (납기 ${kstDateStr(request.dueDate)})`;
-    const html = buildSampleRequestEmailHtml(project, request, requesterName);
+    const ctaUrl = await createMagicLink(recipientEmail, `/launches/${project.id}`);
+    const html = buildSampleRequestEmailHtml(project, request, requesterName, { ctaUrl });
 
     let mailDelivered = false;
     const resend = getResend();
@@ -499,7 +502,8 @@ router.put('/sample-requests/:requestId', authenticate, async (req, res) => {
     if (status === 'delivered' && existing.requestedBy?.email) {
       const resend = getResend();
       const subject = `[${existing.project.productName}] 샘플 전달 완료`;
-      const html = buildSampleDeliveredEmailHtml(existing.project, existing);
+      const ctaUrl = await createMagicLink(existing.requestedBy.email, `/launches/${existing.projectId}`);
+      const html = buildSampleDeliveredEmailHtml(existing.project, existing, { ctaUrl });
       if (!resend) {
         console.log(`[DEV] Sample delivered email to ${existing.requestedBy.email}: ${subject}`);
       } else {

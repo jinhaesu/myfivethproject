@@ -41,16 +41,19 @@ function frontendBase() {
   return first || 'https://myfivethproject.vercel.app';
 }
 
-// 확인하러 가기 CTA 버튼
-function ctaButton(path, label = '확인하러 가기') {
+// 확인하러 가기 CTA 버튼 — url은 매직 링크(1회용 자동 로그인) 또는 일반 경로 URL
+function ctaButton(url, label = '확인하러 가기') {
+  const isMagic = url.includes('/auth/magic?');
   return `
     <div style="text-align:center;margin:24px 0 8px;">
-      <a href="${frontendBase()}${path}"
+      <a href="${url}"
          style="display:inline-block;background:#5E6AD2;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 36px;border-radius:8px;">
         ${label} →
       </a>
       <p style="margin:10px 0 0;font-size:11.5px;color:#9ca3af;">
-        로그인 후 해당 화면으로 자동 이동합니다.
+        ${isMagic
+          ? '클릭하면 자동 로그인되어 해당 화면이 바로 열립니다. (링크는 1회용, 7일 유효)'
+          : '로그인 후 해당 화면으로 자동 이동합니다.'}
       </p>
     </div>`;
 }
@@ -89,7 +92,7 @@ function taskTable(tasks) {
 }
 
 // 단계 시작/리마인드 메일
-function buildStageEmailHtml(project, stage, { type = 'stage_start', message } = {}) {
+function buildStageEmailHtml(project, stage, { type = 'stage_start', message, ctaUrl } = {}) {
   const launchStr = kstDateStr(project.targetLaunchDate);
   const dueStr = kstDateStr(stage.dueDate);
   const heading = type === 'stage_start' ? '단계가 시작되었습니다' : '업무 리마인드';
@@ -121,14 +124,14 @@ function buildStageEmailHtml(project, stage, { type = 'stage_start', message } =
         </div>` : ''}
         <p style="font-size:14px;font-weight:bold;margin:20px 0 8px;">체크리스트 (${stage.tasks.filter((t) => t.isCompleted).length}/${stage.tasks.length} 완료):</p>
         ${taskTable(stage.tasks)}
-        ${ctaButton(`/launches/${project.id}#stage-${stage.sortOrder}`, '체크리스트 확인하러 가기')}
+        ${ctaButton(ctaUrl || `${frontendBase()}/launches/${project.id}#stage-${stage.sortOrder}`, '체크리스트 확인하러 가기')}
       </div>
       ${footer()}
     </div>`;
 }
 
 // 출시 일정(D-n) 알림 메일
-function buildScheduleEmailHtml(project, daysLeft, stagesSummary) {
+function buildScheduleEmailHtml(project, daysLeft, stagesSummary, { ctaUrl } = {}) {
   const launchStr = kstDateStr(project.targetLaunchDate);
   const dLabel = daysLeft === 0 ? 'D-DAY' : `D-${daysLeft}`;
   const stageRows = stagesSummary
@@ -166,14 +169,14 @@ function buildScheduleEmailHtml(project, daysLeft, stagesSummary) {
           </thead>
           <tbody>${stageRows}</tbody>
         </table>
-        ${ctaButton(`/launches/${project.id}`, '진행 현황 확인하러 가기')}
+        ${ctaButton(ctaUrl || `${frontendBase()}/launches/${project.id}`, '진행 현황 확인하러 가기')}
       </div>
       ${footer()}
     </div>`;
 }
 
 // 샘플 요청 메일 (담당자에게 요청 상세 전달)
-function buildSampleRequestEmailHtml(project, request, requesterName) {
+function buildSampleRequestEmailHtml(project, request, requesterName, { ctaUrl } = {}) {
   const dueStr = kstDateStr(request.dueDate);
   const launchStr = kstDateStr(project.targetLaunchDate);
 
@@ -218,14 +221,14 @@ function buildSampleRequestEmailHtml(project, request, requesterName) {
         <p style="font-size:12.5px;color:#6b7280;line-height:1.6;">
           ※ 기획·컨셉 단계가 완료된 제품입니다. 샘플 제작 진행 상황은 시스템의 출시 프로젝트 상세 화면에서 업데이트해주세요.
         </p>
-        ${ctaButton(`/launches/${project.id}`, '샘플 요청 확인하러 가기')}
+        ${ctaButton(ctaUrl || `${frontendBase()}/launches/${project.id}`, '샘플 요청 확인하러 가기')}
       </div>
       ${footer()}
     </div>`;
 }
 
 // 샘플 전달 완료 회신 메일 (요청자에게)
-function buildSampleDeliveredEmailHtml(project, request) {
+function buildSampleDeliveredEmailHtml(project, request, { ctaUrl } = {}) {
   return `
     <div style="max-width:600px;margin:0 auto;font-family:${FONT};color:#1f2937;">
       <div style="background:#16a34a;padding:24px;border-radius:12px 12px 0 0;">
@@ -240,7 +243,7 @@ function buildSampleDeliveredEmailHtml(project, request) {
         <p style="font-size:13px;color:#6b7280;line-height:1.6;">
           판매처 확정 시 시스템에서 표기사항(라벨) 검토 워크플로를 진행해주세요.
         </p>
-        ${ctaButton(`/launches/${project.id}`)}
+        ${ctaButton(ctaUrl || `${frontendBase()}/launches/${project.id}`)}
       </div>
       ${footer()}
     </div>`;
