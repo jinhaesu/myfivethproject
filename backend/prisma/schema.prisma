@@ -19,6 +19,7 @@ model User {
   labels      Label[]
   reviews     ReviewItem[]
   verificationCodes EmailVerification[]
+  launchProjects LaunchProject[]
 }
 
 model EmailVerification {
@@ -118,6 +119,67 @@ model ReviewCategory {
   labelId   String
 
   items     ReviewItem[]
+}
+
+// ── 신제품 출시 프로세스 관리 ─────────────────────────────
+model LaunchProject {
+  id               String    @id @default(uuid())
+  productName      String
+  productType      String?   // 제과, 제빵, 케이크/디저트 등
+  description      String?
+  targetLaunchDate DateTime? // 출시 예정일
+  status           String    @default("planning") // planning, in_progress, completed, on_hold
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+
+  stages        LaunchStage[]
+  notifications LaunchNotificationLog[]
+}
+
+model LaunchStage {
+  id          String    @id @default(uuid())
+  name        String
+  department  String
+  ownerName   String?
+  ownerEmail  String?
+  status      String    @default("pending") // pending, in_progress, completed
+  dueDate     DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  sortOrder   Int       @default(0)
+
+  project   LaunchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  tasks LaunchTask[]
+}
+
+model LaunchTask {
+  id          String    @id @default(uuid())
+  name        String
+  checkPoint  String?   // 체크해야 하는 사항(검수 포인트)
+  isCompleted Boolean   @default(false)
+  completedBy String?
+  completedAt DateTime?
+  note        String?
+  sortOrder   Int       @default(0)
+
+  stage   LaunchStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  stageId String
+}
+
+model LaunchNotificationLog {
+  id      String   @id @default(uuid())
+  type    String   // stage_start, manual, schedule_d30, schedule_d14, schedule_d7, schedule_d3, schedule_d1, schedule_d0
+  stageId String?
+  sentTo  String
+  sentAt  DateTime @default(now())
+
+  project   LaunchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
 }
 
 model ReviewItem {

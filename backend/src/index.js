@@ -8,6 +8,8 @@ const labelRoutes = require('./routes/labels');
 const reviewRoutes = require('./routes/reviews');
 const aiRoutes = require('./routes/ai');
 const uploadRoutes = require('./routes/uploads');
+const launchRoutes = require('./routes/launches');
+const { startLaunchScheduler } = require('./lib/launchScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -57,6 +59,7 @@ app.use('/api/labels', labelRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/launches', launchRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -75,4 +78,6 @@ app.listen(PORT, '0.0.0.0', () => {
   } catch (err) {
     console.error('Migration failed:', err.message);
   }
+
+  startLaunchScheduler();
 });

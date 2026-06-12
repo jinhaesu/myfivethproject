@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 const NAV = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/labels/new', label: '새 라벨' },
+  { href: '/launches', label: '출시 관리' },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -45,10 +46,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Link href="/dashboard" className="flex items-center gap-2 group">
                 <span className="inline-block w-1.5 h-5 rounded-sm bg-[var(--brand-500)] group-hover:bg-[var(--brand-400)] transition-colors" />
                 <span className="text-[13px] font-semibold tracking-tight text-[var(--text-1)]">
-                  표기사항 관리
+                  제품 출시 관리 및 표기사항 검수 시스템
                 </span>
-                <span className="hidden sm:inline text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)] ml-1">
-                  Compliance Console
+                <span className="hidden lg:inline text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)] ml-1">
+                  Launch &amp; Compliance Console
                 </span>
               </Link>
               <div className="hidden sm:flex gap-1">
