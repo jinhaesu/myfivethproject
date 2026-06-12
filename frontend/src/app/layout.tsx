@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: '영양성분 표기사항 관리 시스템',
-  description: '영양성분 정보 및 배합비를 기반으로 표기사항을 생성하고 관리합니다.',
+  title: '제품 출시 관리 및 표기사항 검수 시스템',
+  description: '신제품 출시 프로세스와 표기사항 검수를 한 곳에서 관리합니다.',
 };
 
 export default function RootLayout({

@@ -161,6 +161,44 @@ export const api = {
         body: JSON.stringify(data),
       }),
   },
+  launches: {
+    list: () => request('/launches'),
+    getTemplate: () => request('/launches/meta/template'),
+    get: (id: string) => request(`/launches/${id}`),
+    create: (data: {
+      productName: string;
+      productType?: string;
+      description?: string;
+      targetLaunchDate?: string;
+      stageOwners?: Array<{ sortOrder: number; ownerName?: string; ownerEmail?: string; department?: string; dueDate?: string }>;
+    }) =>
+      request('/launches', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: any) =>
+      request(`/launches/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request(`/launches/${id}`, { method: 'DELETE' }),
+    updateStage: (stageId: string, data: { ownerName?: string; ownerEmail?: string; department?: string; dueDate?: string | null; status?: string }) =>
+      request(`/launches/stages/${stageId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    updateTask: (taskId: string, data: { isCompleted?: boolean; note?: string; completedBy?: string }) =>
+      request(`/launches/tasks/${taskId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    notify: (id: string, data: { stageId: string; message?: string }) =>
+      request(`/launches/${id}/notify`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>
       uploadFile(`/uploads/${labelId}/design`, file, 'designFile'),
