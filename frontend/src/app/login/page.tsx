@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
-import { Button, Input, Field, Card } from '@/components/ui';
+import { Button, Input, Field, Card, CenterSpinner } from '@/components/ui';
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -16,6 +16,7 @@ export default function LoginPage() {
 
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +40,10 @@ export default function LoginPage() {
     try {
       const data = await api.auth.verifyCode(email, code);
       login(data.token, data.user);
-      router.push('/dashboard');
+      // 이메일 딥링크(?next=/launches/...)로 진입한 경우 해당 화면으로 복귀
+      const next = searchParams.get('next');
+      const dest = next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+      router.push(dest);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -54,14 +58,14 @@ export default function LoginPage() {
         <div className="flex items-center gap-2 mb-6 justify-center">
           <span className="inline-block w-1.5 h-6 rounded-sm bg-[var(--brand-500)]" />
           <span className="text-[12px] uppercase tracking-[0.16em] text-[var(--text-3)] font-semibold">
-            Compliance Console
+            Launch &amp; Compliance Console
           </span>
         </div>
 
         <Card tone="elevated" padding="lg">
           <div className="text-center mb-6">
             <h1 className="text-[22px] font-semibold tracking-tight text-[var(--text-1)] mb-1.5">
-              영양성분 표기사항 관리
+              제품 출시 관리 및 표기사항 검수
             </h1>
             <p className="text-[12.5px] text-[var(--text-3)]">이메일 인증으로 로그인하세요.</p>
           </div>
@@ -135,9 +139,23 @@ export default function LoginPage() {
         </Card>
 
         <p className="text-center text-[11px] text-[var(--text-4)] mt-6">
-          © 조인앤조인 · 식품 표기사항·법령 검토 시스템
+          © 조인앤조인 · 제품 출시 관리 및 표기사항 검수 시스템
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <CenterSpinner label="로딩 중" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

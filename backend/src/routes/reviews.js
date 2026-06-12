@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
 const { authenticate } = require('../middleware/auth');
+const { ctaButton } = require('../lib/launchEmails');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -223,6 +224,7 @@ router.post('/send-notification', authenticate, async (req, res) => {
               ${pendingListHtml}
             </tbody>
           </table>
+          ${labelId ? ctaButton(`/labels/${labelId}`, '검토하러 가기') : ''}
         </div>
 
         <div style="background:#f9fafb;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
