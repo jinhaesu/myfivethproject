@@ -146,7 +146,19 @@ export default function LaunchesPage() {
                     </Link>
                   </TD>
                   <TD className="hidden sm:table-cell" muted>
-                    {p.productType || '—'}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>{p.productType || '—'}</span>
+                      {p.brandType && (
+                        <Badge tone="violet" size="xs">
+                          {p.brandType}
+                        </Badge>
+                      )}
+                      {p.storageCondition && (
+                        <Badge tone="info" size="xs">
+                          {p.storageCondition}
+                        </Badge>
+                      )}
+                    </div>
                   </TD>
                   <TD>
                     <div className="flex items-center gap-2">

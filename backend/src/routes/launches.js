@@ -77,13 +77,31 @@ router.get('/', authenticate, async (req, res) => {
 // 출시 프로젝트 생성 (제과/제빵 템플릿 기반 단계·체크리스트 자동 생성)
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { productName, productType, description, targetLaunchDate, stageOwners } = req.body;
+    const {
+      productName, productType, description, targetLaunchDate, stageOwners,
+      brandType, salesChannels, storageCondition, usp, targetShelfLife,
+    } = req.body;
     if (!productName) {
       return res.status(400).json({ error: '제품명을 입력해주세요.' });
     }
 
-    // stageOwners: [{ sortOrder, ownerName, ownerEmail, dueDate }] (템플릿 단계 인덱스 기준, 선택)
+    // stageOwners: [{ sortOrder, ownerName, ownerEmail, department, dueDate }]
+    // 모든 단계에 담당자 이름·이메일·마감일 지정 필수
     const ownerMap = new Map((stageOwners || []).map((o) => [o.sortOrder, o]));
+    const missing = [];
+    LAUNCH_STAGE_TEMPLATE.forEach((stage, idx) => {
+      const o = ownerMap.get(idx) || {};
+      const lacks = [];
+      if (!o.ownerName || !String(o.ownerName).trim()) lacks.push('담당자 이름');
+      if (!o.ownerEmail || !String(o.ownerEmail).trim()) lacks.push('담당자 이메일');
+      if (!o.dueDate) lacks.push('마감일');
+      if (lacks.length > 0) missing.push(`${stage.name}: ${lacks.join('·')}`);
+    });
+    if (missing.length > 0) {
+      return res.status(400).json({
+        error: `모든 단계에 담당자 이름·이메일·마감일을 지정해야 합니다.\n${missing.join('\n')}`,
+      });
+    }
 
     const project = await prisma.launchProject.create({
       data: {
@@ -91,6 +109,11 @@ router.post('/', authenticate, async (req, res) => {
         productType: productType || null,
         description: description || null,
         targetLaunchDate: targetLaunchDate ? new Date(targetLaunchDate) : null,
+        brandType: brandType || null,
+        salesChannels: salesChannels || null,
+        storageCondition: storageCondition || null,
+        usp: Array.isArray(usp) && usp.length > 0 ? usp : undefined,
+        targetShelfLife: targetShelfLife || null,
         createdById: req.user.id,
         stages: {
           create: LAUNCH_STAGE_TEMPLATE.map((stage, idx) => {
@@ -151,7 +174,10 @@ router.get('/:id', authenticate, async (req, res) => {
 // 출시 프로젝트 수정 (메타/상태)
 router.put('/:id', authenticate, async (req, res) => {
   try {
-    const { productName, productType, description, targetLaunchDate, status } = req.body;
+    const {
+      productName, productType, description, targetLaunchDate, status,
+      brandType, salesChannels, storageCondition, usp, targetShelfLife,
+    } = req.body;
     const data = {};
     if (productName !== undefined) data.productName = productName;
     if (productType !== undefined) data.productType = productType;
@@ -160,6 +186,11 @@ router.put('/:id', authenticate, async (req, res) => {
       data.targetLaunchDate = targetLaunchDate ? new Date(targetLaunchDate) : null;
     }
     if (status !== undefined) data.status = status;
+    if (brandType !== undefined) data.brandType = brandType || null;
+    if (salesChannels !== undefined) data.salesChannels = salesChannels || null;
+    if (storageCondition !== undefined) data.storageCondition = storageCondition || null;
+    if (usp !== undefined) data.usp = Array.isArray(usp) ? usp : [];
+    if (targetShelfLife !== undefined) data.targetShelfLife = targetShelfLife || null;
 
     const project = await prisma.launchProject.update({
       where: { id: req.params.id },
@@ -196,11 +227,22 @@ router.put('/stages/:stageId', authenticate, async (req, res) => {
       return res.status(404).json({ error: '단계를 찾을 수 없습니다.' });
     }
 
+    // 담당자 이름·이메일·마감일은 비울 수 없음 (필수 유지)
+    if (ownerName !== undefined && !String(ownerName).trim()) {
+      return res.status(400).json({ error: '담당자 이름은 비울 수 없습니다.' });
+    }
+    if (ownerEmail !== undefined && !String(ownerEmail).trim()) {
+      return res.status(400).json({ error: '담당자 이메일은 비울 수 없습니다.' });
+    }
+    if (dueDate !== undefined && !dueDate) {
+      return res.status(400).json({ error: '단계 마감일은 비울 수 없습니다.' });
+    }
+
     const data = {};
     if (ownerName !== undefined) data.ownerName = ownerName;
     if (ownerEmail !== undefined) data.ownerEmail = ownerEmail;
     if (department !== undefined) data.department = department;
-    if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
+    if (dueDate !== undefined) data.dueDate = new Date(dueDate);
 
     let startingNow = false;
     if (status !== undefined && status !== existing.status) {
