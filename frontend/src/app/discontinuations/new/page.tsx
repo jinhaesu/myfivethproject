@@ -4,13 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
-import {
-  PRODUCT_TYPES,
-  BRAND_TYPES,
-  STORAGE_CONDITIONS,
-  USP_OPTIONS,
-  LaunchProject,
-} from '@/lib/launch';
+import { PRODUCT_TYPES, DISCONTINUE_REASONS, LaunchProject } from '@/lib/launch';
 import {
   PageHeader,
   Card,
@@ -37,7 +31,7 @@ interface StageOwnerInput {
   dueDate: string;
 }
 
-function NewLaunchForm() {
+function NewDiscontinuationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const copyFromId = searchParams.get('from');
@@ -50,20 +44,15 @@ function NewLaunchForm() {
 
   const [productName, setProductName] = useState('');
   const [productType, setProductType] = useState(PRODUCT_TYPES[0]);
+  const [discontinueReason, setDiscontinueReason] = useState(DISCONTINUE_REASONS[0]);
   const [description, setDescription] = useState('');
   const [targetLaunchDate, setTargetLaunchDate] = useState('');
-  const [brandType, setBrandType] = useState('');
-  const [salesChannels, setSalesChannels] = useState('');
-  const [storageCondition, setStorageCondition] = useState('');
-  const [usp, setUsp] = useState<string[]>([]);
-  const [uspEtc, setUspEtc] = useState('');
-  const [targetShelfLife, setTargetShelfLife] = useState('');
   const [owners, setOwners] = useState<StageOwnerInput[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await api.launches.getTemplate('launch');
+        const data = await api.launches.getTemplate('discontinuation');
         const tmpl: TemplateStage[] = data.template;
         setTemplate(tmpl);
 
@@ -74,21 +63,14 @@ function NewLaunchForm() {
           dueDate: '',
         }));
 
-        // 프로젝트 복사: 기존 프로젝트의 제품·전략·단계 담당 정보를 프리필 (마감일은 새로 입력)
+        // 단종할 출시 제품(또는 기존 단종 프로젝트)에서 제품 정보·담당자 프리필
         if (copyFromId) {
           try {
             const src = await api.launches.get(copyFromId);
             const p: LaunchProject = src.project;
-            setProductName(`${p.productName} (복사)`);
+            setProductName(p.productName);
             if (p.productType) setProductType(p.productType);
-            setDescription(p.description || '');
-            setBrandType(p.brandType || '');
-            setSalesChannels(p.salesChannels || '');
-            setStorageCondition(p.storageCondition || '');
-            const srcUsp = p.usp || [];
-            setUsp(srcUsp.filter((u) => USP_OPTIONS.includes(u)));
-            setUspEtc(srcUsp.filter((u) => !USP_OPTIONS.includes(u)).join(', '));
-            setTargetShelfLife(p.targetShelfLife || '');
+            if (p.discontinueReason) setDiscontinueReason(p.discontinueReason);
             base = tmpl.map((s, idx) => {
               const srcStage = p.stages.find((st) => st.sortOrder === idx);
               return {
@@ -105,7 +87,7 @@ function NewLaunchForm() {
         }
         setOwners(base);
       } catch (err) {
-        console.error('Failed to fetch launch template:', err);
+        console.error('Failed to fetch template:', err);
         setError('단계 템플릿을 불러오지 못했습니다.');
       } finally {
         setLoading(false);
@@ -116,10 +98,6 @@ function NewLaunchForm() {
 
   const setOwner = (idx: number, patch: Partial<StageOwnerInput>) => {
     setOwners((prev) => prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
-  };
-
-  const toggleUsp = (option: string) => {
-    setUsp((prev) => (prev.includes(option) ? prev.filter((u) => u !== option) : [...prev, option]));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,21 +121,16 @@ function NewLaunchForm() {
       return;
     }
 
-    const uspAll = [...usp, ...uspEtc.split(',').map((s) => s.trim()).filter(Boolean)];
-
     try {
       setSubmitting(true);
       setError('');
       const data = await api.launches.create({
+        kind: 'discontinuation',
         productName: productName.trim(),
         productType,
+        discontinueReason,
         description: description.trim() || undefined,
         targetLaunchDate: targetLaunchDate || undefined,
-        brandType: brandType || undefined,
-        salesChannels: salesChannels.trim() || undefined,
-        storageCondition: storageCondition || undefined,
-        usp: uspAll.length > 0 ? uspAll : undefined,
-        targetShelfLife: targetShelfLife.trim() || undefined,
         stageOwners: owners.map((o, idx) => ({
           sortOrder: idx,
           ownerName: o.ownerName.trim(),
@@ -168,7 +141,7 @@ function NewLaunchForm() {
       });
       router.push(`/launches/${data.project.id}`);
     } catch (err: any) {
-      setError(err.message || '출시 프로젝트 생성에 실패했습니다.');
+      setError(err.message || '단종 프로젝트 생성에 실패했습니다.');
       setSubmitting(false);
     }
   };
@@ -176,14 +149,14 @@ function NewLaunchForm() {
   return (
     <>
       <PageHeader
-        eyebrow="Launch Operations"
-        title="새 출시 프로젝트"
-        description="제과·제빵 출시 템플릿(8단계: 기획→배합개발→구매·원가→인허가·표시→포장→생산준비→품질검증→출시)으로 단계별 업무·체크리스트가 자동 생성됩니다. 모든 단계의 담당자·마감일 지정이 필수입니다."
+        eyebrow="Discontinuation Operations"
+        title="새 단종 프로젝트"
+        description="단종 템플릿(5단계: 결정·사유→재고 소진→채널·거래처 정리→표시·인허가 정리→정산·마감)으로 단계별 업무·체크리스트가 자동 생성됩니다. 모든 단계의 담당자·마감일 지정이 필수입니다."
       />
 
       {copiedFrom && (
         <div className="mb-4 px-4 py-3 rounded-md bg-[var(--info-bg)] border border-[var(--info-border)] text-[13px] text-[var(--info-fg)]">
-          「{copiedFrom}」 프로젝트를 복사했습니다. 제품 정보·전략·단계 담당자가 채워졌으니 출시일과 단계 마감일만 새로 지정하세요.
+          「{copiedFrom}」 제품 정보를 가져왔습니다. 단종 사유·목표일과 단계 마감일을 지정하세요.
         </div>
       )}
 
@@ -195,7 +168,7 @@ function NewLaunchForm() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <Card padding="lg">
-          <CardHeader title="제품 정보" />
+          <CardHeader title="단종 대상 제품" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="제품명" required>
               <Input
@@ -214,7 +187,20 @@ function NewLaunchForm() {
                 ))}
               </Select>
             </Field>
-            <Field label="출시 예정일" hint="설정 시 D-30/14/7/3/1/D-DAY에 담당자 전원 자동 알림">
+            <Field label="단종 사유" required>
+              <Select
+                value={discontinueReason}
+                onChange={(e) => setDiscontinueReason(e.target.value)}
+                inputSize="md"
+              >
+                {DISCONTINUE_REASONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="단종 목표일" hint="설정 시 D-30/14/7/3/1/D-DAY에 담당자 전원 자동 알림">
               <Input
                 type="date"
                 value={targetLaunchDate}
@@ -222,11 +208,11 @@ function NewLaunchForm() {
                 inputSize="md"
               />
             </Field>
-            <Field label="설명">
+            <Field label="상세 설명" className="sm:col-span-2">
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="제품 컨셉, 목표 등"
+                placeholder="단종 배경, 품질 이슈 상세, 대체 제품 정보 등"
                 rows={2}
               />
             </Field>
@@ -235,82 +221,8 @@ function NewLaunchForm() {
 
         <Card padding="lg">
           <CardHeader
-            title="출시 전략"
-            subtitle="브랜드 유형·영업채널·보관조건·USP·타겟 소비기한 — 단계 알림과 샘플 요청 메일에 자동 포함됩니다."
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="브랜드 유형">
-              <Select value={brandType} onChange={(e) => setBrandType(e.target.value)} inputSize="md">
-                <option value="">선택…</option>
-                {BRAND_TYPES.map((b) => (
-                  <option key={b.value} value={b.value}>
-                    {b.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="영업채널" hint="쉼표로 구분해 여러 채널 입력">
-              <Input
-                value={salesChannels}
-                onChange={(e) => setSalesChannels(e.target.value)}
-                placeholder="예: 자사몰, 쿠팡 로켓프레시, ○○마트 PB"
-                inputSize="md"
-              />
-            </Field>
-            <Field label="보관 조건">
-              <Select
-                value={storageCondition}
-                onChange={(e) => setStorageCondition(e.target.value)}
-                inputSize="md"
-              >
-                <option value="">선택…</option>
-                {STORAGE_CONDITIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="타겟 소비기한">
-              <Input
-                value={targetShelfLife}
-                onChange={(e) => setTargetShelfLife(e.target.value)}
-                placeholder="예: 냉장 30일 / 실온 6개월"
-                inputSize="md"
-              />
-            </Field>
-            <Field label="USP (복수 선택)" className="sm:col-span-2">
-              <div className="flex flex-wrap gap-2">
-                {USP_OPTIONS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => toggleUsp(option)}
-                    className={
-                      usp.includes(option)
-                        ? 'px-2.5 py-1 rounded-full text-[12px] bg-[var(--brand-500)] text-white border border-[var(--brand-500)] transition-colors'
-                        : 'px-2.5 py-1 rounded-full text-[12px] text-[var(--text-3)] border border-[var(--border-2)] hover:border-[var(--brand-500)] hover:text-[var(--text-1)] transition-colors'
-                    }
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-              <Input
-                value={uspEtc}
-                onChange={(e) => setUspEtc(e.target.value)}
-                placeholder="기타 USP (쉼표 구분)"
-                inputSize="sm"
-                className="mt-2"
-              />
-            </Field>
-          </div>
-        </Card>
-
-        <Card padding="lg">
-          <CardHeader
             title="단계별 담당 지정 (필수)"
-            subtitle="모든 단계에 담당자 이름·이메일·마감일을 지정해야 프로젝트를 생성할 수 있습니다. 단계 시작 시 체크리스트가 포함된 알림 메일이 발송됩니다."
+            subtitle="모든 단계에 담당자 이름·이메일·마감일을 지정해야 합니다. 단계 시작 시 체크리스트가 포함된 알림 메일이 발송됩니다. (재고 소진 계획은 영업·생산 협업)"
           />
           {loading ? (
             <CenterSpinner label="템플릿 불러오는 중" />
@@ -384,11 +296,11 @@ function NewLaunchForm() {
         </Card>
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" size="md" onClick={() => router.push('/launches')}>
+          <Button type="button" variant="ghost" size="md" onClick={() => router.push('/discontinuations')}>
             취소
           </Button>
           <Button type="submit" variant="primary" size="md" disabled={submitting || loading}>
-            {submitting ? '생성 중…' : '출시 프로젝트 생성'}
+            {submitting ? '생성 중…' : '단종 프로젝트 생성'}
           </Button>
         </div>
       </form>
@@ -396,11 +308,11 @@ function NewLaunchForm() {
   );
 }
 
-export default function NewLaunchPage() {
+export default function NewDiscontinuationPage() {
   return (
     <AppLayout>
       <Suspense fallback={<CenterSpinner label="로딩 중" />}>
-        <NewLaunchForm />
+        <NewDiscontinuationForm />
       </Suspense>
     </AppLayout>
   );

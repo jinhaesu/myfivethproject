@@ -136,11 +136,14 @@ model ReviewCategory {
 // ── 신제품 출시 프로세스 관리 ─────────────────────────────
 model LaunchProject {
   id               String    @id @default(uuid())
+  kind             String    @default("launch") // launch(출시) | discontinuation(단종)
   productName      String
   productType      String?   // 제과, 제빵, 케이크/디저트 등
   description      String?
-  targetLaunchDate DateTime? // 출시 예정일
+  targetLaunchDate DateTime? // 출시 예정일(launch) / 단종 목표일(discontinuation)
   status           String    @default("planning") // planning, in_progress, completed, on_hold
+  // 단종 전용
+  discontinueReason String?  // 단종 사유 (판매량 저하, 품질 이슈 등)
   // 출시 전략
   brandType        String?   // NB, PNB, PB
   salesChannels    String?   // 영업채널 (쉼표 구분: 자사몰, 쿠팡, ○○마트 PB 등)

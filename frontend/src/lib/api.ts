@@ -167,14 +167,16 @@ export const api = {
       }),
   },
   launches: {
-    list: () => request('/launches'),
-    getTemplate: () => request('/launches/meta/template'),
+    list: (kind?: string) => request(`/launches${kind ? `?kind=${kind}` : ''}`),
+    getTemplate: (kind?: string) => request(`/launches/meta/template${kind ? `?kind=${kind}` : ''}`),
     get: (id: string) => request(`/launches/${id}`),
     create: (data: {
+      kind?: string;
       productName: string;
       productType?: string;
       description?: string;
       targetLaunchDate?: string;
+      discontinueReason?: string;
       brandType?: string;
       salesChannels?: string;
       storageCondition?: string;

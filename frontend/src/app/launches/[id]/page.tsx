@@ -499,11 +499,16 @@ export default function LaunchDetailPage() {
     }
   };
 
+  const isDisc = project?.kind === 'discontinuation';
+  const listPath = isDisc ? '/discontinuations' : '/launches';
+  const newPath = isDisc ? '/discontinuations/new' : '/launches/new';
+  const procLabel = isDisc ? '단종' : '출시';
+
   const handleDelete = async () => {
-    if (!confirm('이 출시 프로젝트를 삭제하시겠습니까? 모든 단계·체크리스트가 함께 삭제됩니다.')) return;
+    if (!confirm(`이 ${procLabel} 프로젝트를 삭제하시겠습니까? 모든 단계·체크리스트가 함께 삭제됩니다.`)) return;
     try {
       await api.launches.delete(id);
-      router.push('/launches');
+      router.push(listPath);
     } catch (err) {
       console.error('Delete error:', err);
     }
@@ -512,7 +517,7 @@ export default function LaunchDetailPage() {
   if (loading) {
     return (
       <AppLayout>
-        <CenterSpinner label="출시 프로젝트 불러오는 중" />
+        <CenterSpinner label="프로젝트 불러오는 중" />
       </AppLayout>
     );
   }
@@ -537,22 +542,23 @@ export default function LaunchDetailPage() {
   return (
     <AppLayout>
       <PageHeader
-        eyebrow="Launch Operations"
+        eyebrow={isDisc ? 'Discontinuation Operations' : 'Launch Operations'}
         title={project.productName}
         description={[
           project.productType,
+          isDisc && project.discontinueReason ? `사유: ${project.discontinueReason}` : null,
           project.targetLaunchDate
-            ? `출시 예정 ${new Date(project.targetLaunchDate).toLocaleDateString('ko-KR')}${
+            ? `${isDisc ? '단종 목표' : '출시 예정'} ${new Date(project.targetLaunchDate).toLocaleDateString('ko-KR')}${
                 dday !== null ? ` (${dday === 0 ? 'D-DAY' : dday > 0 ? `D-${dday}` : `D+${-dday}`})` : ''
               }`
-            : '출시일 미정',
+            : isDisc ? '목표일 미정' : '출시일 미정',
           project.description,
         ]
           .filter(Boolean)
           .join(' · ')}
         actions={
           <div className="flex items-center gap-2">
-            <StatusPill status={project.status} size="md" />
+            <StatusPill status={project.status} size="md" kind={project.kind} />
             {project.status === 'on_hold' ? (
               <Button variant="secondary" size="sm" onClick={() => updateStatus('in_progress')}>
                 재개
@@ -565,7 +571,7 @@ export default function LaunchDetailPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => router.push(`/launches/new?from=${project.id}`)}
+              onClick={() => router.push(`${newPath}?from=${project.id}`)}
             >
               프로젝트 복사
             </Button>
@@ -576,8 +582,8 @@ export default function LaunchDetailPage() {
         }
       />
 
-      {/* 출시 전략 */}
-      {(project.brandType ||
+      {/* 출시 전략 (출시 프로젝트 전용) */}
+      {!isDisc && (project.brandType ||
         project.salesChannels ||
         project.storageCondition ||
         (project.usp && project.usp.length > 0) ||
@@ -656,12 +662,15 @@ export default function LaunchDetailPage() {
         ))}
       </div>
 
-      {/* 샘플 요청 (영업 선제안) */}
-      <SampleRequestSection project={project} onChanged={fetchProject} />
+      {/* 샘플 요청 (출시 프로젝트 전용) */}
+      {!isDisc && <SampleRequestSection project={project} onChanged={fetchProject} />}
 
       {/* 알림 이력 */}
       <Card padding="lg" className="mt-6">
-        <CardHeader title="알림 발송 이력" subtitle="단계 시작·리마인드·출시 일정(D-day) 알림 기록" />
+        <CardHeader
+          title="알림 발송 이력"
+          subtitle={`단계 시작·리마인드·${isDisc ? '단종 목표일' : '출시 일정'}(D-day) 알림 기록`}
+        />
         {!project.notifications || project.notifications.length === 0 ? (
           <p className="text-[12.5px] text-[var(--text-4)]">발송된 알림이 없습니다.</p>
         ) : (

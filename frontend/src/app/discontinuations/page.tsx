@@ -33,17 +33,17 @@ function DdayBadge({ targetLaunchDate }: { targetLaunchDate: string | null }) {
   );
 }
 
-export default function LaunchesPage() {
+export default function DiscontinuationsPage() {
   const [projects, setProjects] = useState<LaunchProject[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await api.launches.list('launch');
+        const data = await api.launches.list('discontinuation');
         setProjects(data.projects);
       } catch (error) {
-        console.error('Failed to fetch launch projects:', error);
+        console.error('Failed to fetch discontinuation projects:', error);
       } finally {
         setLoading(false);
       }
@@ -59,7 +59,7 @@ export default function LaunchesPage() {
   const getCurrentStage = (p: LaunchProject) => {
     const active = p.stages.find((s) => s.status === 'in_progress');
     if (active) return active.name;
-    if (p.status === 'completed') return '출시 완료';
+    if (p.status === 'completed') return '단종 완료';
     const firstPending = p.stages.find((s) => s.status === 'pending');
     return firstPending ? `${firstPending.name} (대기)` : '—';
   };
@@ -74,13 +74,13 @@ export default function LaunchesPage() {
   return (
     <AppLayout>
       <PageHeader
-        eyebrow="Launch Operations"
-        title="신제품 출시 관리"
-        description="제과·제빵 신제품의 출시 단계별 업무·체크리스트·알림을 관리합니다."
+        eyebrow="Discontinuation Operations"
+        title="제품 단종 관리"
+        description="판매량 저하·품질 이슈 등으로 단종하는 제품의 재고 소진·거래처 정리·정산을 단계별로 관리합니다."
         actions={
-          <Link href="/launches/new">
+          <Link href="/discontinuations/new">
             <Button variant="primary" size="md">
-              + 새 출시 프로젝트
+              + 새 단종 프로젝트
             </Button>
           </Link>
         }
@@ -96,25 +96,25 @@ export default function LaunchesPage() {
           <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{inProgressCount}</div>
         </Card>
         <Card padding="md" className="hover-lift">
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--danger-fg)]">출시 임박 (D-7)</div>
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--danger-fg)]">목표일 임박 (D-7)</div>
           <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{imminentCount}</div>
         </Card>
         <Card padding="md" className="hover-lift">
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--success-fg)]">출시 완료</div>
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--success-fg)]">단종 완료</div>
           <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{completedCount}</div>
         </Card>
       </div>
 
       {loading ? (
-        <CenterSpinner label="출시 프로젝트 불러오는 중" />
+        <CenterSpinner label="단종 프로젝트 불러오는 중" />
       ) : projects.length === 0 ? (
         <EmptyState
-          title="등록된 출시 프로젝트가 없습니다"
-          description="신제품 출시 단계별 업무·체크리스트가 제과·제빵 템플릿으로 자동 생성됩니다."
+          title="등록된 단종 프로젝트가 없습니다"
+          description="단종 결정·재고 소진·거래처 정리·정산 5단계가 템플릿으로 자동 생성됩니다."
           action={
-            <Link href="/launches/new">
+            <Link href="/discontinuations/new">
               <Button variant="primary" size="md">
-                + 첫 출시 프로젝트 만들기
+                + 첫 단종 프로젝트 만들기
               </Button>
             </Link>
           }
@@ -124,8 +124,8 @@ export default function LaunchesPage() {
           <THead>
             <TR>
               <TH>제품명</TH>
-              <TH className="hidden sm:table-cell">유형</TH>
-              <TH>출시 예정</TH>
+              <TH className="hidden sm:table-cell">단종 사유</TH>
+              <TH>단종 목표일</TH>
               <TH className="hidden sm:table-cell">현재 단계</TH>
               <TH className="hidden md:table-cell">진행률</TH>
               <TH>상태</TH>
@@ -144,21 +144,12 @@ export default function LaunchesPage() {
                     >
                       {p.productName}
                     </Link>
+                    {p.productType && (
+                      <p className="text-[11px] text-[var(--text-4)] mt-0.5">{p.productType}</p>
+                    )}
                   </TD>
                   <TD className="hidden sm:table-cell" muted>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span>{p.productType || '—'}</span>
-                      {p.brandType && (
-                        <Badge tone="violet" size="xs">
-                          {p.brandType}
-                        </Badge>
-                      )}
-                      {p.storageCondition && (
-                        <Badge tone="info" size="xs">
-                          {p.storageCondition}
-                        </Badge>
-                      )}
-                    </div>
+                    {p.discontinueReason || '—'}
                   </TD>
                   <TD>
                     <div className="flex items-center gap-2">
@@ -187,7 +178,7 @@ export default function LaunchesPage() {
                     </div>
                   </TD>
                   <TD>
-                    <StatusPill status={p.status} />
+                    <StatusPill status={p.status} kind="discontinuation" />
                   </TD>
                   <TD className="hidden md:table-cell" align="right" muted numeric>
                     {new Date(p.createdAt).toLocaleDateString('ko-KR')}

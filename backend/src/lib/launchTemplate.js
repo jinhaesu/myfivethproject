@@ -89,4 +89,66 @@ const LAUNCH_STAGE_TEMPLATE = [
   },
 ];
 
-module.exports = { LAUNCH_STAGE_TEMPLATE };
+// 식품(제과/제빵) 제품 단종(종료) 단계 템플릿
+// 재고 소진·거래처 정리·표시 정리·정산까지 — 출시의 역순 성격
+const DISCONTINUATION_STAGE_TEMPLATE = [
+  {
+    name: '1. 단종 결정·사유 확정',
+    department: '상품기획',
+    tasks: [
+      { name: '판매·수익성 분석', checkPoint: '최근 12개월 판매량 추이·기여이익·재고회전율 분석, 단종 판단 근거 정리' },
+      { name: '단종 사유 문서화', checkPoint: '판매량 저하·품질 이슈·원가 상승·리뉴얼 대체 등 사유 구체화 (품질 이슈면 회수 필요성 별도 검토)' },
+      { name: '대체/리뉴얼 여부 결정', checkPoint: '완전 단종 / 후속 제품 대체 / 리뉴얼 전환 중 방향 확정' },
+      { name: '단종 경영 승인', checkPoint: '단종 목표일·예상 손실(잔여 재고/포장재) 포함 품의 승인' },
+    ],
+  },
+  {
+    name: '2. 재고 소진 계획',
+    department: '영업',
+    tasks: [
+      { name: '완제품 재고 파악', checkPoint: '자사 창고·물류센터·위탁 채널별 완제품 재고 수량 집계 (소비기한 임박분 우선 식별)' },
+      { name: '원부자재·포장재 잔량 파악', checkPoint: '전용 원료·인쇄 포장재 잔량 집계, 타 제품 전용(轉用) 가능 여부 확인' },
+      { name: '추가 생산 중단 확정', checkPoint: '생산계획에서 제외·발주 중단 처리, 진행 중 발주 잔량 확인' },
+      { name: '재고 소진/할인 판매 계획', checkPoint: '소비기한 내 소진 목표일·할인/묶음/임직원 판매 등 소진 채널 확정, 미소진분 폐기 계획' },
+    ],
+  },
+  {
+    name: '3. 채널·거래처 정리',
+    department: '영업',
+    tasks: [
+      { name: '거래처 단종 통보', checkPoint: '거래처·바이어에 단종 일정 공식 통보, 마지막 발주 마감일 안내' },
+      { name: '온라인 채널 판매중단', checkPoint: '자사몰·오픈마켓 판매중단 처리, 상세페이지 내림(또는 후속 제품 안내로 교체)' },
+      { name: '위탁 재고 회수·정리', checkPoint: '위탁·소비자직배 채널 잔여 재고 회수 또는 반품 처리 확인' },
+    ],
+  },
+  {
+    name: '4. 표시·인허가 정리',
+    department: '품질관리',
+    tasks: [
+      { name: '품목제조보고 처리', checkPoint: '품목제조보고 취하 여부 검토·처리 (재출시 가능성 있으면 유지 판단)' },
+      { name: '잔여 라벨·포장재 처리', checkPoint: '인쇄 포장재·라벨 잔량 폐기 또는 소진분 한정 사용 결정' },
+      { name: '자가품질검사 종료', checkPoint: '정기 자가품질검사 대상에서 제외 처리' },
+    ],
+  },
+  {
+    name: '5. 정산·마감',
+    department: '구매',
+    tasks: [
+      { name: '원부자재 잔량 정산', checkPoint: '전용 원료 반품/대체사용/폐기 정산, 거래처 미지급/미수 정리' },
+      { name: '폐기 처리·증빙', checkPoint: '미소진 완제품·포장재 폐기 처리 및 폐기 증빙(손실 인식) 확보' },
+      { name: '손실·재고자산 정산', checkPoint: '단종 관련 재고자산 손실 회계 반영, 최종 손실 집계' },
+      { name: '최종 단종 보고', checkPoint: '단종 완료 보고서 작성·공유 (소진 결과·총 손실·교훈)' },
+    ],
+  },
+];
+
+const TEMPLATES = {
+  launch: LAUNCH_STAGE_TEMPLATE,
+  discontinuation: DISCONTINUATION_STAGE_TEMPLATE,
+};
+
+function getTemplate(kind) {
+  return TEMPLATES[kind] || LAUNCH_STAGE_TEMPLATE;
+}
+
+module.exports = { LAUNCH_STAGE_TEMPLATE, DISCONTINUATION_STAGE_TEMPLATE, getTemplate };
