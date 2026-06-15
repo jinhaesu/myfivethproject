@@ -11,6 +11,7 @@ const NAV = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/labels/new', label: '새 라벨' },
   { href: '/launches', label: '출시 관리' },
+  { href: '/discontinuations', label: '단종 관리' },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

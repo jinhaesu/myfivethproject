@@ -2,7 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
 const { authenticate } = require('../middleware/auth');
-const { LAUNCH_STAGE_TEMPLATE } = require('../lib/launchTemplate');
+const { LAUNCH_STAGE_TEMPLATE, getTemplate } = require('../lib/launchTemplate');
 const {
   buildStageEmailHtml,
   buildScheduleEmailHtml,
@@ -27,10 +27,11 @@ const EMAIL_FROM = () => process.env.EMAIL_FROM || 'noreply@joinandjoin.com';
 async function sendStageNotification(project, stage, { type = 'stage_start', message } = {}) {
   if (!stage.ownerEmail) return { delivered: false, reason: '담당자 이메일 미지정' };
   const resend = getResend();
+  const procLabel = project.kind === 'discontinuation' ? '단종' : '출시';
   const subject =
     type === 'stage_start'
-      ? `[${project.productName}] 출시 단계 시작: ${stage.name}`
-      : `[${project.productName}] 출시 업무 리마인드: ${stage.name}`;
+      ? `[${project.productName}] ${procLabel} 단계 시작: ${stage.name}`
+      : `[${project.productName}] ${procLabel} 업무 리마인드: ${stage.name}`;
   const ctaUrl = await createMagicLink(stage.ownerEmail, `/launches/${project.id}#stage-${stage.sortOrder}`);
   const html = buildStageEmailHtml(project, stage, { type, message, ctaUrl });
 
@@ -62,17 +63,19 @@ const PROJECT_INCLUDE = {
   },
 };
 
-// 출시 프로젝트 목록
+// 프로젝트 목록 (kind 쿼리로 출시/단종 구분, 미지정 시 출시)
 router.get('/', authenticate, async (req, res) => {
   try {
+    const kind = req.query.kind === 'discontinuation' ? 'discontinuation' : 'launch';
     const projects = await prisma.launchProject.findMany({
+      where: { kind },
       orderBy: { createdAt: 'desc' },
       include: PROJECT_INCLUDE,
     });
     res.json({ projects });
   } catch (error) {
     console.error('List launch projects error:', error);
-    res.status(500).json({ error: '출시 프로젝트 목록 조회에 실패했습니다.' });
+    res.status(500).json({ error: '프로젝트 목록 조회에 실패했습니다.' });
   }
 });
 
@@ -80,18 +83,20 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const {
-      productName, productType, description, targetLaunchDate, stageOwners,
-      brandType, salesChannels, storageCondition, usp, targetShelfLife,
+      kind: kindRaw, productName, productType, description, targetLaunchDate, stageOwners,
+      brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
     } = req.body;
     if (!productName) {
       return res.status(400).json({ error: '제품명을 입력해주세요.' });
     }
+    const kind = kindRaw === 'discontinuation' ? 'discontinuation' : 'launch';
+    const template = getTemplate(kind);
 
     // stageOwners: [{ sortOrder, ownerName, ownerEmail, department, dueDate }]
     // 모든 단계에 담당자 이름·이메일·마감일 지정 필수
     const ownerMap = new Map((stageOwners || []).map((o) => [o.sortOrder, o]));
     const missing = [];
-    LAUNCH_STAGE_TEMPLATE.forEach((stage, idx) => {
+    template.forEach((stage, idx) => {
       const o = ownerMap.get(idx) || {};
       const lacks = [];
       if (!o.ownerName || !String(o.ownerName).trim()) lacks.push('담당자 이름');
@@ -107,18 +112,20 @@ router.post('/', authenticate, async (req, res) => {
 
     const project = await prisma.launchProject.create({
       data: {
+        kind,
         productName,
         productType: productType || null,
         description: description || null,
         targetLaunchDate: targetLaunchDate ? new Date(targetLaunchDate) : null,
-        brandType: brandType || null,
-        salesChannels: salesChannels || null,
-        storageCondition: storageCondition || null,
-        usp: Array.isArray(usp) && usp.length > 0 ? usp : undefined,
-        targetShelfLife: targetShelfLife || null,
+        discontinueReason: kind === 'discontinuation' ? (discontinueReason || null) : null,
+        brandType: kind === 'launch' ? (brandType || null) : null,
+        salesChannels: kind === 'launch' ? (salesChannels || null) : null,
+        storageCondition: kind === 'launch' ? (storageCondition || null) : null,
+        usp: kind === 'launch' && Array.isArray(usp) && usp.length > 0 ? usp : undefined,
+        targetShelfLife: kind === 'launch' ? (targetShelfLife || null) : null,
         createdById: req.user.id,
         stages: {
-          create: LAUNCH_STAGE_TEMPLATE.map((stage, idx) => {
+          create: template.map((stage, idx) => {
             const owner = ownerMap.get(idx) || {};
             return {
               name: stage.name,
@@ -148,9 +155,10 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// 단계 템플릿 조회 (생성 화면 미리보기용)
+// 단계 템플릿 조회 (생성 화면 미리보기용, kind별 분기)
 router.get('/meta/template', authenticate, (req, res) => {
-  res.json({ template: LAUNCH_STAGE_TEMPLATE });
+  const kind = req.query.kind === 'discontinuation' ? 'discontinuation' : 'launch';
+  res.json({ template: getTemplate(kind) });
 });
 
 // 출시 프로젝트 상세
@@ -178,7 +186,7 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const {
       productName, productType, description, targetLaunchDate, status,
-      brandType, salesChannels, storageCondition, usp, targetShelfLife,
+      brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
     } = req.body;
     const data = {};
     if (productName !== undefined) data.productName = productName;
@@ -188,6 +196,7 @@ router.put('/:id', authenticate, async (req, res) => {
       data.targetLaunchDate = targetLaunchDate ? new Date(targetLaunchDate) : null;
     }
     if (status !== undefined) data.status = status;
+    if (discontinueReason !== undefined) data.discontinueReason = discontinueReason || null;
     if (brandType !== undefined) data.brandType = brandType || null;
     if (salesChannels !== undefined) data.salesChannels = salesChannels || null;
     if (storageCondition !== undefined) data.storageCondition = storageCondition || null;

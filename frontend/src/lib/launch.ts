@@ -49,11 +49,13 @@ export interface SampleRequest {
 
 export interface LaunchProject {
   id: string;
+  kind: string; // launch | discontinuation
   productName: string;
   productType: string | null;
   description: string | null;
   targetLaunchDate: string | null;
   status: string;
+  discontinueReason: string | null;
   brandType: string | null;
   salesChannels: string | null;
   storageCondition: string | null;
@@ -102,6 +104,16 @@ export const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
 };
 
 export const PRODUCT_TYPES = ['제과', '제빵', '케이크·디저트', '냉동생지', '기타'];
+
+export const DISCONTINUE_REASONS = [
+  '판매량 저하',
+  '수익성 악화(원가 상승)',
+  '품질 이슈',
+  '리뉴얼·후속 제품 대체',
+  '원료 수급 곤란',
+  '거래처·채널 종료',
+  '기타',
+];
 
 export const BRAND_TYPES = [
   { value: 'NB', label: 'NB (자사 브랜드)' },

@@ -17,11 +17,21 @@ const MAP: Record<string, StatusCfg> = {
   pending: { tone: 'neutral', label: '대기', dot: false },
 };
 
-export function StatusPill({ status, size = 'sm' }: { status: string; size?: 'xs' | 'sm' | 'md' }) {
+export function StatusPill({
+  status,
+  size = 'sm',
+  kind,
+}: {
+  status: string;
+  size?: 'xs' | 'sm' | 'md';
+  kind?: string;
+}) {
   const cfg = MAP[status] ?? MAP.draft;
+  // 단종 프로젝트는 completed를 '단종 완료'로 표시
+  const label = kind === 'discontinuation' && status === 'completed' ? '단종 완료' : cfg.label;
   return (
     <Badge tone={cfg.tone} size={size} dot={cfg.dot}>
-      {cfg.label}
+      {label}
     </Badge>
   );
 }

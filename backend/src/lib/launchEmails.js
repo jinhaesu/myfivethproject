@@ -96,12 +96,17 @@ function buildStageEmailHtml(project, stage, { type = 'stage_start', message, ct
   const launchStr = kstDateStr(project.targetLaunchDate);
   const dueStr = kstDateStr(stage.dueDate);
   const heading = type === 'stage_start' ? '단계가 시작되었습니다' : '업무 리마인드';
+  const isDisc = project.kind === 'discontinuation';
+  const processLabel = isDisc ? '제품 단종 프로세스' : '신제품 출시 프로세스';
+  const dateLabel = isDisc ? '단종 목표일' : '출시 예정일';
+  const headerBg = isDisc ? '#475569' : '#7c3aed';
+  const headerSub = isDisc ? '#cbd5e1' : '#ddd6fe';
 
   return `
     <div style="max-width:600px;margin:0 auto;font-family:${FONT};color:#1f2937;">
-      <div style="background:#7c3aed;padding:24px;border-radius:12px 12px 0 0;">
+      <div style="background:${headerBg};padding:24px;border-radius:12px 12px 0 0;">
         <h1 style="color:white;margin:0;font-size:18px;">${project.productName}</h1>
-        <p style="color:#ddd6fe;margin:8px 0 0;font-size:14px;">신제품 출시 프로세스 — ${heading}</p>
+        <p style="color:${headerSub};margin:8px 0 0;font-size:14px;">${processLabel} — ${heading}</p>
       </div>
       <div style="background:white;padding:24px;border:1px solid #e5e7eb;border-top:none;">
         <p style="font-size:14px;line-height:1.6;">
@@ -111,7 +116,7 @@ function buildStageEmailHtml(project, stage, { type = 'stage_start', message, ct
         ${strategyLine(project)}
         ${launchStr ? `
         <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:16px 0;">
-          <p style="margin:0;font-size:13px;font-weight:bold;color:#92400e;">출시 예정일: ${launchStr}</p>
+          <p style="margin:0;font-size:13px;font-weight:bold;color:#92400e;">${dateLabel}: ${launchStr}</p>
           ${dueStr ? `<p style="margin:4px 0 0;font-size:13px;color:#92400e;">단계 마감일: ${dueStr}</p>` : ''}
         </div>` : (dueStr ? `
         <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:16px 0;">
@@ -134,6 +139,11 @@ function buildStageEmailHtml(project, stage, { type = 'stage_start', message, ct
 function buildScheduleEmailHtml(project, daysLeft, stagesSummary, { ctaUrl } = {}) {
   const launchStr = kstDateStr(project.targetLaunchDate);
   const dLabel = daysLeft === 0 ? 'D-DAY' : `D-${daysLeft}`;
+  const isDisc = project.kind === 'discontinuation';
+  const dateLabel = isDisc ? '단종 목표일' : '출시 예정일';
+  const goalLine = isDisc
+    ? (daysLeft === 0 ? '오늘이 단종 목표일' : `단종 목표일까지 ${daysLeft}일`)
+    : (daysLeft === 0 ? '오늘이 출시일' : `출시까지 ${daysLeft}일 남았습니다`);
   const stageRows = stagesSummary
     .map(
       (s) => `
@@ -150,11 +160,11 @@ function buildScheduleEmailHtml(project, daysLeft, stagesSummary, { ctaUrl } = {
     <div style="max-width:600px;margin:0 auto;font-family:${FONT};color:#1f2937;">
       <div style="background:${daysLeft <= 3 ? '#dc2626' : '#2563eb'};padding:24px;border-radius:12px 12px 0 0;">
         <h1 style="color:white;margin:0;font-size:18px;">${project.productName} — ${dLabel}</h1>
-        <p style="color:#e0e7ff;margin:8px 0 0;font-size:14px;">출시 예정일: ${launchStr}</p>
+        <p style="color:#e0e7ff;margin:8px 0 0;font-size:14px;">${dateLabel}: ${launchStr}</p>
       </div>
       <div style="background:white;padding:24px;border:1px solid #e5e7eb;border-top:none;">
         <p style="font-size:14px;line-height:1.6;">
-          출시까지 <strong>${daysLeft === 0 ? '오늘이 출시일' : `${daysLeft}일 남았습니다`}</strong>.
+          <strong>${goalLine}</strong>.
           단계별 진행 상황을 확인하고 미완료 업무를 점검해주세요.
         </p>
         ${strategyLine(project)}
