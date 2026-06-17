@@ -139,6 +139,7 @@ model LaunchProject {
   kind             String    @default("launch") // launch(출시) | discontinuation(단종)
   productName      String
   productType      String?   // 제과, 제빵, 케이크/디저트 등
+  weightSpec       String?   // 중량/규격 (예: 개당 80g, 4입 트레이) — 샘플 요청 시 프리필
   description      String?
   targetLaunchDate DateTime? // 출시 예정일(launch) / 단종 목표일(discontinuation)
   status           String    @default("planning") // planning, in_progress, completed, on_hold

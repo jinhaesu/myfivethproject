@@ -109,7 +109,7 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const {
-      kind: kindRaw, productName, productType, description, targetLaunchDate, stageOwners,
+      kind: kindRaw, productName, productType, weightSpec, description, targetLaunchDate, stageOwners,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
       editPassword,
     } = req.body;
@@ -147,6 +147,7 @@ router.post('/', authenticate, async (req, res) => {
         kind,
         productName,
         productType: productType || null,
+        weightSpec: weightSpec || null,
         description: description || null,
         targetLaunchDate: targetLaunchDate ? new Date(targetLaunchDate) : null,
         editPasswordHash,
@@ -250,14 +251,14 @@ router.put('/:id', authenticate, async (req, res) => {
     }
 
     const {
-      productName, productType, description, targetLaunchDate, status,
+      productName, productType, weightSpec, description, targetLaunchDate, status,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
       editPassword,
     } = req.body;
 
     // 잠금은 '등록 정보' 변경에만 적용. 상태(보류/재개 등) 단독 변경은 운영이라 자유
     const metaTouched = [
-      productName, productType, description, targetLaunchDate, discontinueReason,
+      productName, productType, weightSpec, description, targetLaunchDate, discontinueReason,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, editPassword,
     ].some((v) => v !== undefined);
     if (metaTouched && !isEditAllowed(req, existing)) return editLockedResponse(res);
@@ -270,6 +271,7 @@ router.put('/:id', authenticate, async (req, res) => {
     }
     if (productName !== undefined) data.productName = productName;
     if (productType !== undefined) data.productType = productType;
+    if (weightSpec !== undefined) data.weightSpec = weightSpec || null;
     if (description !== undefined) data.description = description;
     if (targetLaunchDate !== undefined) {
       data.targetLaunchDate = targetLaunchDate ? new Date(targetLaunchDate) : null;

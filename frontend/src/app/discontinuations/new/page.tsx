@@ -44,6 +44,7 @@ function NewDiscontinuationForm() {
 
   const [productName, setProductName] = useState('');
   const [productType, setProductType] = useState(PRODUCT_TYPES[0]);
+  const [weightSpec, setWeightSpec] = useState('');
   const [discontinueReason, setDiscontinueReason] = useState(DISCONTINUE_REASONS[0]);
   const [description, setDescription] = useState('');
   const [targetLaunchDate, setTargetLaunchDate] = useState('');
@@ -71,6 +72,7 @@ function NewDiscontinuationForm() {
             const p: LaunchProject = src.project;
             setProductName(p.productName);
             if (p.productType) setProductType(p.productType);
+            setWeightSpec(p.weightSpec || '');
             if (p.discontinueReason) setDiscontinueReason(p.discontinueReason);
             base = tmpl.map((s, idx) => {
               const srcStage = p.stages.find((st) => st.sortOrder === idx);
@@ -129,6 +131,7 @@ function NewDiscontinuationForm() {
         kind: 'discontinuation',
         productName: productName.trim(),
         productType,
+        weightSpec: weightSpec.trim() || undefined,
         discontinueReason,
         description: description.trim() || undefined,
         targetLaunchDate: targetLaunchDate || undefined,
@@ -201,6 +204,14 @@ function NewDiscontinuationForm() {
                   </option>
                 ))}
               </Select>
+            </Field>
+            <Field label="중량 / 규격">
+              <Input
+                value={weightSpec}
+                onChange={(e) => setWeightSpec(e.target.value)}
+                placeholder="예: 개당 80g, 4입 트레이 포장"
+                inputSize="md"
+              />
             </Field>
             <Field label="단종 목표일" hint="설정 시 D-30/14/7/3/1/D-DAY에 담당자 전원 자동 알림">
               <Input

@@ -66,7 +66,7 @@ function SampleRequestSection({
     recipientEmail: devStage?.ownerEmail || '',
     dueDate: '',
     quantity: '',
-    weightSpec: '',
+    weightSpec: project.weightSpec || '',
     specDetails: '',
     salesChannel: project.salesChannels || '',
     message: '',
@@ -95,7 +95,7 @@ function SampleRequestSection({
       }, editToken);
       setNotice(res.message);
       setShowForm(false);
-      setForm((f) => ({ ...f, dueDate: '', quantity: '', weightSpec: '', specDetails: '', salesChannel: '', message: '' }));
+      setForm((f) => ({ ...f, dueDate: '', quantity: '', weightSpec: project.weightSpec || '', specDetails: '', salesChannel: '', message: '' }));
       onChanged();
     } catch (err: any) {
       setNotice(err.message || '샘플 요청에 실패했습니다.');
@@ -494,6 +494,7 @@ function ProjectEditForm({
 
   const [productName, setProductName] = useState(project.productName);
   const [productType, setProductType] = useState(project.productType || PRODUCT_TYPES[0]);
+  const [weightSpec, setWeightSpec] = useState(project.weightSpec || '');
   const [targetLaunchDate, setTargetLaunchDate] = useState(
     project.targetLaunchDate ? project.targetLaunchDate.slice(0, 10) : ''
   );
@@ -526,6 +527,7 @@ function ProjectEditForm({
     const payload: any = {
       productName: productName.trim(),
       productType,
+      weightSpec: weightSpec.trim() || null,
       targetLaunchDate: targetLaunchDate || null,
       description: description.trim() || null,
     };
@@ -572,6 +574,14 @@ function ProjectEditForm({
               </option>
             ))}
           </Select>
+        </Field>
+        <Field label="중량 / 규격" hint="샘플 요청 시 자동으로 채워집니다">
+          <Input
+            value={weightSpec}
+            onChange={(e) => setWeightSpec(e.target.value)}
+            placeholder="예: 개당 80g, 4입 트레이 포장"
+            inputSize="md"
+          />
         </Field>
         <Field label={isDisc ? '단종 목표일' : '출시 예정일'}>
           <Input
@@ -813,6 +823,7 @@ export default function LaunchDetailPage() {
         title={project.productName}
         description={[
           project.productType,
+          project.weightSpec ? `중량 ${project.weightSpec}` : null,
           isDisc && project.discontinueReason ? `사유: ${project.discontinueReason}` : null,
           project.targetLaunchDate
             ? `${isDisc ? '단종 목표' : '출시 예정'} ${new Date(project.targetLaunchDate).toLocaleDateString('ko-KR')}${
