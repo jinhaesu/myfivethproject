@@ -12,6 +12,11 @@ import {
   STAGE_STATUS_LABEL,
   SAMPLE_STATUS_LABEL,
   NOTIFICATION_TYPE_LABEL,
+  PRODUCT_TYPES,
+  BRAND_TYPES,
+  STORAGE_CONDITIONS,
+  USP_OPTIONS,
+  DISCONTINUE_REASONS,
 } from '@/lib/launch';
 import {
   PageHeader,
@@ -19,6 +24,7 @@ import {
   CardHeader,
   Button,
   Input,
+  Select,
   Textarea,
   Field,
   Badge,
@@ -478,6 +484,239 @@ function StageCard({
   );
 }
 
+// 프로젝트 등록 정보 편집 폼 (제품 정보 + 전략/단종 사유 + 편집 비밀번호 변경)
+function ProjectEditForm({
+  project,
+  editToken,
+  onSaved,
+  onCancel,
+}: {
+  project: LaunchProject;
+  editToken?: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const isDisc = project.kind === 'discontinuation';
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const [productName, setProductName] = useState(project.productName);
+  const [productType, setProductType] = useState(project.productType || PRODUCT_TYPES[0]);
+  const [targetLaunchDate, setTargetLaunchDate] = useState(
+    project.targetLaunchDate ? project.targetLaunchDate.slice(0, 10) : ''
+  );
+  const [description, setDescription] = useState(project.description || '');
+  const [discontinueReason, setDiscontinueReason] = useState(
+    project.discontinueReason || DISCONTINUE_REASONS[0]
+  );
+  const [brandType, setBrandType] = useState(project.brandType || '');
+  const [salesChannels, setSalesChannels] = useState(project.salesChannels || '');
+  const [storageCondition, setStorageCondition] = useState(project.storageCondition || '');
+  const [targetShelfLife, setTargetShelfLife] = useState(project.targetShelfLife || '');
+  const [usp, setUsp] = useState<string[]>(
+    (project.usp || []).filter((u) => USP_OPTIONS.includes(u))
+  );
+  const [uspEtc, setUspEtc] = useState(
+    (project.usp || []).filter((u) => !USP_OPTIONS.includes(u)).join(', ')
+  );
+  // 편집 비밀번호 변경
+  const [changePw, setChangePw] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+
+  const toggleUsp = (option: string) =>
+    setUsp((prev) => (prev.includes(option) ? prev.filter((u) => u !== option) : [...prev, option]));
+
+  const save = async () => {
+    if (!productName.trim()) {
+      setError('제품명을 입력해주세요.');
+      return;
+    }
+    const payload: any = {
+      productName: productName.trim(),
+      productType,
+      targetLaunchDate: targetLaunchDate || null,
+      description: description.trim() || null,
+    };
+    if (isDisc) {
+      payload.discontinueReason = discontinueReason;
+    } else {
+      payload.brandType = brandType || null;
+      payload.salesChannels = salesChannels.trim() || null;
+      payload.storageCondition = storageCondition || null;
+      payload.targetShelfLife = targetShelfLife.trim() || null;
+      payload.usp = [...usp, ...uspEtc.split(',').map((s) => s.trim()).filter(Boolean)];
+    }
+    // 비밀번호 변경 체크 시에만 전송 (빈칸 저장 시 잠금 해제)
+    if (changePw) payload.editPassword = newPassword.trim();
+
+    try {
+      setBusy(true);
+      setError('');
+      await api.launches.update(project.id, payload, editToken);
+      onSaved();
+    } catch (err: any) {
+      setError(err.message || '저장에 실패했습니다.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card padding="lg" className="mb-5 border-[var(--brand-500)]">
+      <CardHeader title="프로젝트 정보 편집" />
+      {error && (
+        <div className="mb-3 px-3 py-2 rounded-md bg-[var(--danger-bg)] border border-[var(--danger-border)] text-[12.5px] text-[var(--danger-fg)] whitespace-pre-wrap">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="제품명" required>
+          <Input value={productName} onChange={(e) => setProductName(e.target.value)} inputSize="md" />
+        </Field>
+        <Field label="제품 유형">
+          <Select value={productType} onChange={(e) => setProductType(e.target.value)} inputSize="md">
+            {PRODUCT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={isDisc ? '단종 목표일' : '출시 예정일'}>
+          <Input
+            type="date"
+            value={targetLaunchDate}
+            onChange={(e) => setTargetLaunchDate(e.target.value)}
+            inputSize="md"
+          />
+        </Field>
+        {isDisc ? (
+          <Field label="단종 사유">
+            <Select
+              value={discontinueReason}
+              onChange={(e) => setDiscontinueReason(e.target.value)}
+              inputSize="md"
+            >
+              {DISCONTINUE_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <Field label="브랜드 유형">
+            <Select value={brandType} onChange={(e) => setBrandType(e.target.value)} inputSize="md">
+              <option value="">선택…</option>
+              {BRAND_TYPES.map((b) => (
+                <option key={b.value} value={b.value}>
+                  {b.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {!isDisc && (
+          <>
+            <Field label="영업채널" hint="쉼표로 구분">
+              <Input
+                value={salesChannels}
+                onChange={(e) => setSalesChannels(e.target.value)}
+                inputSize="md"
+              />
+            </Field>
+            <Field label="보관 조건">
+              <Select
+                value={storageCondition}
+                onChange={(e) => setStorageCondition(e.target.value)}
+                inputSize="md"
+              >
+                <option value="">선택…</option>
+                {STORAGE_CONDITIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="타겟 소비기한">
+              <Input
+                value={targetShelfLife}
+                onChange={(e) => setTargetShelfLife(e.target.value)}
+                inputSize="md"
+              />
+            </Field>
+          </>
+        )}
+        <Field label="설명" className="sm:col-span-2">
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        </Field>
+        {!isDisc && (
+          <Field label="USP (복수 선택)" className="sm:col-span-2">
+            <div className="flex flex-wrap gap-2">
+              {USP_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => toggleUsp(option)}
+                  className={
+                    usp.includes(option)
+                      ? 'px-2.5 py-1 rounded-full text-[12px] bg-[var(--brand-500)] text-white border border-[var(--brand-500)]'
+                      : 'px-2.5 py-1 rounded-full text-[12px] text-[var(--text-3)] border border-[var(--border-2)] hover:border-[var(--brand-500)]'
+                  }
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+            <Input
+              value={uspEtc}
+              onChange={(e) => setUspEtc(e.target.value)}
+              placeholder="기타 USP (쉼표 구분)"
+              inputSize="sm"
+              className="mt-2"
+            />
+          </Field>
+        )}
+        <Field label="편집 비밀번호" className="sm:col-span-2">
+          <label className="flex items-center gap-2 text-[12.5px] text-[var(--text-3)] mb-2">
+            <input
+              type="checkbox"
+              checked={changePw}
+              onChange={(e) => setChangePw(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-500)]"
+            />
+            편집 비밀번호 변경
+            {project.editProtected ? ' (현재 설정됨)' : ' (현재 잠금 없음)'}
+          </label>
+          {changePw && (
+            <>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="새 비밀번호 (빈칸으로 저장하면 잠금 해제)"
+                inputSize="md"
+                autoComplete="new-password"
+              />
+              <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                빈칸으로 저장하면 편집 잠금이 해제됩니다.
+              </p>
+            </>
+          )}
+        </Field>
+      </div>
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          취소
+        </Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? '저장 중…' : '저장'}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 export default function LaunchDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -487,6 +726,7 @@ export default function LaunchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editToken, setEditToken] = useState<string | undefined>(undefined);
+  const [editMode, setEditMode] = useState(false);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -604,6 +844,14 @@ export default function LaunchDetailPage() {
                   🔓 잠금
                 </Button>
               ))}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setEditMode((v) => !v)}
+              disabled={locked}
+            >
+              {editMode ? '편집 닫기' : '편집'}
+            </Button>
             {project.status === 'on_hold' ? (
               <Button variant="secondary" size="sm" onClick={() => updateStatus('in_progress')} disabled={locked}>
                 재개
@@ -638,8 +886,20 @@ export default function LaunchDetailPage() {
         </div>
       )}
 
+      {editMode && !locked && (
+        <ProjectEditForm
+          project={project}
+          editToken={editToken}
+          onSaved={() => {
+            setEditMode(false);
+            fetchProject();
+          }}
+          onCancel={() => setEditMode(false)}
+        />
+      )}
+
       {/* 출시 전략 (출시 프로젝트 전용) */}
-      {!isDisc && (project.brandType ||
+      {!editMode && !isDisc && (project.brandType ||
         project.salesChannels ||
         project.storageCondition ||
         (project.usp && project.usp.length > 0) ||
