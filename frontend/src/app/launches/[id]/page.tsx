@@ -48,12 +48,10 @@ const SAMPLE_TONE: Record<string, 'neutral' | 'info' | 'success' | 'warning' | '
 function SampleRequestSection({
   project,
   onChanged,
-  locked,
   editToken,
 }: {
   project: LaunchProject;
   onChanged: () => void;
-  locked: boolean;
   editToken?: string;
 }) {
   const firstStage = project.stages[0];
@@ -126,9 +124,7 @@ function SampleRequestSection({
         title="샘플 요청 (영업 선제안)"
         subtitle="기획·컨셉 단계 완료 후, 판매채널 제안용 샘플 제작을 담당자에게 요청합니다. 브랜드 유형·보관조건·USP·타겟 소비기한 등 출시 전략 정보가 요청 메일에 자동 포함됩니다."
         actions={
-          locked ? (
-            <Badge tone="neutral" size="sm">🔒 잠금 해제 후 요청 가능</Badge>
-          ) : canRequest ? (
+          canRequest ? (
             <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
               {showForm ? '닫기' : '+ 샘플 요청'}
             </Button>
@@ -243,17 +239,17 @@ function SampleRequestSection({
                 </div>
                 <div className="flex items-center gap-1.5">
                   {r.status === 'requested' && (
-                    <Button variant="secondary" size="xs" onClick={() => updateStatus(r.id, 'in_progress')} disabled={busy || locked}>
+                    <Button variant="secondary" size="xs" onClick={() => updateStatus(r.id, 'in_progress')} disabled={busy}>
                       제작 시작
                     </Button>
                   )}
                   {r.status === 'in_progress' && (
-                    <Button variant="primary" size="xs" onClick={() => updateStatus(r.id, 'delivered')} disabled={busy || locked}>
+                    <Button variant="primary" size="xs" onClick={() => updateStatus(r.id, 'delivered')} disabled={busy}>
                       전달 완료
                     </Button>
                   )}
                   {(r.status === 'requested' || r.status === 'in_progress') && (
-                    <Button variant="ghost" size="xs" onClick={() => updateStatus(r.id, 'canceled')} disabled={busy || locked}>
+                    <Button variant="ghost" size="xs" onClick={() => updateStatus(r.id, 'canceled')} disabled={busy}>
                       취소
                     </Button>
                   )}
@@ -286,13 +282,11 @@ function StageCard({
   stage,
   projectId,
   onChanged,
-  locked,
   editToken,
 }: {
   stage: LaunchStage;
   projectId: string;
   onChanged: () => void;
-  locked: boolean;
   editToken?: string;
 }) {
   const [editingOwner, setEditingOwner] = useState(false);
@@ -395,16 +389,16 @@ function StageCard({
             {completed}/{total}
           </span>
           {stage.status === 'pending' && (
-            <Button variant="primary" size="xs" onClick={startStage} disabled={busy || locked}>
+            <Button variant="primary" size="xs" onClick={startStage} disabled={busy}>
               단계 시작 + 알림
             </Button>
           )}
           {stage.status === 'in_progress' && stage.ownerEmail && (
-            <Button variant="secondary" size="xs" onClick={sendReminder} disabled={busy || locked}>
+            <Button variant="secondary" size="xs" onClick={sendReminder} disabled={busy}>
               리마인드 발송
             </Button>
           )}
-          <Button variant="ghost" size="xs" onClick={() => setEditingOwner((v) => !v)} disabled={locked}>
+          <Button variant="ghost" size="xs" onClick={() => setEditingOwner((v) => !v)}>
             담당 편집
           </Button>
         </div>
@@ -445,9 +439,8 @@ function StageCard({
             <input
               type="checkbox"
               checked={task.isCompleted}
-              disabled={locked}
               onChange={(e) => toggleTask(task.id, e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-500)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-0.5 h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-500)] cursor-pointer"
             />
             <div className="flex-1 min-w-0">
               <p
@@ -473,7 +466,6 @@ function StageCard({
               defaultValue={task.note || ''}
               placeholder="비고"
               inputSize="sm"
-              disabled={locked}
               className="w-40 sm:w-52"
               onBlur={(e) => saveTaskNote(task.id, e.target.value, task.note)}
             />
@@ -853,11 +845,11 @@ export default function LaunchDetailPage() {
               {editMode ? '편집 닫기' : '편집'}
             </Button>
             {project.status === 'on_hold' ? (
-              <Button variant="secondary" size="sm" onClick={() => updateStatus('in_progress')} disabled={locked}>
+              <Button variant="secondary" size="sm" onClick={() => updateStatus('in_progress')}>
                 재개
               </Button>
             ) : project.status !== 'completed' ? (
-              <Button variant="secondary" size="sm" onClick={() => updateStatus('on_hold')} disabled={locked}>
+              <Button variant="secondary" size="sm" onClick={() => updateStatus('on_hold')}>
                 보류
               </Button>
             ) : null}
@@ -878,7 +870,7 @@ export default function LaunchDetailPage() {
       {locked && (
         <div className="mb-5 px-4 py-3 rounded-md bg-[var(--warning-bg)] border border-[var(--warning-border)] flex items-center justify-between gap-3">
           <span className="text-[13px] text-[var(--warning-fg)]">
-            🔒 이 프로젝트는 편집 잠금되어 있습니다. 수정하려면 비밀번호로 잠금을 해제하세요. (조회는 자유)
+            🔒 프로젝트 등록 정보(제품·전략 등)와 삭제만 잠겨 있습니다. 단계 진행·체크리스트·비고 등 운영 업무는 잠금 없이 가능합니다. 정보를 수정하려면 잠금을 해제하세요.
           </span>
           <Button variant="secondary" size="sm" onClick={unlock}>
             잠금 해제
@@ -977,7 +969,6 @@ export default function LaunchDetailPage() {
               stage={stage}
               projectId={project.id}
               onChanged={fetchProject}
-              locked={locked}
               editToken={editToken}
             />
           </div>
@@ -986,12 +977,7 @@ export default function LaunchDetailPage() {
 
       {/* 샘플 요청 (출시 프로젝트 전용) */}
       {!isDisc && (
-        <SampleRequestSection
-          project={project}
-          onChanged={fetchProject}
-          locked={locked}
-          editToken={editToken}
-        />
+        <SampleRequestSection project={project} onChanged={fetchProject} editToken={editToken} />
       )}
 
       {/* 알림 이력 */}

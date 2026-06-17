@@ -248,13 +248,20 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
     }
-    if (!isEditAllowed(req, existing)) return editLockedResponse(res);
 
     const {
       productName, productType, description, targetLaunchDate, status,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
       editPassword,
     } = req.body;
+
+    // 잠금은 '등록 정보' 변경에만 적용. 상태(보류/재개 등) 단독 변경은 운영이라 자유
+    const metaTouched = [
+      productName, productType, description, targetLaunchDate, discontinueReason,
+      brandType, salesChannels, storageCondition, usp, targetShelfLife, editPassword,
+    ].some((v) => v !== undefined);
+    if (metaTouched && !isEditAllowed(req, existing)) return editLockedResponse(res);
+
     const data = {};
     // 편집 비밀번호 변경/해제 (잠금 해제 상태에서만 도달)
     if (editPassword !== undefined) {
@@ -314,7 +321,6 @@ router.put('/stages/:stageId', authenticate, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: '단계를 찾을 수 없습니다.' });
     }
-    if (!isEditAllowed(req, existing.project)) return editLockedResponse(res);
 
     // 담당자 이름·이메일·마감일은 비울 수 없음 (필수 유지)
     if (ownerName !== undefined && !String(ownerName).trim()) {
@@ -384,7 +390,6 @@ router.put('/tasks/:taskId', authenticate, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: '체크리스트 항목을 찾을 수 없습니다.' });
     }
-    if (!isEditAllowed(req, existing.stage.project)) return editLockedResponse(res);
 
     const data = {};
     if (isCompleted !== undefined) {
@@ -460,7 +465,6 @@ router.post('/:id/notify', authenticate, async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: '출시 프로젝트를 찾을 수 없습니다.' });
     }
-    if (!isEditAllowed(req, project)) return editLockedResponse(res);
     const stage = await prisma.launchStage.findUnique({
       where: { id: stageId },
       include: { tasks: { orderBy: { sortOrder: 'asc' } } },
@@ -496,7 +500,6 @@ router.post('/:id/sample-requests', authenticate, async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: '출시 프로젝트를 찾을 수 없습니다.' });
     }
-    if (!isEditAllowed(req, project)) return editLockedResponse(res);
 
     // 게이트: 첫 단계(기획·컨셉)가 완료되어야 샘플 요청 가능
     const firstStage = project.stages[0];
@@ -581,7 +584,6 @@ router.put('/sample-requests/:requestId', authenticate, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: '샘플 요청을 찾을 수 없습니다.' });
     }
-    if (!isEditAllowed(req, existing.project)) return editLockedResponse(res);
 
     const request = await prisma.sampleRequest.update({
       where: { id: req.params.requestId },
