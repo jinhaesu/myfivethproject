@@ -142,6 +142,7 @@ model LaunchProject {
   description      String?
   targetLaunchDate DateTime? // 출시 예정일(launch) / 단종 목표일(discontinuation)
   status           String    @default("planning") // planning, in_progress, completed, on_hold
+  editPasswordHash String?   // 편집 잠금 비밀번호(bcrypt). null이면 잠금 없음
   // 단종 전용
   discontinueReason String?  // 단종 사유 (판매량 저하, 품질 이슈 등)
   // 출시 전략

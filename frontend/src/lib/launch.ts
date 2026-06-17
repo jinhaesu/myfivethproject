@@ -55,6 +55,7 @@ export interface LaunchProject {
   description: string | null;
   targetLaunchDate: string | null;
   status: string;
+  editProtected: boolean;
   discontinueReason: string | null;
   brandType: string | null;
   salesChannels: string | null;

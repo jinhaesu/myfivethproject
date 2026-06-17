@@ -58,6 +58,7 @@ function NewLaunchForm() {
   const [usp, setUsp] = useState<string[]>([]);
   const [uspEtc, setUspEtc] = useState('');
   const [targetShelfLife, setTargetShelfLife] = useState('');
+  const [editPassword, setEditPassword] = useState('');
   const [owners, setOwners] = useState<StageOwnerInput[]>([]);
 
   useEffect(() => {
@@ -158,6 +159,7 @@ function NewLaunchForm() {
         storageCondition: storageCondition || undefined,
         usp: uspAll.length > 0 ? uspAll : undefined,
         targetShelfLife: targetShelfLife.trim() || undefined,
+        editPassword: editPassword.trim() || undefined,
         stageOwners: owners.map((o, idx) => ({
           sortOrder: idx,
           ownerName: o.ownerName.trim(),
@@ -228,6 +230,20 @@ function NewLaunchForm() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="제품 컨셉, 목표 등"
                 rows={2}
+              />
+            </Field>
+            <Field
+              label="편집 비밀번호 (선택)"
+              hint="설정하면 이후 이 프로젝트 수정 시 비밀번호가 필요합니다. 빈칸이면 잠금 없이 누구나 수정 가능."
+              className="sm:col-span-2"
+            >
+              <Input
+                type="password"
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+                placeholder="비워두면 잠금 없음"
+                inputSize="md"
+                autoComplete="new-password"
               />
             </Field>
           </div>

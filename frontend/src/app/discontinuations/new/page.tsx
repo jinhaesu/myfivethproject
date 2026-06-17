@@ -47,6 +47,7 @@ function NewDiscontinuationForm() {
   const [discontinueReason, setDiscontinueReason] = useState(DISCONTINUE_REASONS[0]);
   const [description, setDescription] = useState('');
   const [targetLaunchDate, setTargetLaunchDate] = useState('');
+  const [editPassword, setEditPassword] = useState('');
   const [owners, setOwners] = useState<StageOwnerInput[]>([]);
 
   useEffect(() => {
@@ -131,6 +132,7 @@ function NewDiscontinuationForm() {
         discontinueReason,
         description: description.trim() || undefined,
         targetLaunchDate: targetLaunchDate || undefined,
+        editPassword: editPassword.trim() || undefined,
         stageOwners: owners.map((o, idx) => ({
           sortOrder: idx,
           ownerName: o.ownerName.trim(),
@@ -214,6 +216,20 @@ function NewDiscontinuationForm() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="단종 배경, 품질 이슈 상세, 대체 제품 정보 등"
                 rows={2}
+              />
+            </Field>
+            <Field
+              label="편집 비밀번호 (선택)"
+              hint="설정하면 이후 이 프로젝트 수정 시 비밀번호가 필요합니다. 빈칸이면 잠금 없이 누구나 수정 가능."
+              className="sm:col-span-2"
+            >
+              <Input
+                type="password"
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+                placeholder="비워두면 잠금 없음"
+                inputSize="md"
+                autoComplete="new-password"
               />
             </Field>
           </div>
