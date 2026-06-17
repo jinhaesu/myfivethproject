@@ -182,33 +182,54 @@ export const api = {
       storageCondition?: string;
       usp?: string[];
       targetShelfLife?: string;
+      editPassword?: string;
       stageOwners?: Array<{ sortOrder: number; ownerName?: string; ownerEmail?: string; department?: string; dueDate?: string }>;
     }) =>
       request('/launches', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: any) =>
+    verifyEditPassword: (id: string, password: string) =>
+      request(`/launches/${id}/verify-edit-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+    update: (id: string, data: any, editToken?: string) =>
       request(`/launches/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
-    delete: (id: string) =>
-      request(`/launches/${id}`, { method: 'DELETE' }),
-    updateStage: (stageId: string, data: { ownerName?: string; ownerEmail?: string; department?: string; dueDate?: string | null; status?: string }) =>
+    delete: (id: string, editToken?: string) =>
+      request(`/launches/${id}`, {
+        method: 'DELETE',
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
+      }),
+    updateStage: (
+      stageId: string,
+      data: { ownerName?: string; ownerEmail?: string; department?: string; dueDate?: string | null; status?: string },
+      editToken?: string
+    ) =>
       request(`/launches/stages/${stageId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
-    updateTask: (taskId: string, data: { isCompleted?: boolean; note?: string; completedBy?: string }) =>
+    updateTask: (
+      taskId: string,
+      data: { isCompleted?: boolean; note?: string; completedBy?: string },
+      editToken?: string
+    ) =>
       request(`/launches/tasks/${taskId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
-    notify: (id: string, data: { stageId: string; message?: string }) =>
+    notify: (id: string, data: { stageId: string; message?: string }, editToken?: string) =>
       request(`/launches/${id}/notify`, {
         method: 'POST',
         body: JSON.stringify(data),
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
     createSampleRequest: (
       id: string,
@@ -221,16 +242,19 @@ export const api = {
         specDetails?: string;
         salesChannel?: string;
         message?: string;
-      }
+      },
+      editToken?: string
     ) =>
       request(`/launches/${id}/sample-requests`, {
         method: 'POST',
         body: JSON.stringify(data),
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
-    updateSampleRequest: (requestId: string, data: { status: string }) =>
+    updateSampleRequest: (requestId: string, data: { status: string }, editToken?: string) =>
       request(`/launches/sample-requests/${requestId}`, {
         method: 'PUT',
         body: JSON.stringify(data),
+        headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
   },
   uploads: {

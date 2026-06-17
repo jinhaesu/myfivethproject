@@ -42,9 +42,13 @@ const SAMPLE_TONE: Record<string, 'neutral' | 'info' | 'success' | 'warning' | '
 function SampleRequestSection({
   project,
   onChanged,
+  locked,
+  editToken,
 }: {
   project: LaunchProject;
   onChanged: () => void;
+  locked: boolean;
+  editToken?: string;
 }) {
   const firstStage = project.stages[0];
   const canRequest = firstStage?.status === 'completed';
@@ -84,7 +88,7 @@ function SampleRequestSection({
         specDetails: form.specDetails.trim() || undefined,
         salesChannel: form.salesChannel.trim() || undefined,
         message: form.message.trim() || undefined,
-      });
+      }, editToken);
       setNotice(res.message);
       setShowForm(false);
       setForm((f) => ({ ...f, dueDate: '', quantity: '', weightSpec: '', specDetails: '', salesChannel: '', message: '' }));
@@ -99,7 +103,7 @@ function SampleRequestSection({
   const updateStatus = async (requestId: string, status: string) => {
     try {
       setBusy(true);
-      await api.launches.updateSampleRequest(requestId, { status });
+      await api.launches.updateSampleRequest(requestId, { status }, editToken);
       onChanged();
     } catch (err: any) {
       setNotice(err.message || '상태 변경에 실패했습니다.');
@@ -116,7 +120,9 @@ function SampleRequestSection({
         title="샘플 요청 (영업 선제안)"
         subtitle="기획·컨셉 단계 완료 후, 판매채널 제안용 샘플 제작을 담당자에게 요청합니다. 브랜드 유형·보관조건·USP·타겟 소비기한 등 출시 전략 정보가 요청 메일에 자동 포함됩니다."
         actions={
-          canRequest ? (
+          locked ? (
+            <Badge tone="neutral" size="sm">🔒 잠금 해제 후 요청 가능</Badge>
+          ) : canRequest ? (
             <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
               {showForm ? '닫기' : '+ 샘플 요청'}
             </Button>
@@ -231,17 +237,17 @@ function SampleRequestSection({
                 </div>
                 <div className="flex items-center gap-1.5">
                   {r.status === 'requested' && (
-                    <Button variant="secondary" size="xs" onClick={() => updateStatus(r.id, 'in_progress')} disabled={busy}>
+                    <Button variant="secondary" size="xs" onClick={() => updateStatus(r.id, 'in_progress')} disabled={busy || locked}>
                       제작 시작
                     </Button>
                   )}
                   {r.status === 'in_progress' && (
-                    <Button variant="primary" size="xs" onClick={() => updateStatus(r.id, 'delivered')} disabled={busy}>
+                    <Button variant="primary" size="xs" onClick={() => updateStatus(r.id, 'delivered')} disabled={busy || locked}>
                       전달 완료
                     </Button>
                   )}
                   {(r.status === 'requested' || r.status === 'in_progress') && (
-                    <Button variant="ghost" size="xs" onClick={() => updateStatus(r.id, 'canceled')} disabled={busy}>
+                    <Button variant="ghost" size="xs" onClick={() => updateStatus(r.id, 'canceled')} disabled={busy || locked}>
                       취소
                     </Button>
                   )}
@@ -274,10 +280,14 @@ function StageCard({
   stage,
   projectId,
   onChanged,
+  locked,
+  editToken,
 }: {
   stage: LaunchStage;
   projectId: string;
   onChanged: () => void;
+  locked: boolean;
+  editToken?: string;
 }) {
   const [editingOwner, setEditingOwner] = useState(false);
   const [ownerName, setOwnerName] = useState(stage.ownerName || '');
@@ -298,7 +308,7 @@ function StageCard({
         ownerEmail: ownerEmail.trim() || undefined,
         department: department.trim() || undefined,
         dueDate: dueDate || null,
-      });
+      }, editToken);
       setEditingOwner(false);
       onChanged();
     } catch (err: any) {
@@ -311,7 +321,7 @@ function StageCard({
   const startStage = async () => {
     try {
       setBusy(true);
-      const res = await api.launches.updateStage(stage.id, { status: 'in_progress' });
+      const res = await api.launches.updateStage(stage.id, { status: 'in_progress' }, editToken);
       if (res.notification && !res.notification.delivered) {
         setNotice(`단계를 시작했지만 알림 미발송: ${res.notification.reason}`);
       }
@@ -327,7 +337,7 @@ function StageCard({
     try {
       setBusy(true);
       setNotice('');
-      await api.launches.notify(projectId, { stageId: stage.id });
+      await api.launches.notify(projectId, { stageId: stage.id }, editToken);
       setNotice('리마인드 알림을 발송했습니다.');
     } catch (err: any) {
       setNotice(err.message || '알림 발송에 실패했습니다.');
@@ -338,20 +348,20 @@ function StageCard({
 
   const toggleTask = async (taskId: string, isCompleted: boolean) => {
     try {
-      await api.launches.updateTask(taskId, { isCompleted });
+      await api.launches.updateTask(taskId, { isCompleted }, editToken);
       onChanged();
-    } catch (err) {
-      console.error('Toggle task error:', err);
+    } catch (err: any) {
+      setNotice(err.message || '체크 변경에 실패했습니다.');
     }
   };
 
   const saveTaskNote = async (taskId: string, note: string, original: string | null) => {
     if (note === (original || '')) return;
     try {
-      await api.launches.updateTask(taskId, { note });
+      await api.launches.updateTask(taskId, { note }, editToken);
       onChanged();
-    } catch (err) {
-      console.error('Save note error:', err);
+    } catch (err: any) {
+      setNotice(err.message || '비고 저장에 실패했습니다.');
     }
   };
 
@@ -379,16 +389,16 @@ function StageCard({
             {completed}/{total}
           </span>
           {stage.status === 'pending' && (
-            <Button variant="primary" size="xs" onClick={startStage} disabled={busy}>
+            <Button variant="primary" size="xs" onClick={startStage} disabled={busy || locked}>
               단계 시작 + 알림
             </Button>
           )}
           {stage.status === 'in_progress' && stage.ownerEmail && (
-            <Button variant="secondary" size="xs" onClick={sendReminder} disabled={busy}>
+            <Button variant="secondary" size="xs" onClick={sendReminder} disabled={busy || locked}>
               리마인드 발송
             </Button>
           )}
-          <Button variant="ghost" size="xs" onClick={() => setEditingOwner((v) => !v)}>
+          <Button variant="ghost" size="xs" onClick={() => setEditingOwner((v) => !v)} disabled={locked}>
             담당 편집
           </Button>
         </div>
@@ -429,8 +439,9 @@ function StageCard({
             <input
               type="checkbox"
               checked={task.isCompleted}
+              disabled={locked}
               onChange={(e) => toggleTask(task.id, e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-500)] cursor-pointer"
+              className="mt-0.5 h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-500)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
             />
             <div className="flex-1 min-w-0">
               <p
@@ -456,6 +467,7 @@ function StageCard({
               defaultValue={task.note || ''}
               placeholder="비고"
               inputSize="sm"
+              disabled={locked}
               className="w-40 sm:w-52"
               onBlur={(e) => saveTaskNote(task.id, e.target.value, task.note)}
             />
@@ -474,13 +486,14 @@ export default function LaunchDetailPage() {
   const [project, setProject] = useState<LaunchProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editToken, setEditToken] = useState<string | undefined>(undefined);
 
   const fetchProject = useCallback(async () => {
     try {
       const data = await api.launches.get(id);
       setProject(data.project);
     } catch (err: any) {
-      setError(err.message || '출시 프로젝트 조회에 실패했습니다.');
+      setError(err.message || '프로젝트 조회에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -488,29 +501,51 @@ export default function LaunchDetailPage() {
 
   useEffect(() => {
     fetchProject();
-  }, [fetchProject]);
-
-  const updateStatus = async (status: string) => {
-    try {
-      await api.launches.update(id, { status });
-      fetchProject();
-    } catch (err) {
-      console.error('Update status error:', err);
-    }
-  };
+    // 새로고침 시 세션에 저장된 편집 토큰 복원
+    const saved = typeof window !== 'undefined' ? sessionStorage.getItem(`editToken:${id}`) : null;
+    if (saved) setEditToken(saved);
+  }, [fetchProject, id]);
 
   const isDisc = project?.kind === 'discontinuation';
   const listPath = isDisc ? '/discontinuations' : '/launches';
   const newPath = isDisc ? '/discontinuations/new' : '/launches/new';
   const procLabel = isDisc ? '단종' : '출시';
+  // 잠금: 비번 설정됨 + 아직 해제 안 됨
+  const locked = !!project?.editProtected && !editToken;
+
+  const unlock = async () => {
+    const password = window.prompt('편집 비밀번호를 입력하세요.');
+    if (password === null) return; // 취소
+    try {
+      const data = await api.launches.verifyEditPassword(id, password);
+      setEditToken(data.editToken);
+      sessionStorage.setItem(`editToken:${id}`, data.editToken);
+    } catch (err: any) {
+      alert(err.message || '비밀번호 확인에 실패했습니다.');
+    }
+  };
+
+  const relock = () => {
+    setEditToken(undefined);
+    sessionStorage.removeItem(`editToken:${id}`);
+  };
+
+  const updateStatus = async (status: string) => {
+    try {
+      await api.launches.update(id, { status }, editToken);
+      fetchProject();
+    } catch (err: any) {
+      alert(err.message || '상태 변경에 실패했습니다.');
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm(`이 ${procLabel} 프로젝트를 삭제하시겠습니까? 모든 단계·체크리스트가 함께 삭제됩니다.`)) return;
     try {
-      await api.launches.delete(id);
+      await api.launches.delete(id, editToken);
       router.push(listPath);
-    } catch (err) {
-      console.error('Delete error:', err);
+    } catch (err: any) {
+      alert(err.message || '삭제에 실패했습니다.');
     }
   };
 
@@ -559,12 +594,22 @@ export default function LaunchDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             <StatusPill status={project.status} size="md" kind={project.kind} />
+            {project.editProtected &&
+              (locked ? (
+                <Button variant="secondary" size="sm" onClick={unlock}>
+                  🔒 잠금 해제
+                </Button>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={relock}>
+                  🔓 잠금
+                </Button>
+              ))}
             {project.status === 'on_hold' ? (
-              <Button variant="secondary" size="sm" onClick={() => updateStatus('in_progress')}>
+              <Button variant="secondary" size="sm" onClick={() => updateStatus('in_progress')} disabled={locked}>
                 재개
               </Button>
             ) : project.status !== 'completed' ? (
-              <Button variant="secondary" size="sm" onClick={() => updateStatus('on_hold')}>
+              <Button variant="secondary" size="sm" onClick={() => updateStatus('on_hold')} disabled={locked}>
                 보류
               </Button>
             ) : null}
@@ -575,12 +620,23 @@ export default function LaunchDetailPage() {
             >
               프로젝트 복사
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleDelete}>
+            <Button variant="ghost" size="sm" onClick={handleDelete} disabled={locked}>
               삭제
             </Button>
           </div>
         }
       />
+
+      {locked && (
+        <div className="mb-5 px-4 py-3 rounded-md bg-[var(--warning-bg)] border border-[var(--warning-border)] flex items-center justify-between gap-3">
+          <span className="text-[13px] text-[var(--warning-fg)]">
+            🔒 이 프로젝트는 편집 잠금되어 있습니다. 수정하려면 비밀번호로 잠금을 해제하세요. (조회는 자유)
+          </span>
+          <Button variant="secondary" size="sm" onClick={unlock}>
+            잠금 해제
+          </Button>
+        </div>
+      )}
 
       {/* 출시 전략 (출시 프로젝트 전용) */}
       {!isDisc && (project.brandType ||
@@ -657,13 +713,26 @@ export default function LaunchDetailPage() {
       <div className="space-y-4">
         {project.stages.map((stage) => (
           <div key={stage.id} id={`stage-${stage.sortOrder}`}>
-            <StageCard stage={stage} projectId={project.id} onChanged={fetchProject} />
+            <StageCard
+              stage={stage}
+              projectId={project.id}
+              onChanged={fetchProject}
+              locked={locked}
+              editToken={editToken}
+            />
           </div>
         ))}
       </div>
 
       {/* 샘플 요청 (출시 프로젝트 전용) */}
-      {!isDisc && <SampleRequestSection project={project} onChanged={fetchProject} />}
+      {!isDisc && (
+        <SampleRequestSection
+          project={project}
+          onChanged={fetchProject}
+          locked={locked}
+          editToken={editToken}
+        />
+      )}
 
       {/* 알림 이력 */}
       <Card padding="lg" className="mt-6">
