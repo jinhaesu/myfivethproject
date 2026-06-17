@@ -18,6 +18,7 @@ function strategyPairs(project) {
   return [
     ['브랜드 유형', project.brandType],
     ['영업채널', project.salesChannels],
+    ['중량/규격', project.weightSpec],
     ['보관 조건', project.storageCondition],
     ['USP', uspList],
     ['타겟 소비기한', project.targetShelfLife],
@@ -196,7 +197,8 @@ function buildSampleRequestEmailHtml(project, request, requesterName, { ctaUrl }
     ['중량 / 규격', request.weightSpec],
     ['스펙 상세', request.specDetails],
     ['제안 판매채널', request.salesChannel],
-    ...strategyPairs(project),
+    // 중량/규격은 요청서 자체 항목으로 위에 표기되므로 전략 요약에서는 제외(중복 방지)
+    ...strategyPairs(project).filter(([k]) => k !== '중량/규격'),
     ['출시 예정일', launchStr],
   ]
     .filter(([, v]) => v)

@@ -174,6 +174,7 @@ export const api = {
       kind?: string;
       productName: string;
       productType?: string;
+      weightSpec?: string;
       description?: string;
       targetLaunchDate?: string;
       discontinueReason?: string;

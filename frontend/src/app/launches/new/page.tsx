@@ -50,6 +50,7 @@ function NewLaunchForm() {
 
   const [productName, setProductName] = useState('');
   const [productType, setProductType] = useState(PRODUCT_TYPES[0]);
+  const [weightSpec, setWeightSpec] = useState('');
   const [description, setDescription] = useState('');
   const [targetLaunchDate, setTargetLaunchDate] = useState('');
   const [brandType, setBrandType] = useState('');
@@ -82,6 +83,7 @@ function NewLaunchForm() {
             const p: LaunchProject = src.project;
             setProductName(`${p.productName} (복사)`);
             if (p.productType) setProductType(p.productType);
+            setWeightSpec(p.weightSpec || '');
             setDescription(p.description || '');
             setBrandType(p.brandType || '');
             setSalesChannels(p.salesChannels || '');
@@ -152,6 +154,7 @@ function NewLaunchForm() {
       const data = await api.launches.create({
         productName: productName.trim(),
         productType,
+        weightSpec: weightSpec.trim() || undefined,
         description: description.trim() || undefined,
         targetLaunchDate: targetLaunchDate || undefined,
         brandType: brandType || undefined,
@@ -215,6 +218,14 @@ function NewLaunchForm() {
                   </option>
                 ))}
               </Select>
+            </Field>
+            <Field label="중량 / 규격" hint="샘플 요청 시 자동으로 채워집니다">
+              <Input
+                value={weightSpec}
+                onChange={(e) => setWeightSpec(e.target.value)}
+                placeholder="예: 개당 80g, 4입 트레이 포장"
+                inputSize="md"
+              />
             </Field>
             <Field label="출시 예정일" hint="설정 시 D-30/14/7/3/1/D-DAY에 담당자 전원 자동 알림">
               <Input

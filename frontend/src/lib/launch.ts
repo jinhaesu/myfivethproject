@@ -52,6 +52,7 @@ export interface LaunchProject {
   kind: string; // launch | discontinuation
   productName: string;
   productType: string | null;
+  weightSpec: string | null;
   description: string | null;
   targetLaunchDate: string | null;
   status: string;
