@@ -268,6 +268,18 @@
 :where(.bg-indigo-100) { background-color: rgba(94,106,210,0.20) !important; }
 :where(.text-indigo-700) { color: var(--brand-200) !important; }
 
+/* 누락 보정: 호환 레이어가 놓친 라이트 배경/짙은 텍스트 → 다크 톤 매핑
+ * (흰 배경 + 흰 글씨로 안 보이거나 다크 배경 + 짙은 글씨로 저대비 나던 케이스 차단) */
+:where(.bg-green-50)   { background-color: var(--success-bg) !important; }
+:where(.bg-purple-50)  { background-color: rgba(168,85,247,0.10) !important; }
+:where(.bg-blue-100)   { background-color: var(--info-bg) !important; }
+:where(.bg-orange-100) { background-color: rgba(251,146,60,0.10) !important; }
+:where(.text-green-800)  { color: var(--success-fg) !important; }
+:where(.text-yellow-800) { color: var(--warning-fg) !important; }
+:where(.text-orange-700),
+:where(.text-orange-800) { color: #FB923C !important; }
+:where(.text-indigo-800) { color: var(--brand-200) !important; }
+
 /* shadow 절제: shadow-sm 정도만 elev-1 으로 */
 :where(.shadow-sm) { box-shadow: var(--elev-1) !important; }
 :where(.shadow) { box-shadow: var(--elev-2) !important; }
