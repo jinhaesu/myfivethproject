@@ -56,7 +56,16 @@ const LAUNCH_STAGE_TEMPLATE = [
     ],
   },
   {
-    name: '6. 생산 준비',
+    name: '6. 영업 채널 검수',
+    department: '영업',
+    tasks: [
+      { name: '채널별 필수 요건 검수', checkPoint: '납품처(대형마트·편의점·온라인 플랫폼 등)가 요구하는 필수 표기·전용 마크(채널 전용 로고·친환경/인증 마크 등) 누락 여부 확인' },
+      { name: '유통 정보(바코드) 확인', checkPoint: '판매 채널에 맞는 단품(GTIN-13)·박스(ITF-14) 바코드가 정확히 매칭되었는지 스캔 확인' },
+      { name: '초기 컨셉 기획안 일치 여부', checkPoint: '초기 영업 기획 의도(시즈널 패키지·컨셉 구성 등)가 최종 패키지에 잘 담겼는지 기획안 1:1 대조' },
+    ],
+  },
+  {
+    name: '7. 생산 준비',
     department: '생산',
     tasks: [
       { name: '시생산(파일럿 배치)', checkPoint: '굽기 온도·시간, 냉각, 충전/성형, 포장 조건 등 공정 조건 확정' },
@@ -68,7 +77,7 @@ const LAUNCH_STAGE_TEMPLATE = [
     ],
   },
   {
-    name: '7. 품질 검증',
+    name: '8. 품질 검증',
     department: '품질보증',
     tasks: [
       { name: '초도 생산품 자가품질검사', checkPoint: '미생물(세균수·대장균군)·이화학 검사 성적 합격' },
@@ -78,7 +87,7 @@ const LAUNCH_STAGE_TEMPLATE = [
     ],
   },
   {
-    name: '8. 출시·유통',
+    name: '9. 출시·유통',
     department: '영업',
     tasks: [
       { name: '거래처·온라인 채널 등록', checkPoint: '상품 코드 등록, 상세페이지 표시사항 일치 확인' },
