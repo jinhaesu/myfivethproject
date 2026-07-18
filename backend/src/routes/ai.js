@@ -1398,4 +1398,106 @@ detectedCompanies 필드에 발견된 모든 회사명을 나열하세요.`;
   }
 });
 
+// ── 영업일지 AI 자동 작성 (Opus 4.8) ─────────────────────────
+// 영업담당자가 일부만 입력한 일지를, 비어 있는 항목 위주로 전문적으로 채워줍니다.
+const SALES_JOURNAL_DRAFT_SYSTEM = `당신은 식품 제조기업(제과·제빵)의 노련한 영업 담당자이자 영업 코치입니다.
+영업담당자가 남긴 단편적인 미팅 메모를 바탕으로 정식 영업일지를 빠짐없이 작성·보완합니다.
+
+# 원칙
+- 사용자가 이미 작성한 내용의 사실관계는 절대 바꾸지 마세요. (표현 다듬기는 가능하나 의미 왜곡·삭제 금지)
+- 근거 없는 수치·고유명사(담당자 실명, 계약 금액, 매출액 등)를 지어내지 마세요. 불명확하면 일반적 표현이나 "(확인 필요)"로 남깁니다.
+- 한국어로, 영업일지에 어울리는 간결하고 명료한 문체로 작성합니다.
+
+# 출력 형식 — 반드시 순수 JSON만 (마크다운/설명 금지)
+{
+  "title": "일지 제목(거래처·미팅 핵심을 담은 한 줄)",
+  "meetingPurpose": "미팅 목적",
+  "meetingLocation": "장소(불명확하면 빈 문자열)",
+  "attendees": "참석자(우리측/거래처측 구분, 불명확하면 역할 위주)",
+  "meetingSummary": "미팅 개요 3~6문장",
+  "keyRequests": "거래처의 핵심 요청사항(줄바꿈 \\n 허용)",
+  "productRequests": "제품에 대한 구체적 요청 및 기획사항",
+  "todos": [ { "dueDate": "YYYY-MM-DD", "content": "해야 할 일", "plan": "대략적 계획" } ],
+  "clientProfile": { "ownerOrg": "", "buyerComposition": "", "annualRevenue": "", "existingVendors": "", "managedItems": "", "storageCondition": "", "logisticsCondition": "" }
+}
+- todos: 미팅 후속 실행 항목 2~5개 제안. dueDate는 반드시 제공된 기준일 이후의 구체적 날짜(YYYY-MM-DD).
+- clientProfile: 최초 미팅일 때만 제공된 단서로 추정해 채우고, 최초 미팅이 아니면 빈 객체 {} 로 두세요.
+- 모든 JSON 문자열 내부의 줄바꿈은 \\n 으로 escape 하세요.`;
+
+// 확장 사고(thinking) 사용 여부와 무관하게 텍스트 블록만 안전 추출
+function extractTextBlock(response) {
+  if (!response || !Array.isArray(response.content)) return '';
+  const block = response.content.find((b) => b.type === 'text');
+  return block ? block.text : '';
+}
+
+router.post('/draft-sales-journal', authenticate, async (req, res) => {
+  try {
+    const client = getClient();
+    if (!client) return res.status(400).json({ error: 'ANTHROPIC_API_KEY 환경변수가 필요합니다.' });
+
+    const {
+      clientName, clientStage, isFirstMeeting, meetingDate,
+      partial = {}, clientProfile = {},
+    } = req.body || {};
+
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); // YYYY-MM-DD
+    const baseDate = meetingDate ? String(meetingDate).slice(0, 10) : today;
+
+    const userPayload = {
+      기준일_오늘: today,
+      미팅일: baseDate,
+      거래처명: clientName || '(미지정)',
+      영업단계: clientStage || null,
+      최초미팅여부: !!isFirstMeeting,
+      기존_거래처_프로필: clientProfile || {},
+      사용자가_입력한_일지_초안: {
+        title: partial.title || '',
+        meetingPurpose: partial.meetingPurpose || '',
+        meetingLocation: partial.meetingLocation || '',
+        attendees: partial.attendees || '',
+        meetingSummary: partial.meetingSummary || '',
+        keyRequests: partial.keyRequests || '',
+        productRequests: partial.productRequests || '',
+      },
+    };
+
+    const response = await client.messages.create({
+      model: REVIEW_MODEL, // Opus 4.8
+      max_tokens: 4096,
+      system: [
+        { type: 'text', text: SALES_JOURNAL_DRAFT_SYSTEM, cache_control: { type: 'ephemeral' } },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text:
+                '다음 정보를 바탕으로 영업일지를 완성해 주세요. 비어 있는 항목을 우선 채우고, 후속 할일(todos)과 (최초 미팅이면) 거래처 프로필을 제안하세요.\n\n' +
+                JSON.stringify(userPayload, null, 2),
+            },
+          ],
+        },
+      ],
+    });
+
+    const text = extractTextBlock(response);
+    const draft = safeParseJson(text);
+    if (!draft) {
+      console.error('[AI Journal Draft] JSON 파싱 실패. Raw(처음 800자):', String(text).substring(0, 800));
+      return res.status(502).json({ error: 'AI 응답을 해석할 수 없습니다. 다시 시도해주세요.' });
+    }
+    res.json({ draft });
+  } catch (error) {
+    console.error('[AI Journal Draft]', error?.status, error?.message);
+    let msg = error?.message || 'AI 영업일지 작성에 실패했습니다.';
+    if (error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT') {
+      msg = 'AI 서버 응답 시간 초과. 잠시 후 다시 시도해주세요.';
+    }
+    res.status(500).json({ error: msg });
+  }
+});
+
 module.exports = router;

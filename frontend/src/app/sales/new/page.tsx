@@ -60,6 +60,71 @@ export default function NewSalesJournalPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // AI 자동 작성 (Opus 4.8)
+  const [drafting, setDrafting] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiNote, setAiNote] = useState('');
+
+  const runAiDraft = async () => {
+    if (!clientId) {
+      setAiError('먼저 거래처를 선택해주세요.');
+      return;
+    }
+    setDrafting(true);
+    setAiError('');
+    setAiNote('');
+    try {
+      const clientName = clients.find((c) => c.id === clientId)?.name || '';
+      const { draft } = await api.ai.draftSalesJournal({
+        clientName,
+        clientStage: stage || undefined,
+        isFirstMeeting,
+        meetingDate: meetingDate || undefined,
+        partial: { title, meetingPurpose, meetingLocation, attendees, meetingSummary, keyRequests, productRequests },
+        clientProfile: isFirstMeeting
+          ? { ownerOrg, buyerComposition, annualRevenue, existingVendors, managedItems, storageCondition, logisticsCondition }
+          : {},
+      });
+      // 비어 있는 항목만 채움(사용자가 이미 쓴 내용은 보존)
+      const fillIfEmpty = (cur: string, setter: (v: string) => void, val: unknown) => {
+        if (!cur.trim() && val && String(val).trim()) setter(String(val));
+      };
+      fillIfEmpty(title, setTitle, draft.title);
+      fillIfEmpty(meetingPurpose, setMeetingPurpose, draft.meetingPurpose);
+      fillIfEmpty(meetingLocation, setMeetingLocation, draft.meetingLocation);
+      fillIfEmpty(attendees, setAttendees, draft.attendees);
+      fillIfEmpty(meetingSummary, setMeetingSummary, draft.meetingSummary);
+      fillIfEmpty(keyRequests, setKeyRequests, draft.keyRequests);
+      fillIfEmpty(productRequests, setProductRequests, draft.productRequests);
+      if (isFirstMeeting && draft.clientProfile) {
+        const p = draft.clientProfile;
+        fillIfEmpty(ownerOrg, setOwnerOrg, p.ownerOrg);
+        fillIfEmpty(buyerComposition, setBuyerComposition, p.buyerComposition);
+        fillIfEmpty(annualRevenue, setAnnualRevenue, p.annualRevenue);
+        fillIfEmpty(existingVendors, setExistingVendors, p.existingVendors);
+        fillIfEmpty(managedItems, setManagedItems, p.managedItems);
+        fillIfEmpty(storageCondition, setStorageCondition, p.storageCondition);
+        fillIfEmpty(logisticsCondition, setLogisticsCondition, p.logisticsCondition);
+      }
+      // 향후 스케쥴: AI 제안 할일을 기존 입력에 추가
+      if (Array.isArray(draft.todos) && draft.todos.length) {
+        const aiTodos: TodoRow[] = draft.todos
+          .filter((t: any) => t?.dueDate && t?.content)
+          .map((t: any) => ({ dueDate: String(t.dueDate).slice(0, 10), content: String(t.content), plan: t.plan ? String(t.plan) : '' }));
+        setTodos((prev) => {
+          const meaningful = prev.filter((t) => t.dueDate || t.content.trim() || t.plan.trim());
+          const merged = [...meaningful, ...aiTodos];
+          return merged.length ? merged : [{ dueDate: '', content: '', plan: '' }];
+        });
+      }
+      setAiNote('Opus 4.8이 비어 있던 항목을 채우고 후속 할일을 제안했습니다. 내용을 검토·수정한 뒤 저장하세요.');
+    } catch (e) {
+      setAiError((e as Error)?.message || 'AI 자동 작성에 실패했습니다.');
+    } finally {
+      setDrafting(false);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -163,6 +228,35 @@ export default function NewSalesJournalPage() {
         </Card>
       ) : (
         <div className="flex flex-col gap-5 max-w-3xl">
+          {/* AI 자동 작성 */}
+          <Card padding="lg" tone="elevated">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold text-[var(--text-1)]">✦ AI 자동 작성</span>
+                  <span className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--text-4)] border border-[var(--border-2)] rounded px-1.5 py-0.5">
+                    Opus 4.8
+                  </span>
+                </div>
+                <p className="text-[12.5px] text-[var(--text-3)] mt-1">
+                  거래처와 메모 일부만 입력하고 누르면, 비어 있는 항목을 채우고 후속 할일을 제안합니다. (이미 쓴 내용은 보존)
+                </p>
+                {aiNote && <p className="text-[12px] text-[var(--success-fg)] mt-1.5">{aiNote}</p>}
+                {aiError && <p className="text-[12px] text-[var(--danger-fg)] mt-1.5">{aiError}</p>}
+              </div>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={runAiDraft}
+                loading={drafting}
+                disabled={!clientId}
+                className="flex-shrink-0"
+              >
+                {drafting ? 'AI 작성 중…' : 'AI로 채우기'}
+              </Button>
+            </div>
+          </Card>
+
           {/* 기본 */}
           <Card padding="lg">
             <CardHeader title="기본 정보" subtitle="거래처와 영업 단계를 지정합니다." />

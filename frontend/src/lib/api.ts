@@ -156,6 +156,8 @@ export const api = {
       }),
     reviewDesignVsReport: (labelId: string) =>
       request(`/ai/review-design-vs-report/${labelId}`, { method: 'POST' }),
+    draftSalesJournal: (data: any) =>
+      request('/ai/draft-sales-journal', { method: 'POST', body: JSON.stringify(data) }),
   },
   reviews: {
     updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string; reviewerName?: string }) =>
