@@ -8,19 +8,22 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  name        String?
-  department  String?
-  role        String   @default("user")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  email      String   @unique
+  name       String?
+  department String?
+  role       String   @default("user")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  labels      Label[]
-  reviews     ReviewItem[]
+  labels            Label[]
+  reviews           ReviewItem[]
   verificationCodes EmailVerification[]
-  launchProjects LaunchProject[]
-  sampleRequests SampleRequest[]
+  launchProjects    LaunchProject[]
+  sampleRequests    SampleRequest[]
+  salesClients      SalesClient[]
+  salesJournals     SalesJournal[]
+  salesPlans        SalesPlan[]
 }
 
 // 메일 CTA용 1회용 자동 로그인 토큰 (매직 링크)
@@ -42,68 +45,68 @@ model EmailVerification {
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id])
-  userId    String?
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
 }
 
 model Label {
-  id            String   @id @default(uuid())
-  productName   String
-  productType   String?
-  salesChannel  String?
-  status        String   @default("draft")
-  servingSize   Float?
-  servingUnit   String?
-  totalContent  Float?
-  totalUnit     String?
-  shelfLife     String?  // 소비기한(기준 소비기한)
-  storageMethod String?  // 보관방법
-  crossContaminationAllergens String? // 혼입 가능 알레르기 유발물질
-  healthClaims    Json?
-  aiNotes         Json?
-  labelSnapshot   Json?
-  designFileUrl   String?
-  designFileName  String?
-  designUploadedAt DateTime?
-  manufacturingReportUrl   String?  // 품목제조보고서 원본 PDF URL
-  manufacturingReportMaskedUrl String?  // 마스킹된 PDF URL (자동 또는 수동)
-  manufacturingReportMaskingLocked Boolean @default(false)  // true면 사용자가 영구 마스킹 적용 → 편집 불가
-  manufacturingReportName  String?
-  manufacturingReportUploadedAt DateTime?
-  aiReportExtraction Json?      // 1단계: 품목제조보고서에서 추출한 정보
-  aiDesignExtraction Json?      // 2단계: 디자인에서 추출한 정보
-  aiDesignReview     Json?      // 3단계: 비교 결과
-  aiDesignReviewedAt DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                               String    @id @default(uuid())
+  productName                      String
+  productType                      String?
+  salesChannel                     String?
+  status                           String    @default("draft")
+  servingSize                      Float?
+  servingUnit                      String?
+  totalContent                     Float?
+  totalUnit                        String?
+  shelfLife                        String? // 소비기한(기준 소비기한)
+  storageMethod                    String? // 보관방법
+  crossContaminationAllergens      String? // 혼입 가능 알레르기 유발물질
+  healthClaims                     Json?
+  aiNotes                          Json?
+  labelSnapshot                    Json?
+  designFileUrl                    String?
+  designFileName                   String?
+  designUploadedAt                 DateTime?
+  manufacturingReportUrl           String? // 품목제조보고서 원본 PDF URL
+  manufacturingReportMaskedUrl     String? // 마스킹된 PDF URL (자동 또는 수동)
+  manufacturingReportMaskingLocked Boolean   @default(false) // true면 사용자가 영구 마스킹 적용 → 편집 불가
+  manufacturingReportName          String?
+  manufacturingReportUploadedAt    DateTime?
+  aiReportExtraction               Json? // 1단계: 품목제조보고서에서 추출한 정보
+  aiDesignExtraction               Json? // 2단계: 디자인에서 추출한 정보
+  aiDesignReview                   Json? // 3단계: 비교 결과
+  aiDesignReviewedAt               DateTime?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
 
-  createdBy     User     @relation(fields: [createdById], references: [id])
-  createdById   String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
 
-  nutritionInfo NutritionInfo?
-  ingredients   Ingredient[]
+  nutritionInfo    NutritionInfo?
+  ingredients      Ingredient[]
   reviewCategories ReviewCategory[]
 }
 
 model NutritionInfo {
-  id              String @id @default(uuid())
-  calories        Float?
-  carbohydrates   Float?
-  sugars          Float?
-  dietaryFiber    Float?
-  protein         Float?
-  totalFat        Float?
-  saturatedFat    Float?
-  transFat        Float?
-  cholesterol     Float?
-  sodium          Float?
-  vitaminA        Float?
-  vitaminC        Float?
-  calcium         Float?
-  iron            Float?
+  id            String @id @default(uuid())
+  calories      Float?
+  carbohydrates Float?
+  sugars        Float?
+  dietaryFiber  Float?
+  protein       Float?
+  totalFat      Float?
+  saturatedFat  Float?
+  transFat      Float?
+  cholesterol   Float?
+  sodium        Float?
+  vitaminA      Float?
+  vitaminC      Float?
+  calcium       Float?
+  iron          Float?
 
-  label           Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  labelId         String @unique
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId String @unique
 }
 
 model Ingredient {
@@ -114,12 +117,12 @@ model Ingredient {
   allergen        Boolean @default(false)
   allergenInfo    String?
   ingredientType  String  @default("regular") // regular, compound, additive
-  subIngredients  Json?   // 복합원재료 구성성분 [{name, ratio?}]
+  subIngredients  Json? // 복합원재료 구성성분 [{name, ratio?}]
   additivePurpose String? // 식품첨가물 용도 (합성보존료, 합성감미료 등)
   sortOrder       Int     @default(0)
 
-  label           Label   @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  labelId         String
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId String
 }
 
 model ReviewCategory {
@@ -127,33 +130,33 @@ model ReviewCategory {
   name      String
   sortOrder Int    @default(0)
 
-  label     Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  labelId   String
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  labelId String
 
-  items     ReviewItem[]
+  items ReviewItem[]
 }
 
 // ── 신제품 출시 프로세스 관리 ─────────────────────────────
 model LaunchProject {
-  id               String    @id @default(uuid())
-  kind             String    @default("launch") // launch(출시) | discontinuation(단종)
-  productName      String
-  productType      String?   // 제과, 제빵, 케이크/디저트 등
-  weightSpec       String?   // 중량/규격 (예: 개당 80g, 4입 트레이) — 샘플 요청 시 프리필
-  description      String?
-  targetLaunchDate DateTime? // 출시 예정일(launch) / 단종 목표일(discontinuation)
-  status           String    @default("planning") // planning, in_progress, completed, on_hold
-  editPasswordHash String?   // 편집 잠금 비밀번호(bcrypt). null이면 잠금 없음
+  id                String    @id @default(uuid())
+  kind              String    @default("launch") // launch(출시) | discontinuation(단종)
+  productName       String
+  productType       String? // 제과, 제빵, 케이크/디저트 등
+  weightSpec        String? // 중량/규격 (예: 개당 80g, 4입 트레이) — 샘플 요청 시 프리필
+  description       String?
+  targetLaunchDate  DateTime? // 출시 예정일(launch) / 단종 목표일(discontinuation)
+  status            String    @default("planning") // planning, in_progress, completed, on_hold
+  editPasswordHash  String? // 편집 잠금 비밀번호(bcrypt). null이면 잠금 없음
   // 단종 전용
-  discontinueReason String?  // 단종 사유 (판매량 저하, 품질 이슈 등)
+  discontinueReason String? // 단종 사유 (판매량 저하, 품질 이슈 등)
   // 출시 전략
-  brandType        String?   // NB, PNB, PB
-  salesChannels    String?   // 영업채널 (쉼표 구분: 자사몰, 쿠팡, ○○마트 PB 등)
-  storageCondition String?   // 실온, 냉장, 냉동
-  usp              Json?     // USP 배열: 고단백, 저당, 고식이섬유, 개별인정형(식후혈당안정) 등
-  targetShelfLife  String?   // 타겟 소비기한 (예: 냉장 30일)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  brandType         String? // NB, PNB, PB
+  salesChannels     String? // 영업채널 (쉼표 구분: 자사몰, 쿠팡, ○○마트 PB 등)
+  storageCondition  String? // 실온, 냉장, 냉동
+  usp               Json? // USP 배열: 고단백, 저당, 고식이섬유, 개별인정형(식후혈당안정) 등
+  targetShelfLife   String? // 타겟 소비기한 (예: 냉장 30일)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   createdBy   User   @relation(fields: [createdById], references: [id])
   createdById String
@@ -169,11 +172,11 @@ model SampleRequest {
   recipientName  String?
   recipientEmail String
   dueDate        DateTime // 납기 (언제까지)
-  quantity       String?  // 수량
-  weightSpec     String?  // 중량/규격
-  specDetails    String?  // 스펙 상세
-  salesChannel   String?  // 제안 판매채널
-  message        String?  // 요청 메시지
+  quantity       String? // 수량
+  weightSpec     String? // 중량/규격
+  specDetails    String? // 스펙 상세
+  salesChannel   String? // 제안 판매채널
+  message        String? // 요청 메시지
   status         String   @default("requested") // requested, in_progress, delivered, canceled
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -206,7 +209,7 @@ model LaunchStage {
 model LaunchTask {
   id          String    @id @default(uuid())
   name        String
-  checkPoint  String?   // 체크해야 하는 사항(검수 포인트)
+  checkPoint  String? // 체크해야 하는 사항(검수 포인트)
   isCompleted Boolean   @default(false)
   completedBy String?
   completedAt DateTime?
@@ -219,7 +222,7 @@ model LaunchTask {
 
 model LaunchNotificationLog {
   id      String   @id @default(uuid())
-  type    String   // stage_start, manual, schedule_d30, schedule_d14, schedule_d7, schedule_d3, schedule_d1, schedule_d0
+  type    String // stage_start, manual, schedule_d30, schedule_d14, schedule_d7, schedule_d3, schedule_d1, schedule_d0
   stageId String?
   sentTo  String
   sentAt  DateTime @default(now())
@@ -229,18 +232,131 @@ model LaunchNotificationLog {
 }
 
 model ReviewItem {
+  id           String    @id @default(uuid())
+  taskName     String
+  department   String
+  isCompleted  Boolean   @default(false)
+  reviewerName String?
+  reviewerNote String?
+  completedAt  DateTime?
+  sortOrder    Int       @default(0)
+
+  category   ReviewCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  reviewer   User?   @relation(fields: [reviewerId], references: [id])
+  reviewerId String?
+}
+
+// ── 영업 관리 (Sales Management) ─────────────────────────────
+// Pipedrive 스타일 단계별 파이프라인 + 거래처/명함 + 영업일지(참고자·비밀번호) + 영업계획
+
+// 거래처 — 영업 파이프라인의 딜(deal) 단위. stage로 단계 이동.
+model SalesClient {
+  id                 String   @id @default(uuid())
+  name               String // 거래처명
+  bizNumber          String? // 사업자번호
+  stage              String   @default("lead") // lead(영업시작), contact(관계형성), proposal(제안·미팅), revenue(매출기여), expansion(제품확대)
+  // 최초 미팅 시 입력하는 거래처 프로필
+  ownerOrg           String? // 담당 조직
+  buyerComposition   String? // 바이어 구성
+  annualRevenue      String? // 바이어 및 거래처 연매출
+  existingVendors    String? // 기존 거래처
+  managedItems       String? // 관리 품목
+  storageCondition   String? // 보관 조건
+  logisticsCondition String? // 물류 조건
+  note               String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+
+  contacts SalesContact[]
+  journals SalesJournal[]
+  plans    SalesPlan[]
+}
+
+// 거래처 담당자 명함 — 명함 이미지 + 이름/직급/직함/연락처/이메일
+model SalesContact {
   id            String   @id @default(uuid())
-  taskName      String
-  department    String
-  isCompleted   Boolean  @default(false)
-  reviewerName  String?
-  reviewerNote  String?
-  completedAt   DateTime?
+  name          String // 이름
+  position      String? // 직급
+  title         String? // 직함
+  phone         String? // 연락처
+  email         String? // 이메일
+  cardImageUrl  String? // 명함 이미지 URL
+  cardImageName String?
   sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
 
-  category    ReviewCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  categoryId  String
+  client   SalesClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+}
 
-  reviewer    User?    @relation(fields: [reviewerId], references: [id])
-  reviewerId  String?
+// 영업일지 — 영업담당자별 작성. 참고자(이메일)·열람 비밀번호로 접근 제어.
+model SalesJournal {
+  id              String    @id @default(uuid())
+  title           String?
+  passwordHash    String? // 열람 비밀번호(bcrypt). null이면 잠금 없음
+  isFirstMeeting  Boolean   @default(false) // 최초 미팅 여부(거래처 프로필 입력 트리거)
+  stage           String? // 작성 시점 영업 단계
+  meetingDate     DateTime? // 미팅 일자
+  meetingPurpose  String? // 미팅 목적
+  meetingLocation String? // 미팅 장소
+  attendees       String? // 참석자 정보
+  meetingSummary  String? // 미팅 개요
+  keyRequests     String? // 핵심 요청사항
+  productRequests String? // 제품의 구체적 요청 및 기획사항
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+
+  client   SalesClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+
+  referrers SalesJournalReferrer[]
+  todos     SalesTodo[]
+}
+
+// 영업일지 참고자 — 로그인 이메일 기반으로 열람 권한 부여
+model SalesJournalReferrer {
+  id        String   @id @default(uuid())
+  email     String
+  createdAt DateTime @default(now())
+
+  journal   SalesJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  journalId String
+}
+
+// 향후 스케쥴 — 해야할 일 + 대략적 계획. 일자 필수.
+model SalesTodo {
+  id        String   @id @default(uuid())
+  dueDate   DateTime // 일자(필수)
+  content   String // 해야할 일
+  plan      String? // 대략적 계획
+  isDone    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  journal   SalesJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  journalId String
+}
+
+// 거래처별 영업계획 — 캘린더에 통합 노출
+model SalesPlan {
+  id        String   @id @default(uuid())
+  title     String
+  planDate  DateTime // 영업 계획 일정
+  content   String?
+  stage     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+
+  client   SalesClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId String?
 }
