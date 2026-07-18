@@ -13,10 +13,12 @@ const TABS = [
       (p.startsWith('/sales/') &&
         !p.startsWith('/sales/clients') &&
         !p.startsWith('/sales/calendar') &&
-        !p.startsWith('/sales/dashboard')),
+        !p.startsWith('/sales/dashboard') &&
+        !p.startsWith('/sales/receivables')),
   },
   { href: '/sales/dashboard', label: '대시보드', match: (p: string) => p.startsWith('/sales/dashboard') },
   { href: '/sales/clients', label: '거래처', match: (p: string) => p.startsWith('/sales/clients') },
+  { href: '/sales/receivables', label: '매출채권', match: (p: string) => p.startsWith('/sales/receivables') },
 ];
 
 export default function SalesTabs() {

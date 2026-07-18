@@ -318,6 +318,10 @@ export const api = {
     deletePlan: (id: string) => request(`/sales/plans/${id}`, { method: 'DELETE' }),
     // 영업 대시보드
     dashboard: () => request('/sales/dashboard'),
+    // 매출채권 (거래처별 월별 잔액)
+    receivables: (year: number) => request(`/sales/receivables?year=${year}`),
+    upsertReceivable: (data: { clientId: string; year: number; month: number; amount: number }) =>
+      request('/sales/receivables', { method: 'POST', body: JSON.stringify(data) }),
     // 통합 캘린더
     calendar: (from?: string, to?: string) => {
       const q = new URLSearchParams();
