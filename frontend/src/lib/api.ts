@@ -158,6 +158,8 @@ export const api = {
       request(`/ai/review-design-vs-report/${labelId}`, { method: 'POST' }),
     draftSalesJournal: (data: any) =>
       request('/ai/draft-sales-journal', { method: 'POST', body: JSON.stringify(data) }),
+    parseBusinessCard: (imageBase64: string, mediaType: string) =>
+      request('/ai/parse-business-card', { method: 'POST', body: JSON.stringify({ imageBase64, mediaType }) }),
   },
   reviews: {
     updateItem: (itemId: string, data: { isCompleted?: boolean; reviewerNote?: string; reviewerName?: string }) =>
@@ -314,6 +316,8 @@ export const api = {
     updatePlan: (id: string, data: any) =>
       request(`/sales/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deletePlan: (id: string) => request(`/sales/plans/${id}`, { method: 'DELETE' }),
+    // 영업 대시보드
+    dashboard: () => request('/sales/dashboard'),
     // 통합 캘린더
     calendar: (from?: string, to?: string) => {
       const q = new URLSearchParams();

@@ -1500,4 +1500,55 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
   }
 });
 
+// ── 명함 OCR 자동 입력 (Opus 4.8 비전) ────────────────────
+const BUSINESS_CARD_SYSTEM = `당신은 명함 이미지에서 담당자 정보를 정확히 추출하는 OCR 어시스턴트입니다.
+반드시 순수 JSON만 출력하세요 (마크다운/설명 금지).
+{
+  "name": "이름",
+  "position": "직급 (예: 과장, 부장, 대표)",
+  "title": "직함/부서 (예: 베이커리 MD, 구매팀)",
+  "phone": "휴대폰 우선, 없으면 대표번호",
+  "email": "이메일",
+  "company": "회사명"
+}
+- 명함에 없는 값은 빈 문자열 "" 로 둡니다. 추측하지 마세요.
+- 전화번호는 하이픈 포함 표준형(예: 010-1234-5678)으로 정규화합니다.
+- 한국어 명함은 한국어, 영문 명함은 원문을 유지합니다.`;
+
+router.post('/parse-business-card', authenticate, async (req, res) => {
+  try {
+    const client = getClient();
+    if (!client) return res.status(400).json({ error: 'ANTHROPIC_API_KEY 환경변수가 필요합니다.' });
+    const { imageBase64, mediaType } = req.body || {};
+    if (!imageBase64) return res.status(400).json({ error: '명함 이미지가 필요합니다.' });
+    const media = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mediaType) ? mediaType : 'image/jpeg';
+    const data = String(imageBase64).replace(/^data:[^;]+;base64,/, '');
+
+    const response = await client.messages.create({
+      model: REVIEW_MODEL, // Opus 4.8
+      max_tokens: 1024,
+      system: [{ type: 'text', text: BUSINESS_CARD_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: media, data } },
+            { type: 'text', text: '이 명함에서 담당자 정보를 추출해 JSON으로만 응답하세요.' },
+          ],
+        },
+      ],
+    });
+    const text = extractTextBlock(response);
+    const parsed = safeParseJson(text);
+    if (!parsed) {
+      console.error('[Business Card OCR] JSON 파싱 실패. Raw(처음 500자):', String(text).substring(0, 500));
+      return res.status(502).json({ error: '명함을 인식하지 못했습니다. 더 선명한 사진으로 다시 시도해주세요.' });
+    }
+    res.json({ contact: parsed });
+  } catch (error) {
+    console.error('[Business Card OCR]', error?.status, error?.message);
+    res.status(500).json({ error: error?.message || '명함 인식에 실패했습니다.' });
+  }
+});
+
 module.exports = router;

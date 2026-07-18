@@ -9,6 +9,8 @@ const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
 const {
   SALES_STAGES,
+  SALES_STAGE_KEYS,
+  STAGE_DEFAULT_PROB,
   isSuperAdmin,
   canViewJournal,
   isJournalOwner,
@@ -76,6 +78,21 @@ function parseDate(v) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// 예상매출(원): 콤마·공백 허용, 숫자 아니면 null
+function parseRevenue(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(String(v).replace(/[,\s]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+// 성사 확률(%): 0~100 클램프
+function parseProb(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = parseInt(v, 10);
+  if (isNaN(n)) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
 // ============================================================
 // 메타: 파이프라인 단계 목록
 // ============================================================
@@ -110,6 +127,7 @@ router.post('/clients', authenticate, async (req, res) => {
     const {
       name, bizNumber, stage, ownerOrg, buyerComposition, annualRevenue,
       existingVendors, managedItems, storageCondition, logisticsCondition, note,
+      expectedRevenue, winProbability,
     } = req.body;
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: '거래처명을 입력해주세요.' });
@@ -119,6 +137,8 @@ router.post('/clients', authenticate, async (req, res) => {
         name: String(name).trim(),
         bizNumber: bizNumber || null,
         stage: normalizeStage(stage),
+        expectedRevenue: parseRevenue(expectedRevenue),
+        winProbability: parseProb(winProbability),
         ownerOrg: ownerOrg || null,
         buyerComposition: buyerComposition || null,
         annualRevenue: annualRevenue || null,
@@ -188,6 +208,8 @@ router.put('/clients/:id', authenticate, async (req, res) => {
       return res.status(400).json({ error: '거래처명은 비울 수 없습니다.' });
     }
     if (b.stage !== undefined) data.stage = normalizeStage(b.stage);
+    if (b.expectedRevenue !== undefined) data.expectedRevenue = parseRevenue(b.expectedRevenue);
+    if (b.winProbability !== undefined) data.winProbability = parseProb(b.winProbability);
     const client = await prisma.salesClient.update({
       where: { id: req.params.id },
       data,
@@ -804,5 +826,104 @@ function inDateRange(date, from, to) {
   if (to && d > to) return false;
   return true;
 }
+
+// ============================================================
+// 영업 대시보드 — 단계별 파이프라인 금액·가중 예상매출·이번주 활동·정체 거래처
+// ============================================================
+router.get('/dashboard', authenticate, async (req, res) => {
+  try {
+    const clients = await prisma.salesClient.findMany({
+      include: { journals: { select: { id: true, createdAt: true } } },
+    });
+
+    const stageMap = {};
+    for (const s of SALES_STAGES) {
+      stageMap[s.key] = { stage: s.key, label: s.label, count: 0, expected: 0, weighted: 0 };
+    }
+    let expectedTotal = 0;
+    let weightedTotal = 0;
+    const now = Date.now();
+    const staleClients = [];
+    for (const c of clients) {
+      const key = SALES_STAGE_KEYS.includes(c.stage) ? c.stage : 'lead';
+      const probPct = c.winProbability != null ? c.winProbability : (STAGE_DEFAULT_PROB[key] ?? 0);
+      const exp = c.expectedRevenue || 0;
+      const w = exp * (probPct / 100);
+      stageMap[key].count += 1;
+      stageMap[key].expected += exp;
+      stageMap[key].weighted += w;
+      expectedTotal += exp;
+      weightedTotal += w;
+      const lastJournal = c.journals.reduce((m, j) => Math.max(m, +new Date(j.createdAt)), 0);
+      const last = lastJournal || +new Date(c.updatedAt);
+      const days = Math.floor((now - last) / 86400000);
+      if (days >= 14 && key !== 'expansion') {
+        staleClients.push({ id: c.id, name: c.name, stage: key, days });
+      }
+    }
+    staleClients.sort((a, b) => b.days - a.days);
+
+    // 이번 주(월~일) 범위
+    const weekFrom = new Date();
+    weekFrom.setHours(0, 0, 0, 0);
+    weekFrom.setDate(weekFrom.getDate() - ((weekFrom.getDay() + 6) % 7));
+    const weekTo = new Date(weekFrom);
+    weekTo.setDate(weekFrom.getDate() + 7);
+    const in14 = new Date(+weekFrom + 14 * 86400000);
+
+    const journals = await prisma.salesJournal.findMany({
+      include: {
+        client: { select: { id: true, name: true } },
+        referrers: true,
+        todos: true,
+        author: { select: USER_SELECT },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const viewable = journals.filter((j) => canViewJournal(req.user, j));
+
+    let weekMeetings = 0;
+    let openTodos = 0;
+    const upcomingTodos = [];
+    for (const j of viewable) {
+      if (j.meetingDate) {
+        const md = +new Date(j.meetingDate);
+        if (md >= +weekFrom && md < +weekTo) weekMeetings += 1;
+      }
+      for (const t of j.todos) {
+        if (t.isDone) continue;
+        openTodos += 1;
+        const due = +new Date(t.dueDate);
+        if (due < +in14) {
+          upcomingTodos.push({
+            id: t.id, content: t.content, dueDate: t.dueDate,
+            clientName: j.client?.name || null, journalId: j.id,
+            overdue: due < +weekFrom,
+          });
+        }
+      }
+    }
+    upcomingTodos.sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate));
+
+    const recentJournals = viewable.slice(0, 8).map((j) => ({
+      id: j.id, title: j.title, clientName: j.client?.name || null, stage: j.stage,
+      authorName: j.author?.name || j.author?.email || null,
+      createdAt: j.createdAt, meetingDate: j.meetingDate,
+    }));
+
+    res.json({
+      stageSummary: SALES_STAGES.map((s) => stageMap[s.key]),
+      totals: { clients: clients.length, expectedTotal, weightedTotal, openTodos },
+      thisWeek: { meetings: weekMeetings, todosUpcoming: upcomingTodos.length },
+      staleClients: staleClients.slice(0, 8),
+      upcomingTodos: upcomingTodos.slice(0, 12),
+      recentJournals,
+      isSuperAdmin: isSuperAdmin(req.user),
+    });
+  } catch (error) {
+    console.error('Sales dashboard error:', error);
+    res.status(500).json({ error: '영업 대시보드 집계에 실패했습니다.' });
+  }
+});
 
 module.exports = router;

@@ -38,6 +38,7 @@ async function main() {
   const a = await prisma.salesClient.create({
     data: {
       name: '[샘플] 그린마트 유통', bizNumber: '123-45-67890', stage: 'proposal',
+      expectedRevenue: 30000000, winProbability: 55,
       ownerOrg: '상품본부 베이커리팀', buyerComposition: 'MD 2인, 카테고리매니저 1인',
       annualRevenue: '연 1,200억 / 베이커리 300억', existingVendors: 'A제과, B베이커리',
       managedItems: '냉장 디저트, 생지', storageCondition: '냉장(0~10℃)',
@@ -86,6 +87,7 @@ async function main() {
   const b = await prisma.salesClient.create({
     data: {
       name: '[샘플] 하나편의점', bizNumber: '222-33-44444', stage: 'revenue',
+      expectedRevenue: 50000000, winProbability: 80,
       ownerOrg: '상품기획팀', managedItems: '냉장 디저트', storageCondition: '냉장', logisticsCondition: '전국 물류센터 3곳',
       createdById: uid,
       contacts: { create: [{ name: '박상품', position: '과장', title: '디저트 MD', phone: '010-9876-5432', email: 'park@hanacvs.example', sortOrder: 0 }] },
@@ -112,7 +114,8 @@ async function main() {
   // ── 거래처 C: 델리카 베이커리 (영업 시작 / 관계 형성) ──
   const c = await prisma.salesClient.create({
     data: {
-      name: '[샘플] 델리카 베이커리', bizNumber: '333-11-22222', stage: 'lead', createdById: uid,
+      name: '[샘플] 델리카 베이커리', bizNumber: '333-11-22222', stage: 'lead',
+      expectedRevenue: 8000000, winProbability: 20, createdById: uid,
       contacts: { create: [{ name: '최오너', position: '대표', title: '', phone: '010-5555-6666', email: 'ceo@delica.example', sortOrder: 0 }] },
     },
   });

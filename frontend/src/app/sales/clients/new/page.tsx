@@ -26,6 +26,8 @@ export default function NewSalesClientPage() {
   const [name, setName] = useState('');
   const [bizNumber, setBizNumber] = useState('');
   const [stage, setStage] = useState('lead');
+  const [expectedRevenue, setExpectedRevenue] = useState('');
+  const [winProbability, setWinProbability] = useState('');
   const [ownerOrg, setOwnerOrg] = useState('');
   const [buyerComposition, setBuyerComposition] = useState('');
   const [annualRevenue, setAnnualRevenue] = useState('');
@@ -47,6 +49,8 @@ export default function NewSalesClientPage() {
         name: name.trim(),
         bizNumber: bizNumber.trim() || undefined,
         stage,
+        expectedRevenue: expectedRevenue.trim() ? Number(expectedRevenue.replace(/[,\s]/g, '')) : undefined,
+        winProbability: winProbability.trim() ? Number(winProbability) : undefined,
         ownerOrg: ownerOrg.trim() || undefined,
         buyerComposition: buyerComposition.trim() || undefined,
         annualRevenue: annualRevenue.trim() || undefined,
@@ -91,6 +95,24 @@ export default function NewSalesClientPage() {
                 {SALES_STAGES.map((s) => (
                   <option key={s.key} value={s.key}>
                     {s.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="예상 매출(월)" hint="원 단위, 예: 30000000">
+              <Input
+                type="number"
+                value={expectedRevenue}
+                onChange={(e) => setExpectedRevenue(e.target.value)}
+                placeholder="예: 30000000"
+              />
+            </Field>
+            <Field label="성사 확률(%)" hint="미입력 시 단계 기본값 적용">
+              <Select value={winProbability} onChange={(e) => setWinProbability(e.target.value)}>
+                <option value="">단계 기본값</option>
+                {[10, 25, 50, 75, 90].map((p) => (
+                  <option key={p} value={p}>
+                    {p}%
                   </option>
                 ))}
               </Select>

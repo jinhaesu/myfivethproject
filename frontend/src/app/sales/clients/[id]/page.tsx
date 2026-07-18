@@ -12,7 +12,10 @@ import {
   SALES_STAGES,
   STAGE_LABEL,
   STAGE_TONE,
+  STAGE_DEFAULT_PROB,
   fmtDate,
+  fmtKRW,
+  weightedRevenue,
 } from '@/lib/sales';
 import {
   PageHeader,
@@ -54,6 +57,11 @@ export default function SalesClientDetailPage() {
   // 담당자 추가 폼
   const [newContact, setNewContact] = useState({ name: '', position: '', title: '', phone: '', email: '' });
   const [addingContact, setAddingContact] = useState(false);
+  // 명함 OCR
+  const ocrFileRef = useRef<HTMLInputElement>(null);
+  const [cardFile, setCardFile] = useState<File | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrError, setOcrError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +84,8 @@ export default function SalesClientDetailPage() {
     setForm({
       name: client.name || '',
       stage: client.stage || 'lead',
+      expectedRevenue: client.expectedRevenue != null ? String(client.expectedRevenue) : '',
+      winProbability: client.winProbability != null ? String(client.winProbability) : '',
       bizNumber: client.bizNumber || '',
       ownerOrg: client.ownerOrg || '',
       annualRevenue: client.annualRevenue || '',
@@ -117,19 +127,56 @@ export default function SalesClientDetailPage() {
     if (!newContact.name.trim()) return;
     setAddingContact(true);
     try {
-      await api.sales.createContact(id, {
+      const res = await api.sales.createContact(id, {
         name: newContact.name.trim(),
         position: newContact.position.trim() || undefined,
         title: newContact.title.trim() || undefined,
         phone: newContact.phone.trim() || undefined,
         email: newContact.email.trim() || undefined,
       });
+      // OCR로 첨부한 명함 이미지가 있으면 생성된 담당자에 업로드
+      if (cardFile && res?.contact?.id) {
+        try {
+          await api.sales.uploadCard(res.contact.id, cardFile);
+        } catch (e) {
+          console.error('Failed to upload OCR card image:', e);
+        }
+      }
       setNewContact({ name: '', position: '', title: '', phone: '', email: '' });
+      setCardFile(null);
+      setOcrError('');
       await load();
     } catch (error) {
       console.error('Failed to add contact:', error);
     } finally {
       setAddingContact(false);
+    }
+  };
+
+  // 명함 이미지 → Opus 4.8 OCR → 담당자 폼 프리필
+  const runOcr = async (file: File) => {
+    setOcrBusy(true);
+    setOcrError('');
+    setCardFile(file);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const { contact } = await api.ai.parseBusinessCard(dataUrl, file.type);
+      setNewContact((prev) => ({
+        name: contact?.name?.trim() || prev.name,
+        position: contact?.position?.trim() || prev.position,
+        title: contact?.title?.trim() || prev.title,
+        phone: contact?.phone?.trim() || prev.phone,
+        email: contact?.email?.trim() || prev.email,
+      }));
+    } catch (e) {
+      setOcrError((e as Error)?.message || '명함 인식에 실패했습니다.');
+    } finally {
+      setOcrBusy(false);
     }
   };
 
@@ -205,6 +252,22 @@ export default function SalesClientDetailPage() {
                   ))}
                 </Select>
               </Field>
+              <Field label="예상 매출(월)" hint="원 단위, 예: 30000000">
+                <Input
+                  type="number"
+                  value={form.expectedRevenue || ''}
+                  onChange={(e) => setForm({ ...form, expectedRevenue: e.target.value })}
+                  placeholder="예: 30000000"
+                />
+              </Field>
+              <Field label="성사 확률(%)" hint="미입력 시 단계 기본값 적용">
+                <Select value={form.winProbability || ''} onChange={(e) => setForm({ ...form, winProbability: e.target.value })}>
+                  <option value="">단계 기본값</option>
+                  {[10, 25, 50, 75, 90].map((p) => (
+                    <option key={p} value={p}>{p}%</option>
+                  ))}
+                </Select>
+              </Field>
               {PROFILE_FIELDS.map((f) => (
                 <Field key={f.key as string} label={f.label} className={f.long ? 'sm:col-span-2' : ''}>
                   {f.long ? (
@@ -223,6 +286,29 @@ export default function SalesClientDetailPage() {
             </div>
           ) : (
             <dl className="flex flex-col divide-y divide-[var(--border-1)]">
+              <div className="flex gap-3 py-2">
+                <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">예상 매출(월)</dt>
+                <dd className="text-[12.5px] text-[var(--text-1)] tabular">{fmtKRW(client.expectedRevenue)}</dd>
+              </div>
+              <div className="flex gap-3 py-2">
+                <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">성사 확률</dt>
+                <dd className="text-[12.5px] text-[var(--text-1)] tabular">
+                  {client.winProbability != null ? (
+                    `${client.winProbability}%`
+                  ) : (
+                    <span>
+                      {STAGE_DEFAULT_PROB[client.stage] ?? 0}%
+                      <span className="text-[11px] text-[var(--text-4)] ml-1.5">(단계 기본)</span>
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex gap-3 py-2">
+                <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">가중 예상매출</dt>
+                <dd className="text-[12.5px] font-semibold text-[var(--success-fg)] tabular">
+                  {fmtKRW(weightedRevenue(client))}
+                </dd>
+              </div>
               {PROFILE_FIELDS.map((f) => {
                 const v = client[f.key] as string | null;
                 return (
@@ -247,7 +333,33 @@ export default function SalesClientDetailPage() {
             ))}
 
             <div className="rounded-lg border border-dashed border-[var(--border-2)] p-3">
-              <div className="text-[12px] font-medium text-[var(--text-2)] mb-2">담당자 추가</div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="text-[12px] font-medium text-[var(--text-2)]">담당자 추가</div>
+                <input
+                  ref={ocrFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) runOcr(f);
+                    e.target.value = '';
+                  }}
+                />
+                <Button variant="secondary" size="xs" onClick={() => ocrFileRef.current?.click()} loading={ocrBusy}>
+                  {ocrBusy ? '명함 인식 중…' : '✦ 명함으로 자동 입력'}
+                </Button>
+              </div>
+              {ocrBusy && <div className="text-[11px] text-[var(--text-3)] mb-2">명함 인식 중… (Opus 4.8)</div>}
+              {ocrError && <div className="text-[11.5px] text-[var(--danger-fg)] mb-2">{ocrError}</div>}
+              {cardFile && !ocrBusy && (
+                <div className="flex items-center gap-2 mb-2 text-[11.5px] text-[var(--text-3)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={URL.createObjectURL(cardFile)} alt="명함" className="w-16 h-11 object-cover rounded border border-[var(--border-1)]" />
+                  <span>명함 첨부됨 — 담당자 추가 시 함께 저장됩니다.</span>
+                  <button onClick={() => setCardFile(null)} className="text-[var(--text-4)] hover:text-[var(--danger-fg)]" aria-label="제거">✕</button>
+                </div>
+              )}
               <div className="grid sm:grid-cols-2 gap-2">
                 <Input inputSize="sm" placeholder="이름 *" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} />
                 <Input inputSize="sm" placeholder="직급" value={newContact.position} onChange={(e) => setNewContact({ ...newContact, position: e.target.value })} />

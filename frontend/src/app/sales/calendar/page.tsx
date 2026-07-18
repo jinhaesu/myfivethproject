@@ -6,6 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
 import {
   CalendarEvent,
+  CalendarEventType,
   EVENT_META,
   SalesClient,
   SALES_STAGES,
@@ -63,7 +64,29 @@ export default function SalesPlansPage() {
   const [view, setView] = useState<View>('month');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [hiddenTypes, setHiddenTypes] = useState<Set<CalendarEventType>>(new Set());
   const [loading, setLoading] = useState(true);
+
+  // 유형 필터 적용 후 이벤트 (렌더링은 전부 이 목록 기준)
+  const visibleEvents = useMemo(
+    () => events.filter((e) => !hiddenTypes.has(e.type)),
+    [events, hiddenTypes],
+  );
+
+  // 현재 범위의 유형별 개수 (필터 칩에 표시 — 미필터 events 기준)
+  const typeCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const e of events) c[e.type] = (c[e.type] || 0) + 1;
+    return c;
+  }, [events]);
+
+  const toggleType = (t: CalendarEventType) =>
+    setHiddenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
@@ -104,15 +127,15 @@ export default function SalesPlansPage() {
     load();
   }, [load]);
 
-  // yyyy-mm-dd → 이벤트[]
+  // yyyy-mm-dd → 이벤트[] (유형 필터 반영)
   const byDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
-    for (const ev of events) {
+    for (const ev of visibleEvents) {
       const key = ymd(new Date(ev.date));
       (map[key] = map[key] || []).push(ev);
     }
     return map;
-  }, [events]);
+  }, [visibleEvents]);
 
   const shift = (dir: number) => {
     if (view === 'month') setAnchor((a) => addMonths(a, dir));
@@ -188,6 +211,50 @@ export default function SalesPlansPage() {
         </div>
       </div>
 
+      {/* 유형 필터 */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(['launch', 'discontinuation', 'meeting', 'plan', 'todo'] as CalendarEventType[]).map((t) => {
+          const meta = EVENT_META[t];
+          const active = !hiddenTypes.has(t);
+          return (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={active}
+              onClick={() => toggleType(t)}
+              className={
+                'inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full border text-[12px] transition-colors ' +
+                (active
+                  ? 'border-[var(--border-2)] bg-[var(--bg-2)] text-[var(--text-1)]'
+                  : 'border-[var(--border-1)] bg-transparent text-[var(--text-4)] line-through opacity-45')
+              }
+            >
+              <span
+                className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm border flex-shrink-0"
+                style={
+                  active
+                    ? { background: meta.color, borderColor: meta.color }
+                    : { borderColor: 'var(--border-3)' }
+                }
+              >
+                {active && <span className="text-[9px] leading-none text-[#0B0C0D]">✓</span>}
+              </span>
+              <span>{meta.label}</span>
+              <span className="tabular text-[var(--text-4)]">{typeCounts[t] || 0}</span>
+            </button>
+          );
+        })}
+        {hiddenTypes.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setHiddenTypes(new Set())}
+            className="text-[12px] text-[var(--brand-400)] hover:text-[var(--brand-200)] transition-colors ml-1"
+          >
+            전체 표시
+          </button>
+        )}
+      </div>
+
       {/* 캘린더 그리드 */}
       <Card padding="none" className="overflow-hidden mb-6">
         <div className="overflow-x-auto">
@@ -200,11 +267,16 @@ export default function SalesPlansPage() {
       </Card>
 
       {/* 하단 리스트 */}
-      <div className="mb-2 text-[12.5px] text-[var(--text-3)]">이 기간의 일정 {events.length}건</div>
+      <div className="mb-2 text-[12.5px] text-[var(--text-3)]">
+        이 기간의 일정 {visibleEvents.length}건
+        {hiddenTypes.size > 0 && (
+          <span className="text-[var(--text-4)]"> (일부 유형 숨김 · 전체 {events.length}건)</span>
+        )}
+      </div>
       {loading ? (
         <CenterSpinner label="일정 불러오는 중" />
-      ) : events.length === 0 ? (
-        <EmptyState title="이 기간에 일정이 없습니다" description="영업계획을 등록하거나 다른 기간을 선택해보세요." />
+      ) : visibleEvents.length === 0 ? (
+        <EmptyState title="이 기간에 표시할 일정이 없습니다" description="유형 필터를 조정하거나 다른 기간을 선택해보세요." />
       ) : (
         <Table>
           <THead>
@@ -217,7 +289,7 @@ export default function SalesPlansPage() {
             </TR>
           </THead>
           <TBody>
-            {[...events]
+            {[...visibleEvents]
               .sort((a, b) => +new Date(a.date) - +new Date(b.date))
               .map((ev) => {
                 const meta = EVENT_META[ev.type];

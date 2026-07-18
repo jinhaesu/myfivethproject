@@ -257,6 +257,8 @@ model SalesClient {
   name               String // 거래처명
   bizNumber          String? // 사업자번호
   stage              String   @default("lead") // lead(영업시작), contact(관계형성), proposal(제안·미팅), revenue(매출기여), expansion(제품확대)
+  expectedRevenue    Float? // 예상 매출(월, KRW) — 파이프라인 가중 예상매출 산출
+  winProbability     Int? // 성사 확률(%) 0~100
   // 최초 미팅 시 입력하는 거래처 프로필
   ownerOrg           String? // 담당 조직
   buyerComposition   String? // 바이어 구성
@@ -348,12 +350,13 @@ model SalesJournalReferrer {
 
 // 향후 스케쥴 — 해야할 일 + 대략적 계획. 일자 필수.
 model SalesTodo {
-  id        String   @id @default(uuid())
-  dueDate   DateTime // 일자(필수)
-  content   String // 해야할 일
-  plan      String? // 대략적 계획
-  isDone    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id             String    @id @default(uuid())
+  dueDate        DateTime // 일자(필수)
+  content        String // 해야할 일
+  plan           String? // 대략적 계획
+  isDone         Boolean   @default(false)
+  reminderSentAt DateTime? // D-day 마감 알림 발송 시각(중복 방지)
+  createdAt      DateTime  @default(now())
 
   journal   SalesJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
   journalId String

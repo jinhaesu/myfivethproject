@@ -5,7 +5,7 @@ import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
-import { SalesClient, SALES_STAGES } from '@/lib/sales';
+import { SalesClient, SALES_STAGES, fmtKRW, weightedRevenue } from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -80,9 +80,10 @@ export default function SalesClientsPage() {
           <div className="flex gap-3 min-w-max">
             {SALES_STAGES.map((stage) => {
               const list = byStage(stage.key);
+              const stageWeighted = list.reduce((sum, c) => sum + weightedRevenue(c), 0);
               return (
                 <div key={stage.key} className="w-[264px] flex-shrink-0">
-                  <div className="flex items-center justify-between px-1 mb-2">
+                  <div className="flex items-center justify-between px-1 mb-1">
                     <span className="text-[12.5px] font-medium text-[var(--text-2)]">
                       {stage.label}
                     </span>
@@ -90,6 +91,13 @@ export default function SalesClientsPage() {
                       {list.length}
                     </span>
                   </div>
+                  {stageWeighted > 0 ? (
+                    <div className="px-1 mb-2 text-[11px] text-[var(--text-4)] tabular">
+                      가중 {fmtKRW(stageWeighted)}
+                    </div>
+                  ) : (
+                    <div className="mb-2" />
+                  )}
                   <div className="flex flex-col gap-2">
                     {list.map((c) => {
                       const primary = c.contacts && c.contacts[0];
@@ -111,6 +119,14 @@ export default function SalesClientsPage() {
                                   {primary.title ? (
                                     <span className="text-[var(--text-4)]"> · {primary.title}</span>
                                   ) : null}
+                                </div>
+                              ) : null}
+                              {c.expectedRevenue ? (
+                                <div className="mt-1.5 text-[11.5px] text-[var(--text-2)] tabular">
+                                  {fmtKRW(c.expectedRevenue)}
+                                  <span className="text-[10.5px] text-[var(--text-4)] ml-1.5">
+                                    가중 {fmtKRW(weightedRevenue(c))}
+                                  </span>
                                 </div>
                               ) : null}
                               <div className="flex items-center gap-2 mt-2 text-[11px] text-[var(--text-4)] tabular">

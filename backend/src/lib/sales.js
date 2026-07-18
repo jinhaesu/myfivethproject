@@ -10,6 +10,15 @@ const SALES_STAGES = [
 ];
 const SALES_STAGE_KEYS = SALES_STAGES.map((s) => s.key);
 
+// 성사 확률 기본값(거래처가 winProbability 미지정 시 가중 예상매출 산출에 사용)
+const STAGE_DEFAULT_PROB = {
+  lead: 10,
+  contact: 25,
+  proposal: 50,
+  revenue: 80,
+  expansion: 90,
+};
+
 // 모든 영업일지를 열람 가능한 최고 관리자
 const SUPER_ADMIN_EMAIL = 'lion9080@joinandjoin.com';
 
@@ -45,6 +54,7 @@ function normalizeStage(stage) {
 module.exports = {
   SALES_STAGES,
   SALES_STAGE_KEYS,
+  STAGE_DEFAULT_PROB,
   SUPER_ADMIN_EMAIL,
   isSuperAdmin,
   canViewJournal,
