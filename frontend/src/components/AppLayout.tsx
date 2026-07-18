@@ -8,11 +8,16 @@ import { CenterSpinner, Button } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
 const NAV = [
-  { href: '/dashboard', label: '대시보드' },
-  { href: '/labels/new', label: '새 라벨' },
-  { href: '/sales', label: '영업 관리' },
-  { href: '/launches', label: '출시 관리' },
-  { href: '/discontinuations', label: '단종 관리' },
+  { href: '/dashboard', label: '대시보드', match: (p: string) => p === '/dashboard' },
+  { href: '/labels/new', label: '새 라벨', match: (p: string) => p.startsWith('/labels') },
+  {
+    href: '/sales',
+    label: '영업 관리',
+    match: (p: string) => p === '/sales' || (p.startsWith('/sales/') && !p.startsWith('/sales/calendar')),
+  },
+  { href: '/sales/calendar', label: '영업 캘린더', match: (p: string) => p.startsWith('/sales/calendar') },
+  { href: '/launches', label: '출시 관리', match: (p: string) => p.startsWith('/launches') },
+  { href: '/discontinuations', label: '단종 관리', match: (p: string) => p.startsWith('/discontinuations') },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -41,8 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
-  const isActive = (href: string) =>
-    href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(href);
+  const isActive = (item: (typeof NAV)[number]) => item.match(pathname || '');
 
   return (
     <div className="min-h-screen">
@@ -66,7 +70,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     href={n.href}
                     className={cn(
                       'px-2.5 py-1.5 rounded-md text-[12.5px] transition-colors',
-                      isActive(n.href)
+                      isActive(n)
                         ? 'text-[var(--text-1)] bg-[var(--bg-2)]'
                         : 'text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)]',
                     )}

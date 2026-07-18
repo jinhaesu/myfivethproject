@@ -693,7 +693,7 @@ router.get('/calendar', authenticate, async (req, res) => {
         title: pl.title,
         date: pl.planDate,
         clientName: pl.client?.name || null,
-        url: `/sales/plans`,
+        url: `/sales/calendar`,
       });
     }
 

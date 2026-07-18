@@ -14,6 +14,61 @@ export const STAGE_LABEL: Record<string, string> = Object.fromEntries(
   SALES_STAGES.map((s) => [s.key, s.label]),
 );
 
+// 영업 단계별 기본 '해야 할 일' 추천 목록 (드롭다운 기본값, '기타'는 UI에서 직접 입력)
+export const STAGE_TODO_SUGGESTIONS: Record<string, string[]> = {
+  lead: [
+    '거래처 기본 정보·구매 담당자 파악',
+    '회사·제품 소개서 준비 및 발송',
+    '첫 미팅 일정 조율',
+    '거래처 요구 카테고리·스펙 사전 조사',
+    '경쟁사 입점 현황 파악',
+  ],
+  contact: [
+    '샘플 제안 및 발송',
+    '가격표·거래조건 1차 공유',
+    '핵심 의사결정자(바이어) 관계 형성',
+    '정기 커뮤니케이션 채널 수립',
+    '거래처 니즈 상세 청취',
+  ],
+  proposal: [
+    '입점 제안서 제출',
+    '견적·마진 시뮬레이션 제공',
+    '샘플 품평회 진행',
+    '입점 조건(정산·물류·수수료) 협의',
+    '제품 스펙·중량·가격대 확정 협의',
+  ],
+  revenue: [
+    '발주(PO) 확인 및 초도 물량 생산 협의',
+    '납품 일정·물류(온도·리드타임) 확정',
+    '초기 판매 실적 모니터링',
+    '재발주·프로모션 협의',
+    '클레임·반품 대응 점검',
+  ],
+  expansion: [
+    '신규 품목·라인 확대 제안',
+    '판매 채널·지점 확장 협의',
+    '연간 거래계획·볼륨 협의',
+    'PB/공동기획(PNB) 제품 논의',
+    '시즈널·기획전 공동 프로모션 제안',
+  ],
+};
+
+// 단계 미지정 시 기본으로 보여줄 통합 추천(각 단계 대표 항목)
+export const GENERIC_TODO_SUGGESTIONS: string[] = [
+  '거래처 기본 정보·구매 담당자 파악',
+  '샘플 제안 및 발송',
+  '입점 제안서 제출',
+  '견적·마진 시뮬레이션 제공',
+  '발주(PO) 확인 및 초도 물량 협의',
+  '납품 일정·물류 확정',
+  '신규 품목·라인 확대 제안',
+];
+
+export function todoSuggestionsForStage(stage?: string | null): string[] {
+  if (stage && STAGE_TODO_SUGGESTIONS[stage]) return STAGE_TODO_SUGGESTIONS[stage];
+  return GENERIC_TODO_SUGGESTIONS;
+}
+
 export type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info' | 'violet';
 
 export const STAGE_TONE: Record<string, BadgeTone> = {

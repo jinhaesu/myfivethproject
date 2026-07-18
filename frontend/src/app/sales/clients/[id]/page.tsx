@@ -303,7 +303,7 @@ export default function SalesClientDetailPage() {
         <CardHeader
           title={`영업계획 (${client.plans?.length ?? 0})`}
           actions={
-            <Link href="/sales/plans">
+            <Link href="/sales/calendar">
               <Button variant="ghost" size="sm">+ 영업계획</Button>
             </Link>
           }
