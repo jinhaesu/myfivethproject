@@ -274,9 +274,26 @@ model SalesClient {
   createdBy   User   @relation(fields: [createdById], references: [id])
   createdById String
 
-  contacts SalesContact[]
-  journals SalesJournal[]
-  plans    SalesPlan[]
+  contacts    SalesContact[]
+  journals    SalesJournal[]
+  plans       SalesPlan[]
+  receivables SalesReceivable[]
+}
+
+// 거래처별 월별 매출채권 잔액 (연/월 단위, B2B 채권 관리)
+model SalesReceivable {
+  id        String   @id @default(uuid())
+  year      Int
+  month     Int // 1~12
+  amount    Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client   SalesClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+
+  @@unique([clientId, year, month])
+  @@index([year])
 }
 
 // 거래처 담당자 명함 — 명함 이미지 + 이름/직급/직함/연락처/이메일
@@ -310,6 +327,8 @@ model SalesJournal {
   meetingSummary  String? // 미팅 개요
   keyRequests     String? // 핵심 요청사항
   productRequests String? // 제품의 구체적 요청 및 기획사항
+  sampleProvided  Boolean   @default(false) // 샘플 제공 여부
+  hasQuote        Boolean   @default(false) // 견적 제안 여부(그리드 표시 토글)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -322,6 +341,22 @@ model SalesJournal {
   referrers   SalesJournalReferrer[]
   todos       SalesTodo[]
   attachments SalesJournalAttachment[]
+  quoteItems  SalesQuoteItem[]
+}
+
+// 영업일지 견적 제안 라인아이템 (제품명/중량/USP/맛/제안가격)
+model SalesQuoteItem {
+  id          String   @id @default(uuid())
+  productName String
+  weightSpec  String? // 중량/규격
+  usp         String? // USP
+  flavor      String? // 맛
+  price       String? // 제안가격 (예: 개당 1,200원 / 박스 24,000원)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  journal   SalesJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  journalId String
 }
 
 // 영업일지 첨부 — 제안서 파일·거래처 명함 등

@@ -26,6 +26,14 @@ interface TodoRow {
   custom?: boolean; // true면 드롭다운 대신 직접 입력
 }
 
+interface QuoteRow {
+  productName: string;
+  weightSpec: string;
+  usp: string;
+  flavor: string;
+  price: string;
+}
+
 const TODO_OTHER = '__other__';
 
 export default function NewSalesJournalPage() {
@@ -63,6 +71,18 @@ export default function NewSalesJournalPage() {
   // 첨부(저장 시 일지 생성 후 업로드)
   const [proposalFiles, setProposalFiles] = useState<File[]>([]);
   const [cardFiles, setCardFiles] = useState<File[]>([]);
+
+  // 샘플 제공 + 견적 제안 그리드
+  const [sampleProvided, setSampleProvided] = useState(false);
+  const [hasQuote, setHasQuote] = useState(false);
+  const [quoteItems, setQuoteItems] = useState<QuoteRow[]>([
+    { productName: '', weightSpec: '', usp: '', flavor: '', price: '' },
+  ]);
+  const updateQuote = (i: number, key: keyof QuoteRow, v: string) =>
+    setQuoteItems((q) => q.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
+  const addQuote = () =>
+    setQuoteItems((q) => [...q, { productName: '', weightSpec: '', usp: '', flavor: '', price: '' }]);
+  const removeQuote = (i: number) => setQuoteItems((q) => q.filter((_, idx) => idx !== i));
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -185,6 +205,19 @@ export default function NewSalesJournalPage() {
           .filter((t) => t.dueDate && t.content.trim())
           .map((t) => ({ dueDate: t.dueDate, content: t.content.trim(), plan: t.plan.trim() || undefined })),
         password: password.trim() || undefined,
+        sampleProvided,
+        hasQuote,
+        quoteItems: hasQuote
+          ? quoteItems
+              .filter((q) => q.productName.trim())
+              .map((q) => ({
+                productName: q.productName.trim(),
+                weightSpec: q.weightSpec.trim() || undefined,
+                usp: q.usp.trim() || undefined,
+                flavor: q.flavor.trim() || undefined,
+                price: q.price.trim() || undefined,
+              }))
+          : [],
       };
       if (isFirstMeeting) {
         const profile: Record<string, string> = {};
@@ -386,6 +419,67 @@ export default function NewSalesJournalPage() {
                 <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} placeholder="스펙·중량·가격대·시즈널 구성 등 제품 요청/기획" />
               </Field>
             </div>
+          </Card>
+
+          {/* 견적 · 샘플 */}
+          <Card padding="lg">
+            <CardHeader
+              title="견적 · 샘플"
+              subtitle="견적을 제안한 경우 제품별로 기록하고, 샘플 제공 여부를 체크합니다."
+            />
+            <label className="flex items-center gap-2 text-[13px] text-[var(--text-2)] cursor-pointer mb-3">
+              <input
+                type="checkbox"
+                checked={sampleProvided}
+                onChange={(e) => setSampleProvided(e.target.checked)}
+                className="w-4 h-4 accent-[var(--brand-500)]"
+              />
+              샘플 제공함
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-[var(--text-2)] cursor-pointer mb-1">
+              <input
+                type="checkbox"
+                checked={hasQuote}
+                onChange={(e) => setHasQuote(e.target.checked)}
+                className="w-4 h-4 accent-[var(--brand-500)]"
+              />
+              견적 제안 있음 (아래 표에 기록)
+            </label>
+
+            {hasQuote && (
+              <div className="mt-3">
+                {/* 헤더 */}
+                <div className="hidden sm:grid grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 px-1 pb-1.5 text-[11px] text-[var(--text-3)]">
+                  <span>제품명</span>
+                  <span>중량</span>
+                  <span>USP</span>
+                  <span>맛</span>
+                  <span>제안가격</span>
+                  <span />
+                </div>
+                <div className="flex flex-col gap-2">
+                  {quoteItems.map((q, i) => (
+                    <div key={i} className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 items-start">
+                      <Input value={q.productName} onChange={(e) => updateQuote(i, 'productName', e.target.value)} placeholder="제품명" />
+                      <Input value={q.weightSpec} onChange={(e) => updateQuote(i, 'weightSpec', e.target.value)} placeholder="예: 80g" />
+                      <Input value={q.usp} onChange={(e) => updateQuote(i, 'usp', e.target.value)} placeholder="예: 고단백" />
+                      <Input value={q.flavor} onChange={(e) => updateQuote(i, 'flavor', e.target.value)} placeholder="예: 초코" />
+                      <Input value={q.price} onChange={(e) => updateQuote(i, 'price', e.target.value)} placeholder="예: 개당 1,200원" />
+                      {quoteItems.length > 1 && (
+                        <Button variant="ghost" size="sm" onClick={() => removeQuote(i)}>
+                          삭제
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2">
+                  <Button variant="secondary" size="sm" onClick={addQuote}>
+                    + 견적 항목 추가
+                  </Button>
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* 첨부 */}

@@ -164,6 +164,31 @@ export interface SalesClient {
   _count?: { journals: number; plans: number };
 }
 
+export interface SalesQuoteItem {
+  id?: string;
+  productName: string;
+  weightSpec: string | null;
+  usp: string | null;
+  flavor: string | null;
+  price: string | null;
+  sortOrder?: number;
+}
+
+export interface ReceivableRow {
+  clientId: string;
+  name: string;
+  stage: string;
+  months: Record<string, number>; // '1'~'12'
+  total: number;
+}
+
+export interface ReceivablesData {
+  year: number;
+  rows: ReceivableRow[];
+  monthTotals: Record<string, number>;
+  grandTotal: number;
+}
+
 export interface SalesJournalAttachment {
   id: string;
   kind: string; // proposal | card | etc
@@ -204,6 +229,9 @@ export interface SalesJournal {
   authorId: string;
   author?: UserRef;
   client?: { id: string; name: string; stage?: string } | SalesClient;
+  sampleProvided?: boolean;
+  hasQuote?: boolean;
+  quoteItems?: SalesQuoteItem[];
   referrers?: SalesReferrer[];
   todos?: SalesTodo[];
   attachments?: SalesJournalAttachment[];

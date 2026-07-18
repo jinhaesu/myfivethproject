@@ -93,6 +93,21 @@ function parseProb(v) {
   return Math.max(0, Math.min(100, n));
 }
 
+// 견적 라인아이템 정규화(제품명 있는 행만)
+function buildQuoteData(quoteItems) {
+  if (!Array.isArray(quoteItems)) return [];
+  return quoteItems
+    .map((q, i) => ({
+      productName: String(q.productName || '').trim(),
+      weightSpec: q.weightSpec || null,
+      usp: q.usp || null,
+      flavor: q.flavor || null,
+      price: q.price || null,
+      sortOrder: i,
+    }))
+    .filter((q) => q.productName);
+}
+
 // ============================================================
 // 메타: 파이프라인 단계 목록
 // ============================================================
@@ -389,7 +404,7 @@ router.post('/journals', authenticate, async (req, res) => {
     const {
       clientId, title, password, isFirstMeeting, stage, meetingDate, meetingPurpose,
       meetingLocation, attendees, meetingSummary, keyRequests, productRequests,
-      referrers, todos,
+      referrers, todos, sampleProvided, hasQuote, quoteItems,
     } = req.body;
     if (!clientId) return res.status(400).json({ error: '거래처를 지정해주세요.' });
     const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
@@ -406,6 +421,7 @@ router.post('/journals', authenticate, async (req, res) => {
           .map((t) => ({ dueDate: parseDate(t.dueDate), content: String(t.content || '').trim(), plan: t.plan || null, isDone: !!t.isDone }))
           .filter((t) => t.dueDate && t.content)
       : [];
+    const quoteData = buildQuoteData(quoteItems);
 
     const journal = await prisma.salesJournal.create({
       data: {
@@ -422,10 +438,13 @@ router.post('/journals', authenticate, async (req, res) => {
         meetingSummary: meetingSummary || null,
         keyRequests: keyRequests || null,
         productRequests: productRequests || null,
+        sampleProvided: !!sampleProvided,
+        hasQuote: !!hasQuote || quoteData.length > 0,
         referrers: { create: referrerEmails.map((email) => ({ email })) },
         todos: { create: todoData },
+        quoteItems: { create: quoteData },
       },
-      include: { referrers: true, todos: true },
+      include: { referrers: true, todos: true, quoteItems: { orderBy: { sortOrder: 'asc' } } },
     });
     // 작성 시 거래처 단계 동기화 (일지에 단계가 지정된 경우)
     if (stage) {
@@ -449,6 +468,7 @@ router.get('/journals/:id', authenticate, async (req, res) => {
         referrers: true,
         todos: { orderBy: { dueDate: 'asc' } },
         attachments: { orderBy: { sortOrder: 'asc' } },
+        quoteItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
     if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
@@ -458,7 +478,7 @@ router.get('/journals/:id', authenticate, async (req, res) => {
     const owner = isJournalOwner(req.user, journal);
     // 참고자이면서 비밀번호가 걸린 경우 뷰 토큰 필요
     if (!owner && journal.passwordHash && !hasJournalViewToken(req, journal)) {
-      const { passwordHash, meetingSummary, keyRequests, productRequests, attendees, todos, attachments, ...safe } = journal;
+      const { passwordHash, meetingSummary, keyRequests, productRequests, attendees, todos, attachments, quoteItems, ...safe } = journal;
       return res.status(403).json({
         error: '열람 비밀번호가 필요합니다.',
         passwordRequired: true,
@@ -518,6 +538,8 @@ router.put('/journals/:id', authenticate, async (req, res) => {
     }
     if (b.isFirstMeeting !== undefined) data.isFirstMeeting = !!b.isFirstMeeting;
     if (b.meetingDate !== undefined) data.meetingDate = parseDate(b.meetingDate);
+    if (b.sampleProvided !== undefined) data.sampleProvided = !!b.sampleProvided;
+    if (b.hasQuote !== undefined) data.hasQuote = !!b.hasQuote;
     // 비밀번호: 문자열이면 재설정, 빈문자열 명시면 해제, undefined면 유지
     if (b.password !== undefined) {
       data.passwordHash = b.password && String(b.password).trim() ? bcrypt.hashSync(String(b.password), 10) : null;
@@ -538,6 +560,13 @@ router.put('/journals/:id', authenticate, async (req, res) => {
       ops.push(prisma.salesTodo.deleteMany({ where: { journalId: journal.id } }));
       if (todoData.length) ops.push(prisma.salesTodo.createMany({ data: todoData }));
     }
+    if (Array.isArray(b.quoteItems)) {
+      const quoteData = buildQuoteData(b.quoteItems).map((q) => ({ ...q, journalId: journal.id }));
+      ops.push(prisma.salesQuoteItem.deleteMany({ where: { journalId: journal.id } }));
+      if (quoteData.length) ops.push(prisma.salesQuoteItem.createMany({ data: quoteData }));
+      // 견적 항목이 있으면 hasQuote 자동 true
+      if (quoteData.length && b.hasQuote === undefined) data.hasQuote = true;
+    }
     ops.push(prisma.salesJournal.update({ where: { id: journal.id }, data }));
     await prisma.$transaction(ops);
     if (b.stage) {
@@ -545,7 +574,7 @@ router.put('/journals/:id', authenticate, async (req, res) => {
     }
     const updated = await prisma.salesJournal.findUnique({
       where: { id: journal.id },
-      include: { author: { select: USER_SELECT }, client: true, referrers: true, todos: { orderBy: { dueDate: 'asc' } }, attachments: { orderBy: { sortOrder: 'asc' } } },
+      include: { author: { select: USER_SELECT }, client: true, referrers: true, todos: { orderBy: { dueDate: 'asc' } }, attachments: { orderBy: { sortOrder: 'asc' } }, quoteItems: { orderBy: { sortOrder: 'asc' } } },
     });
     const { passwordHash, ...rest } = updated;
     res.json({ journal: { ...rest, passwordProtected: !!passwordHash, canEdit: true, locked: false } });
@@ -725,6 +754,65 @@ router.delete('/plans/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete plan error:', error);
     res.status(500).json({ error: '영업계획 삭제에 실패했습니다.' });
+  }
+});
+
+// ============================================================
+// 매출채권 (Receivables) — 거래처별 월별 잔액
+// ============================================================
+router.get('/receivables', authenticate, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const clients = await prisma.salesClient.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, stage: true },
+    });
+    const recs = await prisma.salesReceivable.findMany({ where: { year } });
+    const byClient = {};
+    for (const r of recs) {
+      (byClient[r.clientId] = byClient[r.clientId] || {})[r.month] = r.amount;
+    }
+    const monthTotals = {};
+    for (let m = 1; m <= 12; m++) monthTotals[m] = 0;
+    let grandTotal = 0;
+    const rows = clients.map((c) => {
+      const months = {};
+      let total = 0;
+      for (let m = 1; m <= 12; m++) {
+        const v = byClient[c.id]?.[m] || 0;
+        months[m] = v;
+        total += v;
+        monthTotals[m] += v;
+      }
+      grandTotal += total;
+      return { clientId: c.id, name: c.name, stage: c.stage, months, total };
+    });
+    res.json({ year, rows, monthTotals, grandTotal });
+  } catch (error) {
+    console.error('List receivables error:', error);
+    res.status(500).json({ error: '매출채권 조회에 실패했습니다.' });
+  }
+});
+
+// 단일 셀 upsert (거래처×연×월)
+router.post('/receivables', authenticate, async (req, res) => {
+  try {
+    const { clientId, year, month } = req.body;
+    const amount = parseRevenue(req.body.amount) || 0;
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!clientId || !y || !(m >= 1 && m <= 12)) {
+      return res.status(400).json({ error: '거래처·연·월 값이 올바르지 않습니다.' });
+    }
+    const rec = await prisma.salesReceivable.upsert({
+      where: { clientId_year_month: { clientId, year: y, month: m } },
+      update: { amount },
+      create: { clientId, year: y, month: m, amount },
+    });
+    res.json({ receivable: rec });
+  } catch (error) {
+    console.error('Upsert receivable error:', error);
+    res.status(500).json({ error: '매출채권 저장에 실패했습니다.' });
   }
 });
 
