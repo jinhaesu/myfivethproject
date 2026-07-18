@@ -134,6 +134,28 @@ export interface SalesClient {
   _count?: { journals: number; plans: number };
 }
 
+export interface SalesJournalAttachment {
+  id: string;
+  kind: string; // proposal | card | etc
+  fileUrl: string;
+  fileName: string;
+  mimeType: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export const ATTACHMENT_KIND_LABEL: Record<string, string> = {
+  proposal: '제안서',
+  card: '명함',
+  etc: '기타',
+};
+
+export function isImageMime(mime: string | null | undefined, fileName?: string): boolean {
+  if (mime && mime.startsWith('image/')) return true;
+  if (fileName && /\.(png|jpe?g|webp|gif)$/i.test(fileName)) return true;
+  return false;
+}
+
 export interface SalesJournal {
   id: string;
   title: string | null;
@@ -154,6 +176,8 @@ export interface SalesJournal {
   client?: { id: string; name: string; stage?: string } | SalesClient;
   referrers?: SalesReferrer[];
   todos?: SalesTodo[];
+  attachments?: SalesJournalAttachment[];
+  attachmentCount?: number;
   passwordProtected?: boolean;
   canEdit?: boolean;
   locked?: boolean;

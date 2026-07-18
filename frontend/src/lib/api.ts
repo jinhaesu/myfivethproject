@@ -302,6 +302,10 @@ export const api = {
       }),
     toggleTodo: (id: string, isDone: boolean) =>
       request(`/sales/todos/${id}`, { method: 'PUT', body: JSON.stringify({ isDone }) }),
+    // 첨부(제안서·명함)
+    uploadJournalAttachment: (journalId: string, file: File, kind: 'proposal' | 'card' | 'etc') =>
+      uploadFile(`/sales/journals/${journalId}/attachments?kind=${kind}`, file, 'file'),
+    deleteAttachment: (id: string) => request(`/sales/attachments/${id}`, { method: 'DELETE' }),
     // 영업계획
     listPlans: (clientId?: string) =>
       request(`/sales/plans${clientId ? `?clientId=${clientId}` : ''}`),
