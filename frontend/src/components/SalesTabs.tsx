@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 
 const TABS = [
-  { href: '/sales', label: '영업일지', match: (p: string) => p === '/sales' || (p.startsWith('/sales/') && !p.startsWith('/sales/clients') && !p.startsWith('/sales/plans')) },
-  { href: '/sales/plans', label: '영업 계획', match: (p: string) => p.startsWith('/sales/plans') },
+  { href: '/sales', label: '영업일지', match: (p: string) => p === '/sales' || (p.startsWith('/sales/') && !p.startsWith('/sales/clients') && !p.startsWith('/sales/calendar')) },
   { href: '/sales/clients', label: '거래처', match: (p: string) => p.startsWith('/sales/clients') },
 ];
 

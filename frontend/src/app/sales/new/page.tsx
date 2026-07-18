@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
-import { SalesClient, SALES_STAGES } from '@/lib/sales';
+import { SalesClient, SALES_STAGES, todoSuggestionsForStage } from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -23,7 +23,10 @@ interface TodoRow {
   dueDate: string;
   content: string;
   plan: string;
+  custom?: boolean; // true면 드롭다운 대신 직접 입력
 }
+
+const TODO_OTHER = '__other__';
 
 export default function NewSalesJournalPage() {
   const router = useRouter();
@@ -110,7 +113,7 @@ export default function NewSalesJournalPage() {
       if (Array.isArray(draft.todos) && draft.todos.length) {
         const aiTodos: TodoRow[] = draft.todos
           .filter((t: any) => t?.dueDate && t?.content)
-          .map((t: any) => ({ dueDate: String(t.dueDate).slice(0, 10), content: String(t.content), plan: t.plan ? String(t.plan) : '' }));
+          .map((t: any) => ({ dueDate: String(t.dueDate).slice(0, 10), content: String(t.content), plan: t.plan ? String(t.plan) : '', custom: true }));
         setTodos((prev) => {
           const meaningful = prev.filter((t) => t.dueDate || t.content.trim() || t.plan.trim());
           const merged = [...meaningful, ...aiTodos];
@@ -146,8 +149,10 @@ export default function NewSalesJournalPage() {
   const addReferrer = () => setReferrers((r) => [...r, '']);
   const removeReferrer = (i: number) => setReferrers((r) => r.filter((_, idx) => idx !== i));
 
-  const updateTodo = (i: number, key: keyof TodoRow, v: string) =>
+  const updateTodo = (i: number, key: 'dueDate' | 'content' | 'plan', v: string) =>
     setTodos((t) => t.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
+  const setTodoCustom = (i: number, custom: boolean) =>
+    setTodos((t) => t.map((x, idx) => (idx === i ? { ...x, custom, content: '' } : x)));
   const addTodo = () => setTodos((t) => [...t, { dueDate: '', content: '', plan: '' }]);
   const removeTodo = (i: number) => setTodos((t) => t.filter((_, idx) => idx !== i));
 
@@ -400,7 +405,7 @@ export default function NewSalesJournalPage() {
           <Card padding="lg">
             <CardHeader
               title="향후 스케쥴 (해야 할 일)"
-              subtitle="일자는 필수입니다. 대략적 계획은 선택 입력."
+              subtitle={`일자는 필수. 해야 할 일은 ${stage ? `'${SALES_STAGES.find((s) => s.key === stage)?.label}' 단계` : '영업 단계'} 추천 목록에서 고르거나 '기타'로 직접 입력합니다.`}
               actions={
                 <Button variant="secondary" size="sm" onClick={addTodo}>
                   + 항목 추가
@@ -408,18 +413,57 @@ export default function NewSalesJournalPage() {
               }
             />
             <div className="flex flex-col gap-3">
-              {todos.map((t, i) => (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start">
-                  <Input type="date" value={t.dueDate} onChange={(e) => updateTodo(i, 'dueDate', e.target.value)} />
-                  <Input value={t.content} onChange={(e) => updateTodo(i, 'content', e.target.value)} placeholder="해야 할 일" />
-                  <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
-                  {todos.length > 1 && (
-                    <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
-                      삭제
-                    </Button>
-                  )}
-                </div>
-              ))}
+              {todos.map((t, i) => {
+                const suggestions = todoSuggestionsForStage(stage);
+                const inList = suggestions.includes(t.content);
+                const showCustom = !!t.custom || (!!t.content && !inList);
+                return (
+                  <div key={i} className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start">
+                    <Input type="date" value={t.dueDate} onChange={(e) => updateTodo(i, 'dueDate', e.target.value)} />
+                    {showCustom ? (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={t.content}
+                          onChange={(e) => updateTodo(i, 'content', e.target.value)}
+                          placeholder="해야 할 일 직접 입력"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setTodoCustom(i, false)}
+                          title="추천 목록에서 선택"
+                          className="flex-shrink-0"
+                        >
+                          목록
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select
+                        value={inList ? t.content : ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === TODO_OTHER) setTodoCustom(i, true);
+                          else updateTodo(i, 'content', v);
+                        }}
+                      >
+                        <option value="">해야 할 일 선택</option>
+                        {suggestions.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                        <option value={TODO_OTHER}>기타 (직접 입력)</option>
+                      </Select>
+                    )}
+                    <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
+                    {todos.length > 1 && (
+                      <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
+                        삭제
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
 

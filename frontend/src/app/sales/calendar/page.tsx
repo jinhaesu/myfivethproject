@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
-import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
 import {
   CalendarEvent,
@@ -136,10 +135,9 @@ export default function SalesPlansPage() {
 
   return (
     <AppLayout>
-      <SalesTabs />
       <PageHeader
         eyebrow="Sales Calendar"
-        title="영업 계획"
+        title="영업 캘린더"
         description="출시·단종·영업 미팅·영업계획·할일 일정을 통합해서 보여줍니다."
         actions={<PlanFormToggle onCreated={load} />}
       />
