@@ -79,6 +79,34 @@ export const STAGE_TONE: Record<string, BadgeTone> = {
   expansion: 'violet',
 };
 
+// 성사 확률 기본값(거래처 winProbability 미지정 시 가중 예상매출에 사용) — 백엔드와 동일
+export const STAGE_DEFAULT_PROB: Record<string, number> = {
+  lead: 10,
+  contact: 25,
+  proposal: 50,
+  revenue: 80,
+  expansion: 90,
+};
+
+// 원화 축약 표기 (1.2억, 3,400만, 12만 등)
+export function fmtKRW(n: number | null | undefined): string {
+  if (n === null || n === undefined || isNaN(Number(n))) return '—';
+  const v = Number(n);
+  if (v === 0) return '0원';
+  const eok = Math.floor(v / 100000000);
+  const man = Math.round((v % 100000000) / 10000);
+  if (eok > 0) return man > 0 ? `${eok}억 ${man.toLocaleString()}만원` : `${eok}억원`;
+  if (v >= 10000) return `${Math.round(v / 10000).toLocaleString()}만원`;
+  return `${v.toLocaleString()}원`;
+}
+
+// 가중 예상매출 = 예상매출 × (성사확률 or 단계 기본확률)
+export function weightedRevenue(client: { expectedRevenue?: number | null; winProbability?: number | null; stage: string }): number {
+  const exp = client.expectedRevenue || 0;
+  const prob = client.winProbability != null ? client.winProbability : (STAGE_DEFAULT_PROB[client.stage] ?? 0);
+  return exp * (prob / 100);
+}
+
 export interface SalesContact {
   id: string;
   name: string;
@@ -117,6 +145,8 @@ export interface SalesClient {
   name: string;
   bizNumber: string | null;
   stage: string;
+  expectedRevenue: number | null;
+  winProbability: number | null;
   ownerOrg: string | null;
   buyerComposition: string | null;
   annualRevenue: string | null;
@@ -217,6 +247,35 @@ export const EVENT_META: Record<CalendarEventType, { label: string; tone: BadgeT
   plan: { label: '영업계획', tone: 'success', color: 'var(--success-fg)' },
   todo: { label: '할일', tone: 'warning', color: 'var(--warning-fg)' },
 };
+
+// 영업 대시보드 응답 타입
+export interface DashboardStage {
+  stage: string;
+  label: string;
+  count: number;
+  expected: number;
+  weighted: number;
+}
+export interface DashboardTodo {
+  id: string;
+  content: string;
+  dueDate: string;
+  clientName: string | null;
+  journalId: string;
+  overdue?: boolean;
+}
+export interface DashboardData {
+  stageSummary: DashboardStage[];
+  totals: { clients: number; expectedTotal: number; weightedTotal: number; openTodos: number };
+  thisWeek: { meetings: number; todosUpcoming: number };
+  staleClients: { id: string; name: string; stage: string; days: number }[];
+  upcomingTodos: DashboardTodo[];
+  recentJournals: {
+    id: string; title: string | null; clientName: string | null; stage: string | null;
+    authorName: string | null; createdAt: string; meetingDate: string | null;
+  }[];
+  isSuperAdmin: boolean;
+}
 
 export function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
