@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 const NAV = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/labels/new', label: '새 라벨' },
+  { href: '/sales', label: '영업 관리' },
   { href: '/launches', label: '출시 관리' },
   { href: '/discontinuations', label: '단종 관리' },
 ];

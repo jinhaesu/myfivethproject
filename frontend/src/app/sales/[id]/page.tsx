@@ -1,0 +1,602 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import AppLayout from '@/components/AppLayout';
+import SalesTabs from '@/components/SalesTabs';
+import { api } from '@/lib/api';
+import {
+  SalesJournal,
+  SalesTodo,
+  SALES_STAGES,
+  STAGE_LABEL,
+  STAGE_TONE,
+  fmtDate,
+  fmtDateTime,
+  toDateInput,
+} from '@/lib/sales';
+import {
+  PageHeader,
+  Card,
+  CardHeader,
+  Button,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Badge,
+  CenterSpinner,
+} from '@/components/ui';
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-1 sm:gap-3 py-2 border-b border-[var(--border-1)] last:border-0">
+      <div className="text-[12.5px] text-[var(--text-3)]">{label}</div>
+      <div className="text-[13px] text-[var(--text-1)] whitespace-pre-wrap break-words">
+        {value || <span className="text-[var(--text-4)]">—</span>}
+      </div>
+    </div>
+  );
+}
+
+export default function SalesJournalDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = String(params?.id || '');
+
+  const [journal, setJournal] = useState<SalesJournal | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [lockedInfo, setLockedInfo] = useState<SalesJournal | null>(null);
+  const [pw, setPw] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+
+  const load = useCallback(
+    async (token?: string) => {
+      setLoading(true);
+      setError('');
+      try {
+        const data = await api.sales.getJournal(id, token);
+        setJournal(data.journal);
+        setNeedsPassword(false);
+      } catch (e) {
+        const err = e as Error & { status?: number; data?: any };
+        if (err.data?.passwordRequired) {
+          setNeedsPassword(true);
+          setLockedInfo(err.data.journal || null);
+        } else if (err.status === 403) {
+          setError('이 영업일지를 열람할 권한이 없습니다.');
+        } else {
+          setError(err.message || '영업일지를 불러오지 못했습니다.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [id],
+  );
+
+  useEffect(() => {
+    if (id) load();
+  }, [id, load]);
+
+  const unlock = async () => {
+    setUnlocking(true);
+    setError('');
+    try {
+      const res = await api.sales.verifyJournalPassword(id, pw);
+      await load(res.token || undefined);
+    } catch (e) {
+      setError((e as Error)?.message || '비밀번호가 일치하지 않습니다.');
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
+  const toggleTodo = async (t: SalesTodo) => {
+    try {
+      await api.sales.toggleTodo(t.id, !t.isDone);
+      setJournal((j) =>
+        j
+          ? { ...j, todos: (j.todos || []).map((x) => (x.id === t.id ? { ...x, isDone: !x.isDone } : x)) }
+          : j,
+      );
+    } catch (e) {
+      console.error('todo toggle failed:', e);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm('이 영업일지를 삭제하시겠습니까?')) return;
+    try {
+      await api.sales.deleteJournal(id);
+      router.push('/sales');
+    } catch (e) {
+      setError((e as Error)?.message || '삭제에 실패했습니다.');
+    }
+  };
+
+  // ── 로딩 ──
+  if (loading) {
+    return (
+      <AppLayout>
+        <SalesTabs />
+        <CenterSpinner label="영업일지 불러오는 중" />
+      </AppLayout>
+    );
+  }
+
+  // ── 비밀번호 잠금 ──
+  if (needsPassword) {
+    return (
+      <AppLayout>
+        <SalesTabs />
+        <PageHeader
+          eyebrow="Sales Journal"
+          title={lockedInfo?.title || '잠긴 영업일지'}
+          description="이 영업일지는 열람 비밀번호로 보호되어 있습니다."
+        />
+        <Card padding="lg" className="max-w-md">
+          <CardHeader title="🔒 비밀번호 입력" subtitle="작성자에게 부여받은 열람 비밀번호를 입력하세요." />
+          <div className="flex flex-col gap-3">
+            <Input
+              type="password"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && unlock()}
+              placeholder="열람 비밀번호"
+            />
+            {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
+            <div className="flex items-center gap-2">
+              <Button variant="primary" size="md" onClick={unlock} loading={unlocking}>
+                잠금 해제
+              </Button>
+              <Link href="/sales">
+                <Button variant="ghost" size="md">
+                  목록으로
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      </AppLayout>
+    );
+  }
+
+  // ── 오류/권한 없음 ──
+  if (error && !journal) {
+    return (
+      <AppLayout>
+        <SalesTabs />
+        <PageHeader eyebrow="Sales Journal" title="열람 불가" />
+        <Card padding="lg" className="max-w-md">
+          <p className="text-[13px] text-[var(--text-2)]">{error}</p>
+          <div className="mt-3">
+            <Link href="/sales">
+              <Button variant="secondary" size="md">
+                목록으로
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </AppLayout>
+    );
+  }
+
+  if (!journal) return null;
+
+  const client = journal.client as { id?: string; name?: string } | undefined;
+  const author = journal.author;
+
+  // ── 수정 모드 ──
+  if (editMode && journal.canEdit) {
+    return (
+      <AppLayout>
+        <SalesTabs />
+        <PageHeader eyebrow="Sales Journal" title="영업일지 수정" />
+        <EditForm
+          journal={journal}
+          onCancel={() => setEditMode(false)}
+          onSaved={async () => {
+            setEditMode(false);
+            await load();
+          }}
+        />
+      </AppLayout>
+    );
+  }
+
+  // ── 상세 ──
+  return (
+    <AppLayout>
+      <SalesTabs />
+      <PageHeader
+        eyebrow="Sales Journal"
+        title={journal.title || '영업일지'}
+        description={
+          <span className="flex items-center gap-1.5 flex-wrap">
+            {journal.stage && (
+              <Badge tone={STAGE_TONE[journal.stage] || 'neutral'} size="sm">
+                {STAGE_LABEL[journal.stage] || journal.stage}
+              </Badge>
+            )}
+            {journal.isFirstMeeting && (
+              <Badge tone="info" size="sm">
+                최초 미팅
+              </Badge>
+            )}
+            {journal.passwordProtected && (
+              <Badge tone="neutral" size="sm">
+                🔒 비밀번호
+              </Badge>
+            )}
+          </span>
+        }
+        actions={
+          journal.canEdit ? (
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="md" onClick={() => setEditMode(true)}>
+                수정
+              </Button>
+              <Button variant="danger" size="md" onClick={remove}>
+                삭제
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
+
+      <div className="flex flex-col gap-5 max-w-3xl">
+        <Card padding="lg">
+          <CardHeader title="거래처 · 작성 정보" />
+          <Row
+            label="거래처"
+            value={
+              client?.id ? (
+                <Link
+                  href={`/sales/clients/${client.id}`}
+                  className="text-[var(--brand-400)] hover:text-[var(--brand-200)] transition-colors"
+                >
+                  {client.name}
+                </Link>
+              ) : (
+                client?.name
+              )
+            }
+          />
+          <Row label="작성자" value={author ? `${author.name || ''} ${author.email ? `(${author.email})` : ''}`.trim() : '—'} />
+          <Row label="작성일" value={fmtDateTime(journal.createdAt)} />
+        </Card>
+
+        <Card padding="lg">
+          <CardHeader title="미팅 정보" />
+          <Row label="미팅 일자" value={fmtDate(journal.meetingDate)} />
+          <Row label="미팅 목적" value={journal.meetingPurpose} />
+          <Row label="장소" value={journal.meetingLocation} />
+          <Row label="참석자" value={journal.attendees} />
+          <Row label="미팅 개요" value={journal.meetingSummary} />
+        </Card>
+
+        <Card padding="lg">
+          <CardHeader title="요청 · 기획 사항" />
+          <Row label="핵심 요청사항" value={journal.keyRequests} />
+          <Row label="제품 요청/기획" value={journal.productRequests} />
+        </Card>
+
+        {journal.isFirstMeeting && client?.id && (
+          <Card padding="lg">
+            <CardHeader
+              title="최초 미팅 · 거래처 정보"
+              subtitle="거래처 마스터에 저장된 기본 정보입니다."
+              actions={
+                <Link href={`/sales/clients/${client.id}`}>
+                  <Button variant="ghost" size="sm">
+                    거래처 상세 →
+                  </Button>
+                </Link>
+              }
+            />
+            <p className="text-[12.5px] text-[var(--text-3)]">
+              담당조직·바이어 구성·연매출·보관/물류 조건은 거래처 상세에서 확인·수정할 수 있습니다.
+            </p>
+          </Card>
+        )}
+
+        <Card padding="lg">
+          <CardHeader title="참고자" subtitle="열람 권한이 부여된 이메일" />
+          {journal.referrers && journal.referrers.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {journal.referrers.map((r) => (
+                <Badge key={r.id} tone="neutral" size="sm">
+                  {r.email}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-[13px] text-[var(--text-4)]">지정된 참고자가 없습니다.</span>
+          )}
+        </Card>
+
+        <Card padding="lg">
+          <CardHeader title="향후 스케쥴 (해야 할 일)" />
+          {journal.todos && journal.todos.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {journal.todos.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-start gap-3 py-2 border-b border-[var(--border-1)] last:border-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={t.isDone}
+                    disabled={!journal.canEdit}
+                    onChange={() => toggleTodo(t)}
+                    className="mt-0.5 w-4 h-4 accent-[var(--brand-500)] disabled:opacity-50"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge tone={t.isDone ? 'success' : 'warning'} size="xs">
+                        {fmtDate(t.dueDate)}
+                      </Badge>
+                      <span
+                        className={`text-[13px] ${t.isDone ? 'line-through text-[var(--text-4)]' : 'text-[var(--text-1)]'}`}
+                      >
+                        {t.content}
+                      </span>
+                    </div>
+                    {t.plan && <div className="text-[12px] text-[var(--text-3)] mt-0.5">{t.plan}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="text-[13px] text-[var(--text-4)]">등록된 향후 스케쥴이 없습니다.</span>
+          )}
+        </Card>
+      </div>
+    </AppLayout>
+  );
+}
+
+// ============================================================
+// 인라인 수정 폼
+// ============================================================
+interface TodoRow {
+  dueDate: string;
+  content: string;
+  plan: string;
+}
+
+function EditForm({
+  journal,
+  onCancel,
+  onSaved,
+}: {
+  journal: SalesJournal;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle] = useState(journal.title || '');
+  const [stage, setStage] = useState(journal.stage || '');
+  const [isFirstMeeting, setIsFirstMeeting] = useState(!!journal.isFirstMeeting);
+  const [meetingDate, setMeetingDate] = useState(
+    journal.meetingDate ? toDateInput(new Date(journal.meetingDate)) : '',
+  );
+  const [meetingPurpose, setMeetingPurpose] = useState(journal.meetingPurpose || '');
+  const [meetingLocation, setMeetingLocation] = useState(journal.meetingLocation || '');
+  const [attendees, setAttendees] = useState(journal.attendees || '');
+  const [meetingSummary, setMeetingSummary] = useState(journal.meetingSummary || '');
+  const [keyRequests, setKeyRequests] = useState(journal.keyRequests || '');
+  const [productRequests, setProductRequests] = useState(journal.productRequests || '');
+  const [referrers, setReferrers] = useState<string[]>(
+    journal.referrers && journal.referrers.length ? journal.referrers.map((r) => r.email) : [''],
+  );
+  const [todos, setTodos] = useState<TodoRow[]>(
+    journal.todos && journal.todos.length
+      ? journal.todos.map((t) => ({
+          dueDate: t.dueDate ? toDateInput(new Date(t.dueDate)) : '',
+          content: t.content,
+          plan: t.plan || '',
+        }))
+      : [{ dueDate: '', content: '', plan: '' }],
+  );
+  const [password, setPassword] = useState('');
+  const [clearPassword, setClearPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const updateReferrer = (i: number, v: string) =>
+    setReferrers((r) => r.map((x, idx) => (idx === i ? v : x)));
+  const addReferrer = () => setReferrers((r) => [...r, '']);
+  const removeReferrer = (i: number) => setReferrers((r) => r.filter((_, idx) => idx !== i));
+
+  const updateTodo = (i: number, key: keyof TodoRow, v: string) =>
+    setTodos((t) => t.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
+  const addTodo = () => setTodos((t) => [...t, { dueDate: '', content: '', plan: '' }]);
+  const removeTodo = (i: number) => setTodos((t) => t.filter((_, idx) => idx !== i));
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const payload: Record<string, unknown> = {
+        title: title.trim() || undefined,
+        stage: stage || undefined,
+        isFirstMeeting,
+        meetingDate: meetingDate || undefined,
+        meetingPurpose: meetingPurpose.trim() || undefined,
+        meetingLocation: meetingLocation.trim() || undefined,
+        attendees: attendees.trim() || undefined,
+        meetingSummary: meetingSummary.trim() || undefined,
+        keyRequests: keyRequests.trim() || undefined,
+        productRequests: productRequests.trim() || undefined,
+        referrers: referrers.map((e) => e.trim()).filter(Boolean),
+        todos: todos
+          .filter((t) => t.dueDate && t.content.trim())
+          .map((t) => ({ dueDate: t.dueDate, content: t.content.trim(), plan: t.plan.trim() || undefined })),
+      };
+      if (clearPassword) payload.password = '';
+      else if (password.trim()) payload.password = password.trim();
+      await api.sales.updateJournal(journal.id, payload);
+      onSaved();
+    } catch (e) {
+      setError((e as Error)?.message || '수정에 실패했습니다.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-5 max-w-3xl">
+      <Card padding="lg">
+        <CardHeader title="기본 정보" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="제목">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </Field>
+          <Field label="영업 단계" hint="선택 시 거래처 파이프라인 단계가 함께 갱신됩니다.">
+            <Select value={stage} onChange={(e) => setStage(e.target.value)}>
+              <option value="">단계 미지정</option>
+              {SALES_STAGES.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="최초 미팅 여부">
+            <label className="flex items-center gap-2 h-9 text-[13px] text-[var(--text-2)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isFirstMeeting}
+                onChange={(e) => setIsFirstMeeting(e.target.checked)}
+                className="w-4 h-4 accent-[var(--brand-500)]"
+              />
+              최초 미팅입니다
+            </label>
+          </Field>
+        </div>
+      </Card>
+
+      <Card padding="lg">
+        <CardHeader title="미팅 정보" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="미팅 일자">
+            <Input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} />
+          </Field>
+          <Field label="미팅 목적">
+            <Input value={meetingPurpose} onChange={(e) => setMeetingPurpose(e.target.value)} />
+          </Field>
+          <Field label="장소">
+            <Input value={meetingLocation} onChange={(e) => setMeetingLocation(e.target.value)} />
+          </Field>
+          <Field label="참석자 정보">
+            <Input value={attendees} onChange={(e) => setAttendees(e.target.value)} />
+          </Field>
+          <Field label="미팅 개요" className="sm:col-span-2">
+            <Textarea value={meetingSummary} onChange={(e) => setMeetingSummary(e.target.value)} />
+          </Field>
+        </div>
+      </Card>
+
+      <Card padding="lg">
+        <CardHeader title="요청 · 기획 사항" />
+        <div className="grid grid-cols-1 gap-4">
+          <Field label="핵심 요청사항">
+            <Textarea value={keyRequests} onChange={(e) => setKeyRequests(e.target.value)} />
+          </Field>
+          <Field label="제품의 구체적 요청 및 기획사항">
+            <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} />
+          </Field>
+        </div>
+      </Card>
+
+      <Card padding="lg">
+        <CardHeader
+          title="참고자"
+          subtitle="로그인 이메일 기준으로 열람 권한이 부여됩니다."
+          actions={
+            <Button variant="secondary" size="sm" onClick={addReferrer}>
+              + 참고자 추가
+            </Button>
+          }
+        />
+        <div className="flex flex-col gap-2">
+          {referrers.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input type="email" value={r} onChange={(e) => updateReferrer(i, e.target.value)} placeholder="referrer@joinandjoin.com" />
+              {referrers.length > 1 && (
+                <Button variant="ghost" size="sm" onClick={() => removeReferrer(i)}>
+                  삭제
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card padding="lg">
+        <CardHeader
+          title="향후 스케쥴 (해야 할 일)"
+          subtitle="일자는 필수입니다."
+          actions={
+            <Button variant="secondary" size="sm" onClick={addTodo}>
+              + 항목 추가
+            </Button>
+          }
+        />
+        <div className="flex flex-col gap-3">
+          {todos.map((t, i) => (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start">
+              <Input type="date" value={t.dueDate} onChange={(e) => updateTodo(i, 'dueDate', e.target.value)} />
+              <Input value={t.content} onChange={(e) => updateTodo(i, 'content', e.target.value)} placeholder="해야 할 일" />
+              <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
+              {todos.length > 1 && (
+                <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
+                  삭제
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card padding="lg">
+        <CardHeader title="열람 비밀번호" subtitle="변경하려면 새 비밀번호를 입력하세요. 비워두면 기존 설정을 유지합니다." />
+        <div className="flex flex-col gap-3 max-w-sm">
+          <Field label="새 비밀번호">
+            <Input
+              type="password"
+              value={password}
+              disabled={clearPassword}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="변경 시에만 입력"
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-[13px] text-[var(--text-2)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={clearPassword}
+              onChange={(e) => setClearPassword(e.target.checked)}
+              className="w-4 h-4 accent-[var(--brand-500)]"
+            />
+            비밀번호 잠금 해제
+          </label>
+        </div>
+      </Card>
+
+      {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
+
+      <div className="flex items-center gap-2">
+        <Button variant="primary" size="md" onClick={save} loading={saving}>
+          저장
+        </Button>
+        <Button variant="ghost" size="md" onClick={onCancel}>
+          취소
+        </Button>
+      </div>
+    </div>
+  );
+}

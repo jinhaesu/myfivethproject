@@ -36,7 +36,11 @@ async function request(path: string, options: RequestInit = {}) {
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || '요청에 실패했습니다.');
+    // 에러에 상태코드·응답 본문을 붙여 호출부가 세부 플래그(passwordRequired 등)를 검사할 수 있게 함
+    const err = new Error(data.error || '요청에 실패했습니다.') as Error & { status?: number; data?: any };
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
 
   return data;
@@ -257,6 +261,60 @@ export const api = {
         body: JSON.stringify(data),
         headers: editToken ? { 'X-Edit-Token': editToken } : undefined,
       }),
+  },
+  sales: {
+    // 파이프라인 단계 메타
+    stages: () => request('/sales/meta/stages'),
+    // 거래처
+    listClients: () => request('/sales/clients'),
+    getClient: (id: string) => request(`/sales/clients/${id}`),
+    createClient: (data: any) =>
+      request('/sales/clients', { method: 'POST', body: JSON.stringify(data) }),
+    updateClient: (id: string, data: any) =>
+      request(`/sales/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteClient: (id: string) => request(`/sales/clients/${id}`, { method: 'DELETE' }),
+    // 명함(담당자)
+    createContact: (clientId: string, data: any) =>
+      request(`/sales/clients/${clientId}/contacts`, { method: 'POST', body: JSON.stringify(data) }),
+    updateContact: (id: string, data: any) =>
+      request(`/sales/contacts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteContact: (id: string) => request(`/sales/contacts/${id}`, { method: 'DELETE' }),
+    uploadCard: (contactId: string, file: File) =>
+      uploadFile(`/sales/contacts/${contactId}/card`, file, 'cardImage'),
+    // 영업일지
+    listJournals: (clientId?: string) =>
+      request(`/sales/journals${clientId ? `?clientId=${clientId}` : ''}`),
+    getJournal: (id: string, viewToken?: string) =>
+      request(`/sales/journals/${id}`, {
+        headers: viewToken ? { 'X-Journal-Token': viewToken } : undefined,
+      }),
+    createJournal: (data: any) =>
+      request('/sales/journals', { method: 'POST', body: JSON.stringify(data) }),
+    updateJournal: (id: string, data: any) =>
+      request(`/sales/journals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteJournal: (id: string) => request(`/sales/journals/${id}`, { method: 'DELETE' }),
+    verifyJournalPassword: (id: string, password: string) =>
+      request(`/sales/journals/${id}/verify-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+    toggleTodo: (id: string, isDone: boolean) =>
+      request(`/sales/todos/${id}`, { method: 'PUT', body: JSON.stringify({ isDone }) }),
+    // 영업계획
+    listPlans: (clientId?: string) =>
+      request(`/sales/plans${clientId ? `?clientId=${clientId}` : ''}`),
+    createPlan: (data: any) =>
+      request('/sales/plans', { method: 'POST', body: JSON.stringify(data) }),
+    updatePlan: (id: string, data: any) =>
+      request(`/sales/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deletePlan: (id: string) => request(`/sales/plans/${id}`, { method: 'DELETE' }),
+    // 통합 캘린더
+    calendar: (from?: string, to?: string) => {
+      const q = new URLSearchParams();
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      return request(`/sales/calendar${q.toString() ? `?${q.toString()}` : ''}`);
+    },
   },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>
