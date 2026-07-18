@@ -60,6 +60,10 @@ export default function NewSalesJournalPage() {
   const [todos, setTodos] = useState<TodoRow[]>([{ dueDate: '', content: '', plan: '' }]);
   const [password, setPassword] = useState('');
 
+  // 첨부(저장 시 일지 생성 후 업로드)
+  const [proposalFiles, setProposalFiles] = useState<File[]>([]);
+  const [cardFiles, setCardFiles] = useState<File[]>([]);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -200,7 +204,20 @@ export default function NewSalesJournalPage() {
         }
       }
       const res = await api.sales.createJournal(payload);
-      router.push(`/sales/${res.journal.id}`);
+      const journalId = res.journal.id;
+      // 첨부 업로드(실패해도 일지는 저장됨 — 경고만)
+      const uploads: Promise<unknown>[] = [
+        ...proposalFiles.map((f) => api.sales.uploadJournalAttachment(journalId, f, 'proposal')),
+        ...cardFiles.map((f) => api.sales.uploadJournalAttachment(journalId, f, 'card')),
+      ];
+      if (uploads.length) {
+        const results = await Promise.allSettled(uploads);
+        const failed = results.filter((r) => r.status === 'rejected').length;
+        if (failed) {
+          alert(`영업일지는 저장됐지만 첨부 ${failed}건 업로드에 실패했습니다. 상세 화면에서 다시 첨부해주세요.`);
+        }
+      }
+      router.push(`/sales/${journalId}`);
     } catch (e) {
       setError((e as Error)?.message || '영업일지 작성에 실패했습니다.');
       setSubmitting(false);
@@ -368,6 +385,82 @@ export default function NewSalesJournalPage() {
               <Field label="제품의 구체적 요청 및 기획사항">
                 <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} placeholder="스펙·중량·가격대·시즈널 구성 등 제품 요청/기획" />
               </Field>
+            </div>
+          </Card>
+
+          {/* 첨부 */}
+          <Card padding="lg">
+            <CardHeader title="첨부" subtitle="제안서 파일과 거래처 명함을 첨부합니다. 저장 시 함께 업로드됩니다." />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">제안서 파일</div>
+                <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
+                  + 파일 선택
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      setProposalFiles((prev) => [...prev, ...Array.from(e.target.files || [])]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <p className="text-[11px] text-[var(--text-4)] mt-1">PDF·PPT·Word·Excel·이미지 (최대 25MB)</p>
+                <div className="flex flex-col gap-1 mt-2">
+                  {proposalFiles.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 text-[12px] text-[var(--text-2)] bg-[var(--bg-1)] border border-[var(--border-1)] rounded px-2 py-1">
+                      <span className="truncate">📄 {f.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setProposalFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-[var(--text-4)] hover:text-[var(--danger-fg)] flex-shrink-0"
+                        aria-label="제거"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">거래처 명함</div>
+                <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
+                  + 명함 이미지
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      setCardFiles((prev) => [...prev, ...Array.from(e.target.files || [])]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <p className="text-[11px] text-[var(--text-4)] mt-1">명함 사진(PNG·JPG·WebP)</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {cardFiles.map((f, i) => (
+                    <div key={i} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={URL.createObjectURL(f)}
+                        alt={f.name}
+                        className="w-20 h-14 object-cover rounded border border-[var(--border-1)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCardFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--danger-bg)] border border-[var(--danger-border)] text-[var(--danger-fg)] text-[11px] flex items-center justify-center"
+                        aria-label="제거"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </Card>
 

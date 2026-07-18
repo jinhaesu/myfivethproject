@@ -37,6 +37,37 @@ const cardMulter = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
+// ── 영업일지 첨부(제안서·명함 등) multer ──────────────────
+const attachDir = path.join(__dirname, '..', '..', 'uploads', 'sales-attachments');
+if (!fs.existsSync(attachDir)) fs.mkdirSync(attachDir, { recursive: true });
+
+const ATTACH_MIME = [
+  'application/pdf',
+  'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/haansofthwp', 'application/x-hwp', 'application/octet-stream',
+];
+
+const attachMulter = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, attachDir),
+    filename: (req, file, cb) => {
+      const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `attach-${suffix}${path.extname(file.originalname)}`);
+    },
+  }),
+  fileFilter: (req, file, cb) => {
+    const ok = ATTACH_MIME.includes(file.mimetype);
+    cb(ok ? null : new Error('지원하지 않는 파일 형식입니다. (PDF·이미지·오피스 문서만 가능)'), ok);
+  },
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
 const USER_SELECT = { id: true, name: true, email: true, department: true };
 
 function parseDate(v) {
@@ -288,6 +319,8 @@ function sanitizeJournalListItem(user, j) {
     meetingSummary: locked ? null : rest.meetingSummary,
     keyRequests: locked ? null : rest.keyRequests,
     productRequests: locked ? null : rest.productRequests,
+    attachments: locked ? [] : (rest.attachments || []),
+    attachmentCount: (rest.attachments || []).length,
   };
 }
 
@@ -315,6 +348,7 @@ router.get('/journals', authenticate, async (req, res) => {
         client: { select: { id: true, name: true, stage: true } },
         referrers: true,
         todos: { orderBy: { dueDate: 'asc' } },
+        attachments: { orderBy: { sortOrder: 'asc' } },
       },
     });
     const visible = all
@@ -392,6 +426,7 @@ router.get('/journals/:id', authenticate, async (req, res) => {
         client: true,
         referrers: true,
         todos: { orderBy: { dueDate: 'asc' } },
+        attachments: { orderBy: { sortOrder: 'asc' } },
       },
     });
     if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
@@ -401,7 +436,7 @@ router.get('/journals/:id', authenticate, async (req, res) => {
     const owner = isJournalOwner(req.user, journal);
     // 참고자이면서 비밀번호가 걸린 경우 뷰 토큰 필요
     if (!owner && journal.passwordHash && !hasJournalViewToken(req, journal)) {
-      const { passwordHash, meetingSummary, keyRequests, productRequests, attendees, todos, ...safe } = journal;
+      const { passwordHash, meetingSummary, keyRequests, productRequests, attendees, todos, attachments, ...safe } = journal;
       return res.status(403).json({
         error: '열람 비밀번호가 필요합니다.',
         passwordRequired: true,
@@ -488,7 +523,7 @@ router.put('/journals/:id', authenticate, async (req, res) => {
     }
     const updated = await prisma.salesJournal.findUnique({
       where: { id: journal.id },
-      include: { author: { select: USER_SELECT }, client: true, referrers: true, todos: { orderBy: { dueDate: 'asc' } } },
+      include: { author: { select: USER_SELECT }, client: true, referrers: true, todos: { orderBy: { dueDate: 'asc' } }, attachments: { orderBy: { sortOrder: 'asc' } } },
     });
     const { passwordHash, ...rest } = updated;
     res.json({ journal: { ...rest, passwordProtected: !!passwordHash, canEdit: true, locked: false } });
@@ -510,6 +545,64 @@ router.delete('/journals/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete journal error:', error);
     res.status(500).json({ error: '영업일지 삭제에 실패했습니다.' });
+  }
+});
+
+// 첨부 업로드 (제안서·명함 등) — 작성자/최고관리자만
+router.post('/journals/:id/attachments', authenticate, attachMulter.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일을 선택해주세요.' });
+    const journal = await prisma.salesJournal.findUnique({ where: { id: req.params.id } });
+    if (!journal) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
+    }
+    if (!isJournalOwner(req.user, journal)) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(403).json({ error: '첨부 권한이 없습니다.' });
+    }
+    const kind = req.query.kind === 'card' ? 'card' : req.query.kind === 'etc' ? 'etc' : 'proposal';
+    const key = `sales-attachments/${req.file.filename}`;
+    const fileUrl = `/uploads/sales-attachments/${req.file.filename}`;
+    await storage.uploadFile(key, req.file.path, req.file.mimetype);
+    const count = await prisma.salesJournalAttachment.count({ where: { journalId: journal.id } });
+    const attachment = await prisma.salesJournalAttachment.create({
+      data: {
+        journalId: journal.id,
+        kind,
+        fileUrl,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        sortOrder: count,
+      },
+    });
+    res.json({ attachment });
+  } catch (error) {
+    console.error('Attachment upload error:', error);
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ error: error.message || '첨부 업로드에 실패했습니다.' });
+  }
+});
+
+router.delete('/attachments/:id', authenticate, async (req, res) => {
+  try {
+    const attachment = await prisma.salesJournalAttachment.findUnique({
+      where: { id: req.params.id },
+      include: { journal: true },
+    });
+    if (!attachment) return res.status(404).json({ error: '첨부를 찾을 수 없습니다.' });
+    if (!isJournalOwner(req.user, attachment.journal)) {
+      return res.status(403).json({ error: '삭제 권한이 없습니다.' });
+    }
+    if (attachment.fileUrl) {
+      const key = attachment.fileUrl.replace(/^\/uploads\//, '');
+      try { await storage.deleteFile(key); } catch (e) { console.error('attach file delete:', e.message); }
+    }
+    await prisma.salesJournalAttachment.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Delete attachment error:', error);
+    res.status(500).json({ error: '첨부 삭제에 실패했습니다.' });
   }
 });
 

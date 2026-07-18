@@ -317,8 +317,23 @@ model SalesJournal {
   client   SalesClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId String
 
-  referrers SalesJournalReferrer[]
-  todos     SalesTodo[]
+  referrers   SalesJournalReferrer[]
+  todos       SalesTodo[]
+  attachments SalesJournalAttachment[]
+}
+
+// 영업일지 첨부 — 제안서 파일·거래처 명함 등
+model SalesJournalAttachment {
+  id        String   @id @default(uuid())
+  kind      String   @default("proposal") // proposal(제안서) | card(명함) | etc
+  fileUrl   String
+  fileName  String
+  mimeType  String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  journal   SalesJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  journalId String
 }
 
 // 영업일지 참고자 — 로그인 이메일 기반으로 열람 권한 부여

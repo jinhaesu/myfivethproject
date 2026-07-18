@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
-import { api } from '@/lib/api';
+import { api, getFileUrl } from '@/lib/api';
 import {
   SalesJournal,
   SalesTodo,
@@ -286,6 +286,8 @@ export default function SalesJournalDetailPage() {
           <Row label="제품 요청/기획" value={journal.productRequests} />
         </Card>
 
+        <AttachmentsSection journal={journal} onChanged={() => load()} />
+
         {journal.isFirstMeeting && client?.id && (
           <Card padding="lg">
             <CardHeader
@@ -358,6 +360,142 @@ export default function SalesJournalDetailPage() {
         </Card>
       </div>
     </AppLayout>
+  );
+}
+
+// ============================================================
+// 첨부 (제안서 · 명함) — 표시/업로드/삭제
+// ============================================================
+function AttachmentsSection({ journal, onChanged }: { journal: SalesJournal; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const canEdit = !!journal.canEdit;
+  const atts = journal.attachments || [];
+  const proposals = atts.filter((a) => a.kind !== 'card');
+  const cards = atts.filter((a) => a.kind === 'card');
+
+  const upload = async (files: FileList | null, kind: 'proposal' | 'card') => {
+    if (!files || !files.length) return;
+    setBusy(true);
+    try {
+      for (const f of Array.from(files)) {
+        await api.sales.uploadJournalAttachment(journal.id, f, kind);
+      }
+      onChanged();
+    } catch (e) {
+      alert((e as Error)?.message || '업로드에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const del = async (attId: string) => {
+    if (!confirm('이 첨부를 삭제할까요?')) return;
+    try {
+      await api.sales.deleteAttachment(attId);
+      onChanged();
+    } catch (e) {
+      alert((e as Error)?.message || '삭제에 실패했습니다.');
+    }
+  };
+
+  return (
+    <Card padding="lg">
+      <CardHeader title="첨부" subtitle="제안서 파일 · 거래처 명함" />
+
+      {/* 제안서 파일 */}
+      <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-2">제안서 파일</div>
+      {proposals.length > 0 ? (
+        <div className="flex flex-col gap-1.5 mb-2">
+          {proposals.map((a) => (
+            <div
+              key={a.id}
+              className="flex items-center justify-between gap-2 text-[12.5px] bg-[var(--bg-1)] border border-[var(--border-1)] rounded px-2.5 py-1.5"
+            >
+              <a
+                href={getFileUrl(a.fileUrl)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--brand-400)] hover:text-[var(--brand-200)] truncate transition-colors"
+              >
+                📄 {a.fileName}
+              </a>
+              {canEdit && (
+                <button
+                  onClick={() => del(a.id)}
+                  className="text-[var(--text-4)] hover:text-[var(--danger-fg)] flex-shrink-0"
+                  aria-label="삭제"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-[var(--text-4)] mb-2">첨부된 제안서가 없습니다.</p>
+      )}
+      {canEdit && (
+        <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
+          + 제안서 추가
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,image/*"
+            className="hidden"
+            onChange={(e) => {
+              upload(e.target.files, 'proposal');
+              e.target.value = '';
+            }}
+          />
+        </label>
+      )}
+
+      {/* 거래처 명함 */}
+      <div className="text-[12.5px] font-medium text-[var(--text-2)] mt-4 mb-2">거래처 명함</div>
+      {cards.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {cards.map((a) => (
+            <div key={a.id} className="relative">
+              <a href={getFileUrl(a.fileUrl)} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={getFileUrl(a.fileUrl)}
+                  alt={a.fileName}
+                  className="w-28 h-20 object-cover rounded border border-[var(--border-1)]"
+                />
+              </a>
+              {canEdit && (
+                <button
+                  onClick={() => del(a.id)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--danger-bg)] border border-[var(--danger-border)] text-[var(--danger-fg)] text-[11px] flex items-center justify-center"
+                  aria-label="삭제"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-[var(--text-4)] mb-2">첨부된 명함이 없습니다.</p>
+      )}
+      {canEdit && (
+        <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
+          + 명함 추가
+          <input
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              upload(e.target.files, 'card');
+              e.target.value = '';
+            }}
+          />
+        </label>
+      )}
+
+      {busy && <p className="text-[12px] text-[var(--text-3)] mt-2">업로드 중…</p>}
+    </Card>
   );
 }
 
