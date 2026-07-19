@@ -196,6 +196,7 @@ export interface SalesJournalAttachment {
   fileName: string;
   mimeType: string | null;
   sortOrder: number;
+  sourceContactId?: string | null;
   createdAt: string;
 }
 
@@ -239,6 +240,11 @@ export interface SalesJournal {
   passwordProtected?: boolean;
   canEdit?: boolean;
   locked?: boolean;
+  // 외부 공유
+  shared?: boolean;
+  shareToken?: string | null;
+  sharedAt?: string | null;
+  authorName?: string | null; // 공개(공유 링크) 응답 전용
 }
 
 export interface SalesPlan {
@@ -246,6 +252,7 @@ export interface SalesPlan {
   title: string;
   planDate: string;
   content: string | null;
+  location: string | null;
   stage: string | null;
   clientId: string | null;
   authorId: string;

@@ -2,11 +2,13 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
+const { buildJournalDocx, journalFileName } = require('../lib/journalDoc');
 const {
   SALES_STAGES,
   SALES_STAGE_KEYS,
@@ -108,11 +110,97 @@ function buildQuoteData(quoteItems) {
     .filter((q) => q.productName);
 }
 
+// ── 영업일지 필수 항목 ───────────────────────────────────────
+// 체크박스(최초미팅·샘플·견적)와 참고자, 열람 비밀번호(선택 기능)는 제외
+const JOURNAL_REQUIRED = [
+  ['title', '제목'],
+  ['stage', '영업 단계'],
+  ['meetingDate', '미팅 일자'],
+  ['meetingPurpose', '미팅 목적'],
+  ['meetingLocation', '장소'],
+  ['attendees', '참석자 정보'],
+  ['meetingSummary', '미팅 개요'],
+  ['keyRequests', '핵심 요청사항'],
+  ['productRequests', '제품의 구체적 요청 및 기획사항'],
+];
+
+const FIRST_MEETING_REQUIRED = [
+  ['ownerOrg', '담당 조직'],
+  ['buyerComposition', '바이어 구성'],
+  ['annualRevenue', '바이어·거래처 연매출'],
+  ['existingVendors', '기존 거래처'],
+  ['managedItems', '관리 품목'],
+  ['storageCondition', '보관 조건'],
+  ['logisticsCondition', '물류 조건'],
+];
+
+const blank = (v) => v === undefined || v === null || !String(v).trim();
+
+// 생성 시: 모든 필수 항목 확인. 수정 시(partial=true): 전달된 키만 확인.
+function validateJournalBody(b, { partial = false } = {}) {
+  const missing = [];
+  for (const [key, label] of JOURNAL_REQUIRED) {
+    if (partial && b[key] === undefined) continue;
+    if (blank(b[key])) missing.push(label);
+  }
+  const todosGiven = !partial || b.todos !== undefined;
+  if (todosGiven) {
+    const valid = Array.isArray(b.todos)
+      ? b.todos.filter((t) => t && t.dueDate && String(t.content || '').trim())
+      : [];
+    if (!valid.length) missing.push('향후 스케쥴 (일자 + 해야 할 일 1건 이상)');
+  }
+  if (b.hasQuote && (!Array.isArray(b.quoteItems) || !buildQuoteData(b.quoteItems).length)) {
+    missing.push('견적 항목 (제품명 1건 이상)');
+  }
+  return missing;
+}
+
 // ============================================================
 // 메타: 파이프라인 단계 목록
 // ============================================================
 router.get('/meta/stages', authenticate, (req, res) => {
   res.json({ stages: SALES_STAGES });
+});
+
+// 과거에 입력했던 장소 목록 (자동완성용) — 최근 사용 순
+router.get('/meta/locations', authenticate, async (req, res) => {
+  try {
+    const [journals, plans] = await Promise.all([
+      prisma.salesJournal.findMany({
+        where: { meetingLocation: { not: null } },
+        select: { meetingLocation: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+      }),
+      prisma.salesPlan.findMany({
+        where: { location: { not: null } },
+        select: { location: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+      }),
+    ]);
+    const merged = [
+      ...journals.map((j) => ({ v: j.meetingLocation, at: j.createdAt })),
+      ...plans.map((p) => ({ v: p.location, at: p.createdAt })),
+    ]
+      .filter((x) => x.v && String(x.v).trim())
+      .sort((a, b) => +new Date(b.at) - +new Date(a.at));
+    const seen = new Set();
+    const locations = [];
+    for (const m of merged) {
+      const v = String(m.v).trim();
+      const key = v.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      locations.push(v);
+      if (locations.length >= 50) break;
+    }
+    res.json({ locations });
+  } catch (error) {
+    console.error('List locations error:', error);
+    res.status(500).json({ error: '장소 목록 조회에 실패했습니다.' });
+  }
 });
 
 // ============================================================
@@ -250,6 +338,20 @@ router.delete('/clients/:id', authenticate, async (req, res) => {
 // ============================================================
 // 거래처 담당자 명함 (Contacts)
 // ============================================================
+// 거래처 담당자(명함) 목록 — 일지 작성 시 '과거 명함 불러오기'용 경량 조회
+router.get('/clients/:clientId/contacts', authenticate, async (req, res) => {
+  try {
+    const contacts = await prisma.salesContact.findMany({
+      where: { clientId: req.params.clientId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    res.json({ contacts });
+  } catch (error) {
+    console.error('List contacts error:', error);
+    res.status(500).json({ error: '담당자 목록 조회에 실패했습니다.' });
+  }
+});
+
 router.post('/clients/:clientId/contacts', authenticate, async (req, res) => {
   try {
     const client = await prisma.salesClient.findUnique({ where: { id: req.params.clientId } });
@@ -346,9 +448,11 @@ router.post('/contacts/:id/card', authenticate, cardMulter.single('cardImage'), 
 function sanitizeJournalListItem(user, j) {
   const owner = isJournalOwner(user, j);
   const locked = !!j.passwordHash && !owner;
-  const { passwordHash, ...rest } = j;
+  const { passwordHash, shareToken, ...rest } = j;
   return {
     ...rest,
+    shareToken: owner ? shareToken : undefined,
+    shared: !!shareToken,
     passwordProtected: !!passwordHash,
     canEdit: owner,
     locked,
@@ -409,6 +513,11 @@ router.post('/journals', authenticate, async (req, res) => {
     if (!clientId) return res.status(400).json({ error: '거래처를 지정해주세요.' });
     const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
     if (!client) return res.status(404).json({ error: '거래처를 찾을 수 없습니다.' });
+
+    const missing = validateJournalBody(req.body);
+    if (missing.length) {
+      return res.status(400).json({ error: `필수 항목을 입력해주세요: ${missing.join(', ')}` });
+    }
 
     const passwordHash =
       password && String(password).trim() ? bcrypt.hashSync(String(password), 10) : null;
@@ -485,9 +594,16 @@ router.get('/journals/:id', authenticate, async (req, res) => {
         journal: { ...safe, passwordProtected: true, canEdit: false, locked: true },
       });
     }
-    const { passwordHash, ...rest } = journal;
+    const { passwordHash, shareToken, ...rest } = journal;
     res.json({
-      journal: { ...rest, passwordProtected: !!passwordHash, canEdit: owner, locked: false },
+      journal: {
+        ...rest,
+        shareToken: owner ? shareToken : undefined,
+        shared: !!shareToken,
+        passwordProtected: !!passwordHash,
+        canEdit: owner,
+        locked: false,
+      },
     });
   } catch (error) {
     console.error('Get journal error:', error);
@@ -532,6 +648,10 @@ router.put('/journals/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: '수정 권한이 없습니다.' });
     }
     const b = req.body;
+    const missing = validateJournalBody(b, { partial: true });
+    if (missing.length) {
+      return res.status(400).json({ error: `필수 항목을 입력해주세요: ${missing.join(', ')}` });
+    }
     const data = {};
     for (const f of ['title', 'meetingPurpose', 'meetingLocation', 'attendees', 'meetingSummary', 'keyRequests', 'productRequests', 'stage']) {
       if (b[f] !== undefined) data[f] = b[f] || null;
@@ -577,7 +697,7 @@ router.put('/journals/:id', authenticate, async (req, res) => {
       include: { author: { select: USER_SELECT }, client: true, referrers: true, todos: { orderBy: { dueDate: 'asc' } }, attachments: { orderBy: { sortOrder: 'asc' } }, quoteItems: { orderBy: { sortOrder: 'asc' } } },
     });
     const { passwordHash, ...rest } = updated;
-    res.json({ journal: { ...rest, passwordProtected: !!passwordHash, canEdit: true, locked: false } });
+    res.json({ journal: { ...rest, shared: !!rest.shareToken, passwordProtected: !!passwordHash, canEdit: true, locked: false } });
   } catch (error) {
     console.error('Update journal error:', error);
     res.status(500).json({ error: '영업일지 수정에 실패했습니다.' });
@@ -596,6 +716,171 @@ router.delete('/journals/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete journal error:', error);
     res.status(500).json({ error: '영업일지 삭제에 실패했습니다.' });
+  }
+});
+
+// ── 외부 공유 링크 · Word 다운로드 ───────────────────────────
+
+// 상세/문서 생성에 필요한 전체 include
+const JOURNAL_FULL_INCLUDE = {
+  author: { select: USER_SELECT },
+  client: true,
+  referrers: true,
+  todos: { orderBy: { dueDate: 'asc' } },
+  attachments: { orderBy: { sortOrder: 'asc' } },
+  quoteItems: { orderBy: { sortOrder: 'asc' } },
+};
+
+// 파일명: ASCII 폴백 + RFC 5987 UTF-8
+function contentDisposition(fileName) {
+  const ascii = fileName.replace(/[^\x20-\x7E]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
+async function sendJournalDocx(res, journal) {
+  const buffer = await buildJournalDocx(journal);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', contentDisposition(journalFileName(journal)));
+  res.send(buffer);
+}
+
+// 공유 링크 생성/재발급 — 작성자·최고관리자만
+router.post('/journals/:id/share', authenticate, async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({ where: { id: req.params.id } });
+    if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
+    if (!isJournalOwner(req.user, journal)) {
+      return res.status(403).json({ error: '공유 링크를 만들 권한이 없습니다.' });
+    }
+    // 이미 있으면 그대로 재사용 (regenerate=true면 새로 발급)
+    let token = journal.shareToken;
+    if (!token || req.body?.regenerate) {
+      token = crypto.randomBytes(24).toString('base64url');
+      await prisma.salesJournal.update({
+        where: { id: journal.id },
+        data: { shareToken: token, sharedAt: new Date() },
+      });
+    }
+    res.json({ shareToken: token });
+  } catch (error) {
+    console.error('Create share link error:', error);
+    res.status(500).json({ error: '공유 링크 생성에 실패했습니다.' });
+  }
+});
+
+// 공유 해제
+router.delete('/journals/:id/share', authenticate, async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({ where: { id: req.params.id } });
+    if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
+    if (!isJournalOwner(req.user, journal)) {
+      return res.status(403).json({ error: '공유를 해제할 권한이 없습니다.' });
+    }
+    await prisma.salesJournal.update({
+      where: { id: journal.id },
+      data: { shareToken: null, sharedAt: null },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Revoke share link error:', error);
+    res.status(500).json({ error: '공유 해제에 실패했습니다.' });
+  }
+});
+
+// Word 다운로드 (사내 · 로그인 필요)
+router.get('/journals/:id/word', authenticate, async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({
+      where: { id: req.params.id },
+      include: JOURNAL_FULL_INCLUDE,
+    });
+    if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
+    if (!canViewJournal(req.user, journal)) {
+      return res.status(403).json({ error: '이 영업일지를 열람할 권한이 없습니다.' });
+    }
+    // 비밀번호 잠금은 뷰 토큰이 있어야 문서로 내려받을 수 있음
+    if (!isJournalOwner(req.user, journal) && journal.passwordHash && !hasJournalViewToken(req, journal)) {
+      return res.status(403).json({ error: '열람 비밀번호 확인이 필요합니다.', passwordRequired: true });
+    }
+    await sendJournalDocx(res, journal);
+  } catch (error) {
+    console.error('Journal word export error:', error);
+    res.status(500).json({ error: 'Word 문서 생성에 실패했습니다.' });
+  }
+});
+
+// 공개 조회 (로그인 불필요) — 공유 토큰으로만 접근. 참고자 이메일 등 내부 정보는 제외.
+router.get('/public/journals/:token', async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({
+      where: { shareToken: String(req.params.token) },
+      include: JOURNAL_FULL_INCLUDE,
+    });
+    if (!journal) return res.status(404).json({ error: '공유가 해제되었거나 존재하지 않는 링크입니다.' });
+    const { passwordHash, shareToken, referrers, author, ...rest } = journal;
+    res.json({
+      journal: {
+        ...rest,
+        // 외부 공유 문서에는 작성자 이름만 (이메일 비공개)
+        authorName: author?.name || null,
+        sharedAt: journal.sharedAt,
+      },
+    });
+  } catch (error) {
+    console.error('Public journal error:', error);
+    res.status(500).json({ error: '공유 영업일지를 불러오지 못했습니다.' });
+  }
+});
+
+// 공개 Word 다운로드
+router.get('/public/journals/:token/word', async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({
+      where: { shareToken: String(req.params.token) },
+      include: JOURNAL_FULL_INCLUDE,
+    });
+    if (!journal) return res.status(404).json({ error: '공유가 해제되었거나 존재하지 않는 링크입니다.' });
+    await sendJournalDocx(res, journal);
+  } catch (error) {
+    console.error('Public journal word error:', error);
+    res.status(500).json({ error: 'Word 문서 생성에 실패했습니다.' });
+  }
+});
+
+// 거래처에 등록된 명함을 일지 첨부로 불러오기 (파일 재업로드 없이 참조)
+router.post('/journals/:id/attachments/from-contact', authenticate, async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({ where: { id: req.params.id } });
+    if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
+    if (!isJournalOwner(req.user, journal)) {
+      return res.status(403).json({ error: '첨부 권한이 없습니다.' });
+    }
+    const contact = await prisma.salesContact.findUnique({ where: { id: String(req.body.contactId || '') } });
+    if (!contact) return res.status(404).json({ error: '담당자를 찾을 수 없습니다.' });
+    if (!contact.cardImageUrl) {
+      return res.status(400).json({ error: '이 담당자에게 등록된 명함 이미지가 없습니다.' });
+    }
+    const dup = await prisma.salesJournalAttachment.findFirst({
+      where: { journalId: journal.id, sourceContactId: contact.id },
+    });
+    if (dup) return res.json({ attachment: dup, duplicated: true });
+
+    const count = await prisma.salesJournalAttachment.count({ where: { journalId: journal.id } });
+    const attachment = await prisma.salesJournalAttachment.create({
+      data: {
+        journalId: journal.id,
+        kind: 'card',
+        fileUrl: contact.cardImageUrl,
+        fileName: contact.cardImageName || `${contact.name} 명함`,
+        mimeType: null,
+        sourceContactId: contact.id,
+        sortOrder: count,
+      },
+    });
+    res.json({ attachment });
+  } catch (error) {
+    console.error('Attach contact card error:', error);
+    res.status(500).json({ error: '명함 불러오기에 실패했습니다.' });
   }
 });
 
@@ -645,7 +930,8 @@ router.delete('/attachments/:id', authenticate, async (req, res) => {
     if (!isJournalOwner(req.user, attachment.journal)) {
       return res.status(403).json({ error: '삭제 권한이 없습니다.' });
     }
-    if (attachment.fileUrl) {
+    // 거래처 명함에서 불러온 첨부는 원본 파일을 공유하므로 파일은 지우지 않는다
+    if (attachment.fileUrl && !attachment.sourceContactId) {
       const key = attachment.fileUrl.replace(/^\/uploads\//, '');
       try { await storage.deleteFile(key); } catch (e) { console.error('attach file delete:', e.message); }
     }
@@ -697,17 +983,27 @@ router.get('/plans', authenticate, async (req, res) => {
 
 router.post('/plans', authenticate, async (req, res) => {
   try {
-    const { clientId, title, planDate, content, stage } = req.body;
-    if (!title || !String(title).trim()) return res.status(400).json({ error: '계획 제목을 입력해주세요.' });
+    const { clientId, title, planDate, content, stage, location } = req.body;
     const date = parseDate(planDate);
-    if (!date) return res.status(400).json({ error: '계획 일정을 입력해주세요.' });
+    // 필수: 제목·일정·영업 단계·거래처·내용·장소
+    const missing = [];
+    if (blank(title)) missing.push('제목');
+    if (!date) missing.push('일정');
+    if (blank(stage)) missing.push('영업 단계');
+    if (blank(clientId)) missing.push('거래처');
+    if (blank(content)) missing.push('내용');
+    if (blank(location)) missing.push('장소(주소지)');
+    if (missing.length) {
+      return res.status(400).json({ error: `필수 항목을 입력해주세요: ${missing.join(', ')}` });
+    }
     const plan = await prisma.salesPlan.create({
       data: {
         title: String(title).trim(),
         planDate: date,
-        content: content || null,
-        stage: stage || null,
-        clientId: clientId || null,
+        content: String(content).trim(),
+        location: String(location).trim(),
+        stage: normalizeStage(stage),
+        clientId,
         authorId: req.user.id,
       },
       include: { author: { select: USER_SELECT }, client: { select: { id: true, name: true } } },
@@ -732,9 +1028,11 @@ router.put('/plans/:id', authenticate, async (req, res) => {
       if (!d) return res.status(400).json({ error: '유효한 일정을 입력해주세요.' });
       data.planDate = d;
     }
-    if (b.content !== undefined) data.content = b.content || null;
-    if (b.stage !== undefined) data.stage = b.stage || null;
-    if (b.clientId !== undefined) data.clientId = b.clientId || null;
+    for (const [f, label] of [['content', '내용'], ['stage', '영업 단계'], ['clientId', '거래처'], ['location', '장소(주소지)']]) {
+      if (b[f] === undefined) continue;
+      if (blank(b[f])) return res.status(400).json({ error: `${label}은(는) 비울 수 없습니다.` });
+      data[f] = f === 'stage' ? normalizeStage(b[f]) : String(b[f]).trim();
+    }
     const plan = await prisma.salesPlan.update({
       where: { id: req.params.id },
       data,

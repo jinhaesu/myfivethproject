@@ -329,6 +329,8 @@ model SalesJournal {
   productRequests String? // 제품의 구체적 요청 및 기획사항
   sampleProvided  Boolean   @default(false) // 샘플 제공 여부
   hasQuote        Boolean   @default(false) // 견적 제안 여부(그리드 표시 토글)
+  shareToken      String?   @unique // 외부 공유 링크 토큰(null이면 비공개)
+  sharedAt        DateTime? // 공유 링크 생성 시각
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -361,13 +363,15 @@ model SalesQuoteItem {
 
 // 영업일지 첨부 — 제안서 파일·거래처 명함 등
 model SalesJournalAttachment {
-  id        String   @id @default(uuid())
-  kind      String   @default("proposal") // proposal(제안서) | card(명함) | etc
-  fileUrl   String
-  fileName  String
-  mimeType  String?
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id              String   @id @default(uuid())
+  kind            String   @default("proposal") // proposal(제안서) | card(명함) | etc
+  fileUrl         String
+  fileName        String
+  mimeType        String?
+  sortOrder       Int      @default(0)
+  // 거래처 담당자 명함에서 불러온 첨부면 원본 contact id — 삭제 시 원본 파일은 보존
+  sourceContactId String?
+  createdAt       DateTime @default(now())
 
   journal   SalesJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
   journalId String
@@ -403,6 +407,7 @@ model SalesPlan {
   title     String
   planDate  DateTime // 영업 계획 일정
   content   String?
+  location  String? // 미팅 장소(주소지)
   stage     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
