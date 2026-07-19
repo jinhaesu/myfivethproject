@@ -9,6 +9,7 @@ const SALES_STAGES = [
   { key: 'expansion', label: '제품 확대', order: 5 },
 ];
 const SALES_STAGE_KEYS = SALES_STAGES.map((s) => s.key);
+const STAGE_LABEL = Object.fromEntries(SALES_STAGES.map((s) => [s.key, s.label]));
 
 // 성사 확률 기본값(거래처가 winProbability 미지정 시 가중 예상매출 산출에 사용)
 const STAGE_DEFAULT_PROB = {
@@ -54,6 +55,7 @@ function normalizeStage(stage) {
 module.exports = {
   SALES_STAGES,
   SALES_STAGE_KEYS,
+  STAGE_LABEL,
   STAGE_DEFAULT_PROB,
   SUPER_ADMIN_EMAIL,
   isSuperAdmin,

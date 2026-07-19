@@ -9,6 +9,7 @@ import { api, getFileUrl } from '@/lib/api';
 import {
   SalesJournal,
   SalesTodo,
+  SalesContact,
   SALES_STAGES,
   STAGE_LABEL,
   STAGE_TONE,
@@ -53,6 +54,8 @@ export default function SalesJournalDetailPage() {
   const [pw, setPw] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  // 비밀번호 잠금 해제 토큰 — Word 다운로드 시에도 필요
+  const [viewToken, setViewToken] = useState<string | undefined>(undefined);
 
   const load = useCallback(
     async (token?: string) => {
@@ -88,6 +91,7 @@ export default function SalesJournalDetailPage() {
     setError('');
     try {
       const res = await api.sales.verifyJournalPassword(id, pw);
+      setViewToken(res.token || undefined);
       await load(res.token || undefined);
     } catch (e) {
       setError((e as Error)?.message || '비밀번호가 일치하지 않습니다.');
@@ -236,20 +240,24 @@ export default function SalesJournalDetailPage() {
           </span>
         }
         actions={
-          journal.canEdit ? (
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="md" onClick={() => setEditMode(true)}>
-                수정
-              </Button>
-              <Button variant="danger" size="md" onClick={remove}>
-                삭제
-              </Button>
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <WordDownloadButton journalId={journal.id} viewToken={viewToken} />
+            {journal.canEdit && (
+              <>
+                <Button variant="secondary" size="md" onClick={() => setEditMode(true)}>
+                  수정
+                </Button>
+                <Button variant="danger" size="md" onClick={remove}>
+                  삭제
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
       <div className="flex flex-col gap-5 max-w-3xl">
+        {journal.canEdit && <ShareCard journal={journal} onChanged={() => load(viewToken)} />}
         <Card padding="lg">
           <CardHeader title="거래처 · 작성 정보" />
           <Row
@@ -408,11 +416,184 @@ export default function SalesJournalDetailPage() {
 }
 
 // ============================================================
+// 외부 공유 — 링크 복사 · Word 다운로드
+// ============================================================
+function WordDownloadButton({ journalId, viewToken }: { journalId: string; viewToken?: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      variant="secondary"
+      size="md"
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await api.sales.downloadJournalWord(journalId, viewToken);
+        } catch (e) {
+          alert((e as Error)?.message || 'Word 다운로드에 실패했습니다.');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      Word 다운로드
+    </Button>
+  );
+}
+
+function ShareCard({ journal, onChanged }: { journal: SalesJournal; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
+
+  const shareUrl = journal.shareToken
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/share/journal/${journal.shareToken}`
+    : '';
+
+  const copy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // 클립보드 권한이 없는 브라우저 폴백
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const enableAndCopy = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      if (journal.shareToken) {
+        await copy(shareUrl);
+      } else {
+        const res = await api.sales.createShareLink(journal.id);
+        const url = `${window.location.origin}/share/journal/${res.shareToken}`;
+        await copy(url);
+        onChanged();
+      }
+    } catch (e) {
+      setError((e as Error)?.message || '공유 링크 생성에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async () => {
+    if (!confirm('공유 링크를 해제할까요? 기존 링크로는 더 이상 열람할 수 없습니다.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.sales.revokeShareLink(journal.id);
+      onChanged();
+    } catch (e) {
+      setError((e as Error)?.message || '공유 해제에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card padding="lg">
+      <CardHeader
+        title="외부 공유"
+        subtitle="링크를 아는 사람은 로그인 없이 이 일지를 읽기 전용으로 볼 수 있습니다."
+      />
+      {journal.shareToken ? (
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2">
+            <Badge tone="success" size="sm">
+              공유 중
+            </Badge>
+            {journal.sharedAt && (
+              <span className="text-[11.5px] text-[var(--text-4)]">{fmtDateTime(journal.sharedAt)} 생성</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
+            <Button variant="primary" size="md" onClick={enableAndCopy} loading={busy} className="flex-shrink-0">
+              {copied ? '복사됨 ✓' : '링크 복사'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href={shareUrl} target="_blank" rel="noreferrer">
+              <Button variant="ghost" size="sm">
+                공유 화면 미리보기 →
+              </Button>
+            </a>
+            <Button variant="ghost" size="sm" onClick={revoke} loading={busy}>
+              공유 해제
+            </Button>
+          </div>
+          {journal.passwordProtected && (
+            <p className="text-[11.5px] text-[var(--warning-fg)]">
+              ⚠ 이 일지는 열람 비밀번호가 걸려 있지만, 공유 링크로는 비밀번호 없이 열립니다. 외부 전달 시 주의하세요.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          <p className="text-[12.5px] text-[var(--text-3)]">
+            아직 공유 링크가 없습니다. 링크를 만들면 외부 팀에 그대로 전달할 수 있습니다.
+          </p>
+          <div>
+            <Button variant="primary" size="md" onClick={enableAndCopy} loading={busy}>
+              {copied ? '복사됨 ✓' : '공유 링크 만들고 복사'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {error && <p className="text-[12px] text-[var(--danger-fg)] mt-2">{error}</p>}
+    </Card>
+  );
+}
+
+// ============================================================
 // 첨부 (제안서 · 명함) — 표시/업로드/삭제
 // ============================================================
 function AttachmentsSection({ journal, onChanged }: { journal: SalesJournal; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [contacts, setContacts] = useState<SalesContact[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const canEdit = !!journal.canEdit;
+  const clientId = (journal.client as { id?: string } | undefined)?.id;
+
+  // 거래처에 등록된 명함 목록 (불러오기용)
+  useEffect(() => {
+    if (!canEdit || !clientId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const data = await api.sales.listContacts(clientId);
+        if (alive) setContacts((data.contacts || []).filter((c: SalesContact) => c.cardImageUrl));
+      } catch (e) {
+        console.error('Failed to load contacts:', e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [canEdit, clientId]);
+
+  const attachFromContact = async (contactId: string) => {
+    setBusy(true);
+    try {
+      await api.sales.attachContactCard(journal.id, contactId);
+      setPickerOpen(false);
+      onChanged();
+    } catch (e) {
+      alert((e as Error)?.message || '명함 불러오기에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const atts = journal.attachments || [];
   const proposals = atts.filter((a) => a.kind !== 'card');
   const cards = atts.filter((a) => a.kind === 'card');
@@ -443,7 +624,7 @@ function AttachmentsSection({ journal, onChanged }: { journal: SalesJournal; onC
 
   return (
     <Card padding="lg">
-      <CardHeader title="첨부" subtitle="제안서 파일 · 거래처 명함" />
+      <CardHeader title="첨부 (선택)" subtitle="제안서 파일 · 거래처 명함 — 모두 필수가 아닙니다." />
 
       {/* 제안서 파일 */}
       <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-2">제안서 파일</div>
@@ -523,22 +704,60 @@ function AttachmentsSection({ journal, onChanged }: { journal: SalesJournal; onC
         <p className="text-[12.5px] text-[var(--text-4)] mb-2">첨부된 명함이 없습니다.</p>
       )}
       {canEdit && (
-        <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
-          + 명함 추가
-          <input
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              upload(e.target.files, 'card');
-              e.target.value = '';
-            }}
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
+            + 새 명함 이미지
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                upload(e.target.files, 'card');
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {contacts.length > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => setPickerOpen((o) => !o)}>
+              {pickerOpen ? '닫기' : '등록된 명함 불러오기'}
+            </Button>
+          )}
+        </div>
       )}
 
-      {busy && <p className="text-[12px] text-[var(--text-3)] mt-2">업로드 중…</p>}
+      {/* 거래처에 등록된 담당자 명함 선택 */}
+      {canEdit && pickerOpen && (
+        <div className="mt-2.5 flex flex-col gap-1.5">
+          {contacts.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              disabled={busy}
+              onClick={() => attachFromContact(c.id)}
+              className="flex items-center gap-3 px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)] hover:border-[var(--brand-500)] transition-colors text-left disabled:opacity-50"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={getFileUrl(c.cardImageUrl || '')}
+                alt={c.name}
+                className="w-16 h-11 object-cover rounded border border-[var(--border-1)] flex-shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="block text-[12.5px] text-[var(--text-1)] truncate">
+                  {c.name}
+                  {c.position ? ` ${c.position}` : ''}
+                </span>
+                <span className="block text-[11px] text-[var(--text-3)] truncate">
+                  {[c.title, c.phone, c.email].filter(Boolean).join(' · ') || '연락처 미등록'}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {busy && <p className="text-[12px] text-[var(--text-3)] mt-2">처리 중…</p>}
     </Card>
   );
 }
@@ -610,6 +829,41 @@ function EditForm({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [locationOptions, setLocationOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.sales.locations();
+        setLocationOptions(data.locations || []);
+      } catch (e) {
+        console.error('Failed to load locations:', e);
+      }
+    })();
+  }, []);
+
+  // 필수 항목 — 체크박스·참고자·열람 비밀번호는 제외
+  const validate = (): string => {
+    const required: [string, string][] = [
+      [title, '제목'],
+      [stage, '영업 단계'],
+      [meetingDate, '미팅 일자'],
+      [meetingPurpose, '미팅 목적'],
+      [meetingLocation, '장소'],
+      [attendees, '참석자 정보'],
+      [meetingSummary, '미팅 개요'],
+      [keyRequests, '핵심 요청사항'],
+      [productRequests, '제품의 구체적 요청 및 기획사항'],
+    ];
+    const missing = required.filter(([v]) => !v.trim()).map(([, label]) => label);
+    if (!todos.some((t) => t.dueDate && t.content.trim())) {
+      missing.push('향후 스케쥴 (일자 + 해야 할 일 1건 이상)');
+    }
+    if (hasQuote && !quoteItems.some((q) => q.productName.trim())) {
+      missing.push('견적 항목 (제품명 1건 이상)');
+    }
+    return missing.length ? `필수 항목을 입력해주세요: ${missing.join(', ')}` : '';
+  };
 
   const updateQuote = (i: number, key: keyof QuoteEditRow, v: string) =>
     setQuoteItems((q) => q.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
@@ -628,6 +882,12 @@ function EditForm({
   const removeTodo = (i: number) => setTodos((t) => t.filter((_, idx) => idx !== i));
 
   const save = async () => {
+    const invalid = validate();
+    if (invalid) {
+      setError(invalid);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -675,12 +935,12 @@ function EditForm({
       <Card padding="lg">
         <CardHeader title="기본 정보" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="제목">
+          <Field label="제목" required>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </Field>
-          <Field label="영업 단계" hint="선택 시 거래처 파이프라인 단계가 함께 갱신됩니다.">
+          <Field label="영업 단계" required hint="선택 시 거래처 파이프라인 단계가 함께 갱신됩니다.">
             <Select value={stage} onChange={(e) => setStage(e.target.value)}>
-              <option value="">단계 미지정</option>
+              <option value="">영업 단계 선택</option>
               {SALES_STAGES.map((s) => (
                 <option key={s.key} value={s.key}>
                   {s.label}
@@ -705,19 +965,28 @@ function EditForm({
       <Card padding="lg">
         <CardHeader title="미팅 정보" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="미팅 일자">
+          <Field label="미팅 일자" required>
             <Input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} />
           </Field>
-          <Field label="미팅 목적">
+          <Field label="미팅 목적" required>
             <Input value={meetingPurpose} onChange={(e) => setMeetingPurpose(e.target.value)} />
           </Field>
-          <Field label="장소">
-            <Input value={meetingLocation} onChange={(e) => setMeetingLocation(e.target.value)} />
+          <Field label="장소" required hint="과거에 입력한 장소를 자동완성으로 고를 수 있습니다.">
+            <Input
+              value={meetingLocation}
+              onChange={(e) => setMeetingLocation(e.target.value)}
+              list="journal-edit-location-list"
+            />
+            <datalist id="journal-edit-location-list">
+              {locationOptions.map((loc) => (
+                <option key={loc} value={loc} />
+              ))}
+            </datalist>
           </Field>
-          <Field label="참석자 정보">
+          <Field label="참석자 정보" required>
             <Input value={attendees} onChange={(e) => setAttendees(e.target.value)} />
           </Field>
-          <Field label="미팅 개요" className="sm:col-span-2">
+          <Field label="미팅 개요" required className="sm:col-span-2">
             <Textarea value={meetingSummary} onChange={(e) => setMeetingSummary(e.target.value)} />
           </Field>
         </div>
@@ -726,10 +995,10 @@ function EditForm({
       <Card padding="lg">
         <CardHeader title="요청 · 기획 사항" />
         <div className="grid grid-cols-1 gap-4">
-          <Field label="핵심 요청사항">
+          <Field label="핵심 요청사항" required>
             <Textarea value={keyRequests} onChange={(e) => setKeyRequests(e.target.value)} />
           </Field>
-          <Field label="제품의 구체적 요청 및 기획사항">
+          <Field label="제품의 구체적 요청 및 기획사항" required>
             <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} />
           </Field>
         </div>
@@ -797,8 +1066,8 @@ function EditForm({
 
       <Card padding="lg">
         <CardHeader
-          title="향후 스케쥴 (해야 할 일)"
-          subtitle="일자는 필수입니다."
+          title="향후 스케쥴 (해야 할 일) *"
+          subtitle="일자 + 해야 할 일 최소 1건은 필수입니다."
           actions={
             <Button variant="secondary" size="sm" onClick={addTodo}>
               + 항목 추가

@@ -84,6 +84,53 @@ async function uploadFile(path: string, file: File, fieldName: string = 'designF
   return data;
 }
 
+// 인증이 필요한 파일 다운로드 (Word 등) — blob으로 받아 브라우저 저장
+async function downloadBlob(path: string, fallbackName: string, headers: Record<string, string> = {}) {
+  const token = getToken();
+  const h: Record<string, string> = { ...headers };
+  if (token) h['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}${path}`, { headers: h });
+  if (!res.ok) {
+    let msg = '다운로드에 실패했습니다.';
+    try {
+      const d = await res.json();
+      msg = d.error || msg;
+    } catch {
+      /* 바이너리 응답이 아닌 경우 무시 */
+    }
+    throw new Error(msg);
+  }
+
+  // Content-Disposition의 filename*(UTF-8) 우선 사용
+  const cd = res.headers.get('Content-Disposition') || '';
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  const plain = /filename="([^"]+)"/i.exec(cd);
+  const name = star ? decodeURIComponent(star[1]) : plain ? plain[1] : fallbackName;
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// 로그인 없이 접근하는 공개(공유 링크) 요청
+async function publicRequest(path: string) {
+  const res = await fetch(`${API_URL}${path}`);
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error || '요청에 실패했습니다.') as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 export function getFileUrl(filePath: string): string {
   if (!filePath) return '';
   // Next.js rewrites를 통해 /uploads/* → 백엔드로 프록시
@@ -269,6 +316,8 @@ export const api = {
   sales: {
     // 파이프라인 단계 메타
     stages: () => request('/sales/meta/stages'),
+    // 과거 입력 장소 목록 (자동완성)
+    locations: () => request('/sales/meta/locations'),
     // 거래처
     listClients: () => request('/sales/clients'),
     getClient: (id: string) => request(`/sales/clients/${id}`),
@@ -278,6 +327,7 @@ export const api = {
       request(`/sales/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteClient: (id: string) => request(`/sales/clients/${id}`, { method: 'DELETE' }),
     // 명함(담당자)
+    listContacts: (clientId: string) => request(`/sales/clients/${clientId}/contacts`),
     createContact: (clientId: string, data: any) =>
       request(`/sales/clients/${clientId}/contacts`, { method: 'POST', body: JSON.stringify(data) }),
     updateContact: (id: string, data: any) =>
@@ -308,6 +358,30 @@ export const api = {
     uploadJournalAttachment: (journalId: string, file: File, kind: 'proposal' | 'card' | 'etc') =>
       uploadFile(`/sales/journals/${journalId}/attachments?kind=${kind}`, file, 'file'),
     deleteAttachment: (id: string) => request(`/sales/attachments/${id}`, { method: 'DELETE' }),
+    // 거래처에 등록된 명함을 첨부로 불러오기
+    attachContactCard: (journalId: string, contactId: string) =>
+      request(`/sales/journals/${journalId}/attachments/from-contact`, {
+        method: 'POST',
+        body: JSON.stringify({ contactId }),
+      }),
+    // 외부 공유 링크
+    createShareLink: (journalId: string, regenerate = false) =>
+      request(`/sales/journals/${journalId}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ regenerate }),
+      }),
+    revokeShareLink: (journalId: string) =>
+      request(`/sales/journals/${journalId}/share`, { method: 'DELETE' }),
+    // Word 다운로드 (사내)
+    downloadJournalWord: (journalId: string, viewToken?: string) =>
+      downloadBlob(
+        `/sales/journals/${journalId}/word`,
+        '영업일지.docx',
+        viewToken ? { 'X-Journal-Token': viewToken } : {},
+      ),
+    // 공개 공유 링크 (로그인 불필요)
+    publicJournal: (token: string) => publicRequest(`/sales/public/journals/${token}`),
+    publicJournalWordUrl: (token: string) => `${API_URL}/sales/public/journals/${token}/word`,
     // 영업계획
     listPlans: (clientId?: string) =>
       request(`/sales/plans${clientId ? `?clientId=${clientId}` : ''}`),

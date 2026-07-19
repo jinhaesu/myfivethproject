@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
-import { api } from '@/lib/api';
-import { SalesClient, SALES_STAGES, todoSuggestionsForStage } from '@/lib/sales';
+import { api, getFileUrl } from '@/lib/api';
+import { SalesClient, SalesContact, SALES_STAGES, todoSuggestionsForStage } from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -68,9 +68,18 @@ export default function NewSalesJournalPage() {
   const [todos, setTodos] = useState<TodoRow[]>([{ dueDate: '', content: '', plan: '' }]);
   const [password, setPassword] = useState('');
 
-  // 첨부(저장 시 일지 생성 후 업로드)
+  // 첨부(저장 시 일지 생성 후 업로드) — 모두 선택 사항
   const [proposalFiles, setProposalFiles] = useState<File[]>([]);
   const [cardFiles, setCardFiles] = useState<File[]>([]);
+
+  // 과거 입력 장소 (자동완성)
+  const [locationOptions, setLocationOptions] = useState<string[]>([]);
+
+  // 거래처에 등록된 명함 — 불러오기용
+  const [contacts, setContacts] = useState<SalesContact[]>([]);
+  const [pickedContactIds, setPickedContactIds] = useState<string[]>([]);
+  const toggleContact = (id: string) =>
+    setPickedContactIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   // 샘플 제공 + 견적 제안 그리드
   const [sampleProvided, setSampleProvided] = useState(false);
@@ -166,7 +175,38 @@ export default function NewSalesJournalPage() {
         setLoadingClients(false);
       }
     })();
+    // 과거 장소 자동완성 목록
+    (async () => {
+      try {
+        const data = await api.sales.locations();
+        setLocationOptions(data.locations || []);
+      } catch (e) {
+        console.error('Failed to load locations:', e);
+      }
+    })();
   }, []);
+
+  // 거래처가 바뀌면 등록된 명함 목록을 다시 불러온다
+  useEffect(() => {
+    setPickedContactIds([]);
+    if (!clientId) {
+      setContacts([]);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const data = await api.sales.listContacts(clientId);
+        if (alive) setContacts(data.contacts || []);
+      } catch (e) {
+        console.error('Failed to load contacts:', e);
+        if (alive) setContacts([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [clientId]);
 
   const updateReferrer = (i: number, v: string) =>
     setReferrers((r) => r.map((x, idx) => (idx === i ? v : x)));
@@ -180,9 +220,47 @@ export default function NewSalesJournalPage() {
   const addTodo = () => setTodos((t) => [...t, { dueDate: '', content: '', plan: '' }]);
   const removeTodo = (i: number) => setTodos((t) => t.filter((_, idx) => idx !== i));
 
+  // 필수 항목 검사 — 체크박스(최초미팅·샘플·견적)와 참고자, 열람 비밀번호는 제외
+  const validate = (): string => {
+    const required: [string, string][] = [
+      [clientId, '거래처'],
+      [title, '제목'],
+      [stage, '영업 단계'],
+      [meetingDate, '미팅 일자'],
+      [meetingPurpose, '미팅 목적'],
+      [meetingLocation, '장소'],
+      [attendees, '참석자 정보'],
+      [meetingSummary, '미팅 개요'],
+      [keyRequests, '핵심 요청사항'],
+      [productRequests, '제품의 구체적 요청 및 기획사항'],
+    ];
+    const missing = required.filter(([v]) => !v.trim()).map(([, label]) => label);
+    if (isFirstMeeting) {
+      const profile: [string, string][] = [
+        [ownerOrg, '담당 조직'],
+        [buyerComposition, '바이어 구성'],
+        [annualRevenue, '바이어·거래처 연매출'],
+        [existingVendors, '기존 거래처'],
+        [managedItems, '관리 품목'],
+        [storageCondition, '보관 조건'],
+        [logisticsCondition, '물류 조건'],
+      ];
+      missing.push(...profile.filter(([v]) => !v.trim()).map(([, label]) => label));
+    }
+    if (!todos.some((t) => t.dueDate && t.content.trim())) {
+      missing.push('향후 스케쥴 (일자 + 해야 할 일 1건 이상)');
+    }
+    if (hasQuote && !quoteItems.some((q) => q.productName.trim())) {
+      missing.push('견적 항목 (제품명 1건 이상)');
+    }
+    return missing.length ? `필수 항목을 입력해주세요: ${missing.join(', ')}` : '';
+  };
+
   const submit = async () => {
-    if (!clientId) {
-      setError('거래처를 선택해주세요.');
+    const invalid = validate();
+    if (invalid) {
+      setError(invalid);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     setSubmitting(true);
@@ -242,6 +320,8 @@ export default function NewSalesJournalPage() {
       const uploads: Promise<unknown>[] = [
         ...proposalFiles.map((f) => api.sales.uploadJournalAttachment(journalId, f, 'proposal')),
         ...cardFiles.map((f) => api.sales.uploadJournalAttachment(journalId, f, 'card')),
+        // 거래처에 이미 등록된 명함은 파일 재업로드 없이 참조로 연결
+        ...pickedContactIds.map((cid) => api.sales.attachContactCard(journalId, cid)),
       ];
       if (uploads.length) {
         const results = await Promise.allSettled(uploads);
@@ -326,12 +406,12 @@ export default function NewSalesJournalPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="제목">
+              <Field label="제목" required>
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: ○○마트 1차 미팅" />
               </Field>
-              <Field label="영업 단계" hint="선택 시 거래처 파이프라인 단계가 함께 갱신됩니다.">
+              <Field label="영업 단계" required hint="선택 시 거래처 파이프라인 단계가 함께 갱신됩니다.">
                 <Select value={stage} onChange={(e) => setStage(e.target.value)}>
-                  <option value="">단계 미지정</option>
+                  <option value="">영업 단계 선택</option>
                   {SALES_STAGES.map((s) => (
                     <option key={s.key} value={s.key}>
                       {s.label}
@@ -358,28 +438,28 @@ export default function NewSalesJournalPage() {
             <Card padding="lg">
               <CardHeader
                 title="최초 미팅 · 거래처 정보"
-                subtitle="거래처 마스터에 저장됩니다 (담당조직·바이어 구성·연매출 등)."
+                subtitle="최초 미팅에서는 모두 필수입니다. 거래처 마스터에 저장됩니다."
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="담당 조직">
+                <Field label="담당 조직" required>
                   <Input value={ownerOrg} onChange={(e) => setOwnerOrg(e.target.value)} placeholder="예: 상품본부 베이커리팀" />
                 </Field>
-                <Field label="바이어 구성">
+                <Field label="바이어 구성" required>
                   <Input value={buyerComposition} onChange={(e) => setBuyerComposition(e.target.value)} placeholder="예: MD 2인, 카테고리 매니저 1인" />
                 </Field>
-                <Field label="바이어·거래처 연매출">
+                <Field label="바이어·거래처 연매출" required>
                   <Input value={annualRevenue} onChange={(e) => setAnnualRevenue(e.target.value)} placeholder="예: 연 1,200억 / 베이커리 300억" />
                 </Field>
-                <Field label="기존 거래처">
+                <Field label="기존 거래처" required>
                   <Input value={existingVendors} onChange={(e) => setExistingVendors(e.target.value)} placeholder="예: A제과, B베이커리" />
                 </Field>
-                <Field label="관리 품목">
+                <Field label="관리 품목" required>
                   <Input value={managedItems} onChange={(e) => setManagedItems(e.target.value)} placeholder="예: 냉장 디저트, 생지" />
                 </Field>
-                <Field label="보관 조건">
+                <Field label="보관 조건" required>
                   <Input value={storageCondition} onChange={(e) => setStorageCondition(e.target.value)} placeholder="예: 냉장(0~10℃)" />
                 </Field>
-                <Field label="물류 조건" className="sm:col-span-2">
+                <Field label="물류 조건" required className="sm:col-span-2">
                   <Input value={logisticsCondition} onChange={(e) => setLogisticsCondition(e.target.value)} placeholder="예: 주 3회 냉장 직납, 물류센터 경유" />
                 </Field>
               </div>
@@ -390,19 +470,29 @@ export default function NewSalesJournalPage() {
           <Card padding="lg">
             <CardHeader title="미팅 정보" subtitle="미팅 목적·장소·참석자·개요" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="미팅 일자">
+              <Field label="미팅 일자" required>
                 <Input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} />
               </Field>
-              <Field label="미팅 목적">
+              <Field label="미팅 목적" required>
                 <Input value={meetingPurpose} onChange={(e) => setMeetingPurpose(e.target.value)} placeholder="예: 신제품 입점 제안" />
               </Field>
-              <Field label="장소">
-                <Input value={meetingLocation} onChange={(e) => setMeetingLocation(e.target.value)} placeholder="예: ○○마트 본사 3층 회의실" />
+              <Field label="장소" required hint="과거에 입력한 장소를 자동완성으로 고를 수 있습니다.">
+                <Input
+                  value={meetingLocation}
+                  onChange={(e) => setMeetingLocation(e.target.value)}
+                  placeholder="예: ○○마트 본사 3층 회의실"
+                  list="journal-location-list"
+                />
+                <datalist id="journal-location-list">
+                  {locationOptions.map((loc) => (
+                    <option key={loc} value={loc} />
+                  ))}
+                </datalist>
               </Field>
-              <Field label="참석자 정보">
+              <Field label="참석자 정보" required>
                 <Input value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="예: (당사) 홍길동 / (거래처) MD 김철수" />
               </Field>
-              <Field label="미팅 개요" className="sm:col-span-2">
+              <Field label="미팅 개요" required className="sm:col-span-2">
                 <Textarea value={meetingSummary} onChange={(e) => setMeetingSummary(e.target.value)} placeholder="미팅에서 논의된 내용을 요약합니다." />
               </Field>
             </div>
@@ -412,10 +502,10 @@ export default function NewSalesJournalPage() {
           <Card padding="lg">
             <CardHeader title="요청 · 기획 사항" />
             <div className="grid grid-cols-1 gap-4">
-              <Field label="핵심 요청사항">
+              <Field label="핵심 요청사항" required>
                 <Textarea value={keyRequests} onChange={(e) => setKeyRequests(e.target.value)} placeholder="거래처가 요구한 핵심 사항" />
               </Field>
-              <Field label="제품의 구체적 요청 및 기획사항">
+              <Field label="제품의 구체적 요청 및 기획사항" required>
                 <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} placeholder="스펙·중량·가격대·시즈널 구성 등 제품 요청/기획" />
               </Field>
             </div>
@@ -484,10 +574,68 @@ export default function NewSalesJournalPage() {
 
           {/* 첨부 */}
           <Card padding="lg">
-            <CardHeader title="첨부" subtitle="제안서 파일과 거래처 명함을 첨부합니다. 저장 시 함께 업로드됩니다." />
+            <CardHeader title="첨부 (선택)" subtitle="제안서와 명함은 필수가 아닙니다. 저장 시 함께 업로드됩니다." />
+
+            {/* 거래처에 이미 등록된 명함 불러오기 */}
+            {contacts.length > 0 && (
+              <div className="mb-5">
+                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">
+                  등록된 명함 불러오기
+                </div>
+                <p className="text-[11px] text-[var(--text-4)] mb-2">
+                  이 거래처에 등록된 담당자 명함을 새로 찍지 않고 그대로 붙일 수 있습니다.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {contacts.map((c) => {
+                    const picked = pickedContactIds.includes(c.id);
+                    return (
+                      <label
+                        key={c.id}
+                        className={
+                          'flex items-center gap-3 px-2.5 py-2 rounded-md border cursor-pointer transition-colors ' +
+                          (picked
+                            ? 'border-[var(--brand-500)] bg-[var(--bg-2)]'
+                            : 'border-[var(--border-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)]')
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={picked}
+                          onChange={() => toggleContact(c.id)}
+                          disabled={!c.cardImageUrl}
+                          className="w-4 h-4 accent-[var(--brand-500)] disabled:opacity-40"
+                        />
+                        {c.cardImageUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={getFileUrl(c.cardImageUrl)}
+                            alt={c.name}
+                            className="w-16 h-11 object-cover rounded border border-[var(--border-1)] flex-shrink-0"
+                          />
+                        ) : (
+                          <span className="w-16 h-11 rounded border border-dashed border-[var(--border-2)] flex items-center justify-center text-[10px] text-[var(--text-4)] flex-shrink-0">
+                            명함 없음
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block text-[12.5px] text-[var(--text-1)] truncate">
+                            {c.name}
+                            {c.position ? ` ${c.position}` : ''}
+                          </span>
+                          <span className="block text-[11px] text-[var(--text-3)] truncate">
+                            {[c.title, c.phone, c.email].filter(Boolean).join(' · ') || '연락처 미등록'}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
-                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">제안서 파일</div>
+                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">제안서 파일 (선택)</div>
                 <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
                   + 파일 선택
                   <input
@@ -519,7 +667,7 @@ export default function NewSalesJournalPage() {
                 </div>
               </div>
               <div>
-                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">거래처 명함</div>
+                <div className="text-[12.5px] font-medium text-[var(--text-2)] mb-1.5">새 명함 이미지 (선택)</div>
                 <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border-2)] bg-[var(--bg-2)] hover:bg-[var(--bg-3)] text-[12.5px] text-[var(--text-1)] cursor-pointer transition-colors">
                   + 명함 이미지
                   <input
@@ -591,8 +739,8 @@ export default function NewSalesJournalPage() {
           {/* 향후 스케쥴 */}
           <Card padding="lg">
             <CardHeader
-              title="향후 스케쥴 (해야 할 일)"
-              subtitle={`일자는 필수. 해야 할 일은 ${stage ? `'${SALES_STAGES.find((s) => s.key === stage)?.label}' 단계` : '영업 단계'} 추천 목록에서 고르거나 '기타'로 직접 입력합니다.`}
+              title="향후 스케쥴 (해야 할 일) *"
+              subtitle={`최소 1건은 필수입니다. 해야 할 일은 ${stage ? `'${SALES_STAGES.find((s) => s.key === stage)?.label}' 단계` : '영업 단계'} 추천 목록에서 고르거나 '기타'로 직접 입력합니다.`}
               actions={
                 <Button variant="secondary" size="sm" onClick={addTodo}>
                   + 항목 추가

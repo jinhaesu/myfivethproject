@@ -529,10 +529,12 @@ function PlanFormToggle({ onCreated }: { onCreated: () => void }) {
 
 function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [clients, setClients] = useState<SalesClient[]>([]);
+  const [locations, setLocations] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [planDate, setPlanDate] = useState(toDateInput(new Date()));
   const [clientId, setClientId] = useState('');
   const [stage, setStage] = useState('');
+  const [location, setLocation] = useState('');
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -546,20 +548,33 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
         /* noop */
       }
     })();
+    (async () => {
+      try {
+        const data = await api.sales.locations();
+        setLocations(data.locations || []);
+      } catch {
+        /* 자동완성 목록은 실패해도 입력에는 영향 없음 */
+      }
+    })();
   }, []);
 
   const submit = async () => {
     setError('');
     if (!title.trim()) return setError('계획 제목을 입력해주세요.');
     if (!planDate) return setError('계획 일정을 입력해주세요.');
+    if (!stage) return setError('영업 단계를 선택해주세요.');
+    if (!clientId) return setError('거래처를 선택해주세요.');
+    if (!location.trim()) return setError('장소(주소지)를 입력해주세요.');
+    if (!content.trim()) return setError('내용을 입력해주세요.');
     setBusy(true);
     try {
       await api.sales.createPlan({
         title: title.trim(),
         planDate,
-        clientId: clientId || undefined,
-        stage: stage || undefined,
-        content: content.trim() || undefined,
+        clientId,
+        stage,
+        location: location.trim(),
+        content: content.trim(),
       });
       onCreated();
       onClose();
@@ -574,7 +589,7 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       <div className="w-full max-w-lg mt-10" onClick={(e) => e.stopPropagation()}>
         <Card padding="lg" tone="elevated">
           <div className="text-[15px] font-semibold text-[var(--text-1)] mb-4">영업계획 등록</div>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 max-h-[85vh] overflow-y-auto">
             <Field label="제목" required>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: ○○마트 2차 제안 미팅 준비" />
             </Field>
@@ -582,9 +597,9 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               <Field label="일정" required>
                 <Input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} />
               </Field>
-              <Field label="영업 단계">
+              <Field label="영업 단계" required>
                 <Select value={stage} onChange={(e) => setStage(e.target.value)}>
-                  <option value="">(선택 안 함)</option>
+                  <option value="">영업 단계 선택</option>
                   {SALES_STAGES.map((s) => (
                     <option key={s.key} value={s.key}>
                       {s.label}
@@ -593,9 +608,9 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                 </Select>
               </Field>
             </div>
-            <Field label="거래처">
+            <Field label="거래처" required>
               <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                <option value="">(지정 안 함)</option>
+                <option value="">거래처 선택</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -603,7 +618,24 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                 ))}
               </Select>
             </Field>
-            <Field label="내용">
+            <Field
+              label="장소(주소지)"
+              required
+              hint="과거에 입력한 장소를 자동완성으로 고를 수 있습니다."
+            >
+              <Input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                list="plan-location-list"
+                placeholder="예: ○○마트 본사 3층 회의실"
+              />
+              <datalist id="plan-location-list">
+                {locations.map((loc) => (
+                  <option key={loc} value={loc} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="내용" required>
               <Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="계획 상세 내용" />
             </Field>
             {error && <div className="text-[12px] text-[var(--danger-fg)]">{error}</div>}
