@@ -412,6 +412,14 @@ export const api = {
     project: (projectId: string) => request(`/changelog/project/${projectId}/all`),
     // 라벨(제품) 단위 QCQA 검수 항목 이력
     labelReview: (labelId: string) => request(`/changelog/label/${labelId}/review`),
+    // 전사 최근 변경 활동 피드 (대시보드)
+    recent: (opts: { days?: number; limit?: number; group?: string } = {}) => {
+      const q = new URLSearchParams();
+      if (opts.days) q.set('days', String(opts.days));
+      if (opts.limit) q.set('limit', String(opts.limit));
+      if (opts.group) q.set('group', opts.group);
+      return request(`/changelog/recent${q.toString() ? `?${q.toString()}` : ''}`);
+    },
     // 영업일지는 열람 권한 검사가 필요해 sales 라우트에서 처리
     journal: (journalId: string, viewToken?: string) =>
       request(`/sales/journals/${journalId}/history`, {

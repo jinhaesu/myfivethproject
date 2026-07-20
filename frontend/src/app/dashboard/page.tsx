@@ -1,440 +1,302 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+// 대시보드 — 전사 최근 변경 활동 피드.
+// "지난주에 누가 뭘 바꿨나"를 한 화면에서 보기 위한 화면으로,
+// 개별 자료의 상세 이력은 각 상세 페이지의 '수정 이력' 섹션에서 본다.
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
-import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
-import {
-  PageHeader,
-  Card,
-  Button,
-  Input,
-  Select,
-  Field,
-  Table,
-  THead,
-  TBody,
-  TR,
-  TH,
-  TD,
-  Badge,
-  StatusPill,
-  EmptyState,
-  CenterSpinner,
-} from '@/components/ui';
+import { PageHeader, Card, Button, Badge, CenterSpinner, EmptyState } from '@/components/ui';
+import { cn } from '@/lib/cn';
 
-interface Label {
+interface FeedItem {
   id: string;
-  productName: string;
-  productType: string | null;
-  salesChannel: string | null;
-  status: string;
-  healthClaims: HealthClaim[] | null;
-  designFileUrl: string | null;
-  designFileName: string | null;
-  manufacturingReportUrl: string | null;
-  manufacturingReportName: string | null;
-  manufacturingReportMaskedUrl: string | null;
-  manufacturingReportMaskingLocked: boolean | null;
+  entityType: string;
+  entityId: string;
+  typeLabel: string;
+  group: 'sales' | 'launch' | 'review' | 'etc' | string;
+  targetName: string | null;
+  url: string | null;
+  deleted: boolean;
+  action: 'create' | 'update' | 'delete' | string;
+  fieldLabel: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  summary: string | null;
+  masked: boolean;
+  actorName: string | null;
+  actorEmail: string | null;
   createdAt: string;
-  updatedAt: string;
-  createdBy: {
-    id: string;
-    name: string | null;
-    email: string;
-    department: string | null;
-  };
-  reviewCategories: Array<{
-    items: Array<{ isCompleted: boolean }>;
-  }>;
+}
+
+const ACTION_META: Record<string, { label: string; tone: 'success' | 'brand' | 'danger' | 'neutral' }> = {
+  create: { label: '생성', tone: 'success' },
+  update: { label: '수정', tone: 'brand' },
+  delete: { label: '삭제', tone: 'danger' },
+};
+
+const GROUPS = [
+  { key: '', label: '전체' },
+  { key: 'sales', label: '영업' },
+  { key: 'launch', label: '출시·단종' },
+  { key: 'review', label: '표기사항' },
+];
+
+const RANGES = [
+  { days: 7, label: '최근 7일' },
+  { days: 30, label: '최근 30일' },
+  { days: 90, label: '최근 90일' },
+];
+
+// 오늘/어제/그 이전으로 나눠 날짜 헤더를 붙인다
+function dayKey(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((startOf(today) - startOf(d)) / 86400000);
+  if (diff === 0) return '오늘';
+  if (diff === 1) return '어제';
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+}
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function actorOf(f: FeedItem) {
+  return f.actorName || f.actorEmail?.split('@')[0] || '알 수 없음';
+}
+
+function ValueDiff({ f }: { f: FeedItem }) {
+  if (f.masked) {
+    return <span className="text-[var(--text-4)]">🔒 비밀번호가 걸린 일지 — 변경 내용 비공개</span>;
+  }
+  if (f.action !== 'update' || !f.fieldLabel) {
+    return <span className="text-[var(--text-2)]">{f.summary || ACTION_META[f.action]?.label || f.action}</span>;
+  }
+  return (
+    <>
+      <span className="text-[var(--text-3)]">{f.fieldLabel}</span>
+      <span className="text-[var(--text-4)] mx-1.5">:</span>
+      {f.oldValue ? (
+        <span className="text-[var(--text-4)] line-through">{f.oldValue}</span>
+      ) : (
+        <span className="text-[var(--text-4)] italic">(비어 있음)</span>
+      )}
+      <span className="text-[var(--text-4)] mx-1.5">→</span>
+      {f.newValue ? (
+        <span className="text-[var(--text-1)]">{f.newValue}</span>
+      ) : (
+        <span className="text-[var(--text-4)] italic">(비어 있음)</span>
+      )}
+    </>
+  );
 }
 
 export default function DashboardPage() {
-  const [labels, setLabels] = useState<Label[]>([]);
+  const [feed, setFeed] = useState<FeedItem[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
+  const [error, setError] = useState('');
+  const [group, setGroup] = useState('');
+  const [days, setDays] = useState(7);
 
-  const fetchLabels = async (page = 1) => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      const data = await api.labels.list({
-        page,
-        search: search || undefined,
-        status: statusFilter || undefined,
-      });
-      setLabels(data.labels);
-      setPagination(data.pagination);
-    } catch (error) {
-      console.error('Failed to fetch labels:', error);
+      const data = await api.changelog.recent({ days, limit: 150, group: group || undefined });
+      setFeed(data.feed || []);
+    } catch (e) {
+      setError((e as Error)?.message || '최근 활동을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [days, group]);
 
   useEffect(() => {
-    fetchLabels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+    load();
+  }, [load]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchLabels(1);
-  };
+  // 요약 지표 — 기간 내 변경 건수 / 참여자 수 / 가장 많이 바뀐 대상
+  const stats = useMemo(() => {
+    if (!feed) return null;
+    const actors = new Set(feed.map((f) => f.actorEmail || f.actorName || '?'));
+    const byTarget = new Map<string, { name: string; url: string | null; count: number }>();
+    for (const f of feed) {
+      if (!f.targetName) continue;
+      const key = `${f.entityType}:${f.entityId}`;
+      const cur = byTarget.get(key);
+      if (cur) cur.count += 1;
+      else byTarget.set(key, { name: f.targetName, url: f.url, count: 1 });
+    }
+    const top = Array.from(byTarget.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+    return { total: feed.length, actors: actors.size, top };
+  }, [feed]);
 
-  const getReviewProgress = (label: Label) => {
-    const allItems = label.reviewCategories.flatMap((c) => c.items);
-    if (allItems.length === 0) return 0;
-    return Math.round((allItems.filter((i) => i.isCompleted).length / allItems.length) * 100);
-  };
-
-  // 상단 KPI
-  const totalCount = pagination.total;
-  const inReviewCount = labels.filter((l) => l.status === 'in_review').length;
-  const approvedCount = labels.filter((l) => l.status === 'approved').length;
-  const draftCount = labels.filter((l) => l.status === 'draft').length;
+  // 날짜별 그룹핑
+  const sections = useMemo(() => {
+    if (!feed) return [];
+    const map = new Map<string, FeedItem[]>();
+    for (const f of feed) {
+      const k = dayKey(f.createdAt);
+      const arr = map.get(k);
+      if (arr) arr.push(f);
+      else map.set(k, [f]);
+    }
+    return Array.from(map.entries());
+  }, [feed]);
 
   return (
     <AppLayout>
       <PageHeader
-        eyebrow="Labeling Operations"
-        title="표기사항 관리"
-        description="식품 표기사항·법령 검토 워크플로우를 한 곳에서 관리합니다."
+        eyebrow="Dashboard"
+        title="대시보드"
+        description="영업·출시·단종·표기사항에서 일어난 최근 변경 사항을 한 곳에서 확인합니다."
         actions={
-          <Link href="/labels/new">
-            <Button variant="primary" size="md">
-              + 새 라벨 작성
-            </Button>
-          </Link>
+          <Button variant="secondary" size="md" onClick={load} disabled={loading}>
+            새로고침
+          </Button>
         }
       />
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <Card padding="md" className="hover-lift">
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-3)]">전체</div>
-          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{totalCount}</div>
+      {/* 요약 지표 */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <Card padding="md">
+          <div className="text-[11.5px] text-[var(--text-3)]">기간 내 변경</div>
+          <div className="text-[24px] font-semibold text-[var(--text-1)] tabular mt-1">
+            {stats ? stats.total : '—'}
+            <span className="text-[13px] text-[var(--text-3)] ml-1">건</span>
+          </div>
         </Card>
-        <Card padding="md" className="hover-lift">
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-3)]">초안</div>
-          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{draftCount}</div>
+        <Card padding="md">
+          <div className="text-[11.5px] text-[var(--text-3)]">변경한 사람</div>
+          <div className="text-[24px] font-semibold text-[var(--text-1)] tabular mt-1">
+            {stats ? stats.actors : '—'}
+            <span className="text-[13px] text-[var(--text-3)] ml-1">명</span>
+          </div>
         </Card>
-        <Card padding="md" className="hover-lift">
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--warning-fg)]">검토 중</div>
-          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{inReviewCount}</div>
-        </Card>
-        <Card padding="md" className="hover-lift">
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--success-fg)]">승인</div>
-          <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{approvedCount}</div>
+        <Card padding="md">
+          <div className="text-[11.5px] text-[var(--text-3)]">가장 많이 바뀐 자료</div>
+          {stats && stats.top.length ? (
+            <ul className="mt-1.5 space-y-1">
+              {stats.top.map((t) => (
+                <li key={t.name} className="flex items-center justify-between gap-2 text-[12.5px] min-w-0">
+                  {t.url ? (
+                    <Link href={t.url} className="text-[var(--text-2)] hover:text-[var(--text-1)] truncate">
+                      {t.name}
+                    </Link>
+                  ) : (
+                    <span className="text-[var(--text-2)] truncate">{t.name}</span>
+                  )}
+                  <span className="text-[var(--text-4)] tabular flex-shrink-0">{t.count}건</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-[13px] text-[var(--text-4)] mt-2">—</div>
+          )}
         </Card>
       </div>
 
-      {/* 검색·필터 */}
-      <Card padding="md" className="mb-5">
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-          <Field className="flex-1">
-            <Input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="제품명으로 검색…"
-              inputSize="md"
-            />
-          </Field>
-          <Field className="sm:w-44">
-            <Select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              inputSize="md"
+      {/* 필터 */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
+        <div className="flex flex-wrap gap-1">
+          {GROUPS.map((g) => (
+            <button
+              key={g.key}
+              type="button"
+              onClick={() => setGroup(g.key)}
+              className={cn(
+                'px-2.5 py-1.5 min-h-[36px] rounded-md text-[12.5px] transition-colors',
+                group === g.key
+                  ? 'text-[var(--text-1)] bg-[var(--bg-2)]'
+                  : 'text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)]',
+              )}
             >
-              <option value="">전체 상태</option>
-              <option value="draft">초안</option>
-              <option value="in_review">검토 중</option>
-              <option value="approved">승인 완료</option>
-            </Select>
-          </Field>
-          <Button type="submit" variant="secondary" size="md">
-            검색
-          </Button>
-        </form>
-      </Card>
+              {g.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {RANGES.map((r) => (
+            <button
+              key={r.days}
+              type="button"
+              onClick={() => setDays(r.days)}
+              className={cn(
+                'px-2.5 py-1.5 min-h-[36px] rounded-md text-[12.5px] transition-colors',
+                days === r.days
+                  ? 'text-[var(--text-1)] bg-[var(--bg-2)]'
+                  : 'text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)]',
+              )}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* 라벨 목록 */}
-      {loading ? (
-        <CenterSpinner label="라벨 목록 불러오는 중" />
-      ) : labels.length === 0 ? (
+      {/* 피드 */}
+      {loading && <CenterSpinner label="최근 활동 불러오는 중" />}
+      {error && !loading && (
+        <Card padding="lg">
+          <p className="text-[13px] text-[var(--danger-fg)]">{error}</p>
+        </Card>
+      )}
+      {!loading && !error && feed && feed.length === 0 && (
         <EmptyState
-          title="등록된 표기사항이 없습니다"
-          description="첫 라벨을 만들어 영양성분·원재료·검토 워크플로를 시작하세요."
-          action={
-            <Link href="/labels/new">
-              <Button variant="primary" size="md">
-                + 첫 라벨 작성하기
-              </Button>
-            </Link>
-          }
+          title="이 기간에 기록된 변경이 없습니다"
+          description="자료를 수정하면 여기에 활동이 쌓입니다. 수정 이력은 기능이 적용된 시점부터 기록됩니다."
         />
-      ) : (
-        <>
-          {/* 모바일: 표 대신 카드 목록 — 좁은 화면에서 숨겨지던 강조 표기·첨부·진행률까지 보여준다 */}
-          <div className="sm:hidden space-y-2">
-            {labels.map((label) => {
-              const progress = getReviewProgress(label);
-              const claims = (label.healthClaims as HealthClaim[]) || [];
-              const eligibleClaims = claims.filter((c) => c.eligible);
+      )}
 
-              return (
-                <Link key={label.id} href={`/labels/${label.id}`} className="block">
-                  <Card padding="md" className="hover-lift">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[14px] font-medium text-[var(--brand-400)] break-words">
-                          {label.productName}
-                        </span>
-                        {label.productType && (
-                          <p className="text-[11px] text-[var(--text-4)] mt-0.5">{label.productType}</p>
-                        )}
-                      </div>
-                      <span className="shrink-0">
-                        <StatusPill status={label.status} />
-                      </span>
-                    </div>
-
-                    {eligibleClaims.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {eligibleClaims.slice(0, 3).map((c) => (
-                          <span
-                            key={c.id}
-                            className={`px-1.5 py-0.5 rounded-full text-[10.5px] font-bold ${getClaimBadgeColor(
-                              c,
-                            )}`}
-                          >
-                            {c.name}
-                          </span>
-                        ))}
-                        {eligibleClaims.length > 3 && (
-                          <Badge tone="neutral" size="xs">
-                            +{eligibleClaims.length - 3}
+      {!loading && !error && sections.length > 0 && (
+        <div className="space-y-6">
+          {sections.map(([day, items]) => (
+            <div key={day}>
+              <div className="text-[12px] font-semibold text-[var(--text-3)] mb-2">{day}</div>
+              <Card padding="none">
+                <ul className="divide-y divide-[var(--border-1)]">
+                  {items.map((f) => {
+                    const meta = ACTION_META[f.action] || { label: f.action, tone: 'neutral' as const };
+                    return (
+                      <li key={f.id} className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                          <Badge tone={meta.tone} size="sm">
+                            {meta.label}
                           </Badge>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {label.designFileUrl ? (
-                        <Badge tone="violet" size="xs">
-                          디자인 {label.designFileName?.endsWith('.pdf') ? 'PDF' : 'IMG'}
-                        </Badge>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-4)]">디자인 미첨부</span>
-                      )}
-                      {label.manufacturingReportUrl ? (
-                        <>
-                          <Badge tone="info" size="xs">
-                            품목제조보고
-                          </Badge>
-                          {label.manufacturingReportMaskingLocked ? (
-                            <Badge tone="success" size="xs">
-                              마스킹
-                            </Badge>
-                          ) : label.manufacturingReportMaskedUrl ? (
-                            <Badge tone="warning" size="xs">
-                              자동
-                            </Badge>
-                          ) : (
-                            <Badge tone="warning" size="xs">
-                              미마스킹
-                            </Badge>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-4)]">보고서 미첨부</span>
-                      )}
-                    </div>
-
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-[var(--bg-3)] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[var(--brand-500)] transition-all duration-base ease-out-soft"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <span className="text-[11.5px] text-[var(--text-3)] tabular w-9 text-right shrink-0">
-                        {progress}%
-                      </span>
-                    </div>
-
-                    <p className="mt-2 text-[11px] text-[var(--text-4)] break-words">
-                      {label.createdBy.name || label.createdBy.email} ·{' '}
-                      {new Date(label.createdAt).toLocaleDateString('ko-KR')}
-                    </p>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="hidden sm:block">
-          <Table>
-            <THead>
-              <TR>
-                <TH>제품명</TH>
-                <TH className="hidden sm:table-cell">강조 표기</TH>
-                <TH>상태</TH>
-                <TH className="hidden sm:table-cell">디자인</TH>
-                <TH className="hidden sm:table-cell">품목제조보고</TH>
-                <TH className="hidden md:table-cell">검토 진행률</TH>
-                <TH className="hidden md:table-cell">작성자</TH>
-                <TH align="right">작성일</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {labels.map((label) => {
-                const progress = getReviewProgress(label);
-                const claims = (label.healthClaims as HealthClaim[]) || [];
-                const eligibleClaims = claims.filter((c) => c.eligible);
-
-                return (
-                  <TR key={label.id}>
-                    <TD emphasis>
-                      <Link
-                        href={`/labels/${label.id}`}
-                        className="text-[var(--brand-400)] hover:text-[var(--brand-200)] font-medium transition-colors"
-                      >
-                        {label.productName}
-                      </Link>
-                      {label.productType && (
-                        <p className="text-[11px] text-[var(--text-4)] mt-0.5">{label.productType}</p>
-                      )}
-                    </TD>
-                    <TD className="hidden sm:table-cell">
-                      {eligibleClaims.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {eligibleClaims.slice(0, 3).map((c) => (
-                            <span
-                              key={c.id}
-                              className={`px-1.5 py-0.5 rounded-full text-[10.5px] font-bold ${getClaimBadgeColor(
-                                c,
-                              )}`}
+                          <span className="text-[11.5px] text-[var(--text-4)]">{f.typeLabel}</span>
+                          {f.deleted ? (
+                            <span className="text-[13px] text-[var(--text-4)]">삭제된 자료</span>
+                          ) : f.url ? (
+                            <Link
+                              href={f.url}
+                              className="text-[13px] text-[var(--text-1)] hover:underline truncate max-w-full"
                             >
-                              {c.name}
-                            </span>
-                          ))}
-                          {eligibleClaims.length > 3 && (
-                            <Badge tone="neutral" size="xs">
-                              +{eligibleClaims.length - 3}
-                            </Badge>
+                              {f.targetName}
+                            </Link>
+                          ) : (
+                            <span className="text-[13px] text-[var(--text-1)] truncate">{f.targetName}</span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-4)]">—</span>
-                      )}
-                    </TD>
-                    <TD>
-                      <StatusPill status={label.status} />
-                    </TD>
-                    <TD className="hidden sm:table-cell">
-                      {label.designFileUrl ? (
-                        <Link
-                          href={`/labels/${label.id}`}
-                          className="inline-flex"
-                          aria-label="디자인 파일 첨부됨"
-                        >
-                          <Badge tone="violet" size="sm">
-                            {label.designFileName?.endsWith('.pdf') ? 'PDF' : 'IMG'} 첨부
-                          </Badge>
-                        </Link>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-4)]">미첨부</span>
-                      )}
-                    </TD>
-                    <TD className="hidden sm:table-cell">
-                      {label.manufacturingReportUrl ? (
-                        <Link
-                          href={`/labels/${label.id}`}
-                          className="inline-flex items-center gap-1.5"
-                          aria-label="품목제조보고서 첨부됨"
-                        >
-                          <Badge tone="info" size="sm">
-                            PDF 첨부
-                          </Badge>
-                          {label.manufacturingReportMaskingLocked ? (
-                            <Badge
-                              tone="success"
-                              size="xs"
-                              title="배합비율 마스킹 영구 적용됨"
-                            >
-                              마스킹
-                            </Badge>
-                          ) : label.manufacturingReportMaskedUrl ? (
-                            <Badge
-                              tone="warning"
-                              size="xs"
-                              title="자동 마스킹 적용 (수동 확인 권장)"
-                            >
-                              자동
-                            </Badge>
-                          ) : (
-                            <Badge
-                              tone="warning"
-                              size="xs"
-                              title="배합비 마스킹 미적용"
-                            >
-                              미마스킹
-                            </Badge>
-                          )}
-                        </Link>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-4)]">미첨부</span>
-                      )}
-                    </TD>
-                    <TD className="hidden md:table-cell">
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-1.5 bg-[var(--bg-3)] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[var(--brand-500)] transition-all duration-base ease-out-soft"
-                            style={{ width: `${progress}%` }}
-                          />
+                        <div className="text-[12.5px] leading-relaxed break-words">
+                          <ValueDiff f={f} />
                         </div>
-                        <span className="text-[11.5px] text-[var(--text-3)] tabular w-9 text-right">
-                          {progress}%
-                        </span>
-                      </div>
-                    </TD>
-                    <TD className="hidden md:table-cell" muted>
-                      {label.createdBy.name || label.createdBy.email}
-                    </TD>
-                    <TD align="right" muted numeric>
-                      {new Date(label.createdAt).toLocaleDateString('ko-KR')}
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-          </div>
-
-          {/* 페이지네이션 — 페이지 수가 많아도 모바일에서 줄바꿈되도록 */}
-          {pagination.totalPages > 1 && (
-            <div className="flex flex-wrap justify-center mt-5 gap-1">
-              {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => fetchLabels(page)}
-                  className={
-                    page === pagination.page
-                      ? 'min-w-[36px] px-2.5 py-2 sm:py-1 rounded-md text-[12.5px] bg-[var(--brand-500)] text-white tabular'
-                      : 'min-w-[36px] px-2.5 py-2 sm:py-1 rounded-md text-[12.5px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] tabular'
-                  }
-                >
-                  {page}
-                </button>
-              ))}
+                        <div className="mt-1 text-[11.5px] text-[var(--text-4)]">
+                          {actorOf(f)} · {fmtTime(f.createdAt)}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
             </div>
-          )}
-        </>
+          ))}
+        </div>
       )}
     </AppLayout>
   );

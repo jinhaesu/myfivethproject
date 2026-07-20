@@ -9,7 +9,7 @@ import { cn } from '@/lib/cn';
 
 const NAV = [
   { href: '/dashboard', label: '대시보드', match: (p: string) => p === '/dashboard' },
-  { href: '/labels/new', label: '새 라벨', match: (p: string) => p.startsWith('/labels') },
+  { href: '/labels', label: '표기사항', match: (p: string) => p.startsWith('/labels') },
   {
     href: '/sales',
     label: '영업 관리',
