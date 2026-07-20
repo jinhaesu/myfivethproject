@@ -6,6 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
 import { DashboardData, fmtKRW, fmtDate, STAGE_LABEL, STAGE_TONE } from '@/lib/sales';
+import { userShort } from '@/lib/user';
 import { PageHeader, Card, Badge, EmptyState, CenterSpinner } from '@/components/ui';
 
 // Badge tone → CSS 색상 (파이프라인 바/강조용)
@@ -251,8 +252,9 @@ export default function SalesDashboardPage() {
                         {STAGE_LABEL[j.stage] || j.stage}
                       </Badge>
                     )}
+                    {/* 이 응답에는 작성자 이메일이 없어 이름만 표기 가능 */}
                     <span className="hidden md:inline text-[11.5px] text-[var(--text-4)] tabular">
-                      {j.authorName || ''}
+                      {userShort(j.authorName, j.authorEmail)}
                     </span>
                     <span className="text-[11.5px] text-[var(--text-4)] tabular flex-shrink-0">
                       {fmtDate(j.createdAt)}

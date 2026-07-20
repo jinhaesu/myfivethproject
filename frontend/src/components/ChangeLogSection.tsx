@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { userLabel } from '@/lib/user';
 import { Card, Button, Spinner, Badge } from '@/components/ui';
 
 export interface ChangeLogEntry {
@@ -44,7 +45,7 @@ function groupEntries(logs: ChangeLogEntry[]): Group[] {
   for (const log of logs) {
     // 초 단위로 잘라 같은 저장 동작을 하나로 묶는다 (밀리초는 필드마다 미세하게 다를 수 있음)
     const bucket = log.createdAt.slice(0, 19);
-    const actor = log.actorName || log.actorEmail || '알 수 없음';
+    const actor = userLabel(log.actorName, log.actorEmail);
     const key = `${bucket}|${log.actorId || actor}|${log.action}`;
     const existing = map.get(key);
     if (existing) {

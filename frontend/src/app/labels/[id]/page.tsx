@@ -10,6 +10,7 @@ import ManualPdfMasking from '@/components/ManualPdfMasking';
 import { api, getFileUrl } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
 import { analyzeOriginRequirements, OriginRequirement } from '@/lib/originRules';
+import { userLabel } from '@/lib/user';
 
 interface AiDesignReviewItem {
   field: string;
@@ -366,7 +367,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
           <div className="flex gap-4 mt-2 text-sm text-gray-500">
             {label.productType && <span>{label.productType}</span>}
             {label.salesChannel && <span>채널: {label.salesChannel}</span>}
-            <span>작성: {label.createdBy.name || label.createdBy.email}</span>
+            <span>작성: {userLabel(label.createdBy)}</span>
             <span>{new Date(label.createdAt).toLocaleDateString('ko-KR')}</span>
           </div>
         </div>

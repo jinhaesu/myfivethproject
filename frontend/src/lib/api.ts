@@ -27,14 +27,18 @@ async function request(path: string, options: RequestInit = {}) {
     throw new Error('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
   }
 
-  if (res.status === 401) {
+  const data = await res.json().catch(() => ({} as any));
+
+  // 401이라도 '열람 비밀번호가 필요/틀렸다'는 신호(영업일지·관리 메뉴)는 세션 만료가 아니다.
+  // 구분하지 않으면 비밀번호를 한 번 틀렸을 때 앱 전체에서 로그아웃돼 버린다.
+  const isGateSignal = !!(data?.passwordRequired || data?.invalidPassword);
+  if (res.status === 401 && !isGateSignal) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/login';
     throw new Error('Unauthorized');
   }
 
-  const data = await res.json();
   if (!res.ok) {
     // 에러에 상태코드·응답 본문을 붙여 호출부가 세부 플래그(passwordRequired 등)를 검사할 수 있게 함
     const err = new Error(data.error || '요청에 실패했습니다.') as Error & { status?: number; data?: any };
@@ -117,6 +121,18 @@ async function downloadBlob(path: string, fallbackName: string, headers: Record<
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// 관리 메뉴 전용 요청 — 진입 토큰을 헤더에 얹는 것 외에는 공용 request()와 동일하다.
+// (게이트 신호 401을 세션 만료와 구분하는 처리는 request() 안에 있다)
+function adminRequest(path: string, options: RequestInit = {}, adminToken?: string | null) {
+  return request(path, {
+    ...options,
+    headers: {
+      ...(options.headers as Record<string, string>),
+      ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+    },
+  });
 }
 
 // 로그인 없이 접근하는 공개(공유 링크) 요청
@@ -425,6 +441,31 @@ export const api = {
       request(`/sales/journals/${journalId}/history`, {
         headers: viewToken ? { 'X-Journal-Token': viewToken } : {},
       }),
+  },
+  admin: {
+    // 진입 게이트 상태 — 대표 여부·비밀번호 설정 여부·현재 진입 가능 여부
+    gate: (adminToken?: string | null) => adminRequest('/admin/gate', {}, adminToken),
+    // 비밀번호 확인 → 진입 토큰 발급 (대표는 token: null로 통과)
+    verifyPassword: (password: string) =>
+      adminRequest('/admin/gate/verify', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+    // 진입 비밀번호 설정/변경. 빈 문자열이면 해제 (대표 전용)
+    setPassword: (password: string) =>
+      adminRequest('/admin/gate/password', {
+        method: 'PUT',
+        body: JSON.stringify({ password }),
+      }),
+    // 직원 목록
+    listUsers: (adminToken?: string | null) => adminRequest('/admin/users', {}, adminToken),
+    // 직원 이름·부서·권한 수정
+    updateUser: (
+      id: string,
+      data: { name?: string; department?: string; role?: string },
+      adminToken?: string | null,
+    ) =>
+      adminRequest(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }, adminToken),
   },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>

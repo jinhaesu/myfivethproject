@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
+import { userLabel } from '@/lib/user';
 import { PageHeader, Card, Button, Badge, CenterSpinner, EmptyState } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
@@ -66,7 +67,7 @@ function fmtTime(iso: string) {
 }
 
 function actorOf(f: FeedItem) {
-  return f.actorName || f.actorEmail?.split('@')[0] || '알 수 없음';
+  return userLabel(f.actorName, f.actorEmail);
 }
 
 function ValueDiff({ f }: { f: FeedItem }) {
@@ -286,7 +287,7 @@ export default function DashboardPage() {
                         <div className="text-[12.5px] leading-relaxed break-words">
                           <ValueDiff f={f} />
                         </div>
-                        <div className="mt-1 text-[11.5px] text-[var(--text-4)]">
+                        <div className="mt-1 text-[11.5px] text-[var(--text-4)] break-words">
                           {actorOf(f)} · {fmtTime(f.createdAt)}
                         </div>
                       </li>

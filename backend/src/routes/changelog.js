@@ -8,7 +8,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 // 이 라우트로 조회를 허용하는 엔티티 (임의 테이블 이력 열람 방지)
-const ALLOWED = new Set(['launch', 'discontinuation', 'review', 'reviewItem', 'launchTask', 'launchStage', 'client', 'plan']);
+const ALLOWED = new Set(['launch', 'discontinuation', 'review', 'reviewItem', 'launchTask', 'launchStage', 'client', 'plan', 'user']);
 
 router.get('/:entityType/:entityId', authenticate, async (req, res) => {
   try {
@@ -96,6 +96,7 @@ const TYPE_META = {
   launchStage: { label: '출시 단계', group: 'launch' },
   launchTask: { label: '체크리스트', group: 'launch' },
   review: { label: '표기사항 검수', group: 'review' },
+  user: { label: '직원 정보', group: 'admin' },
 };
 
 // entityId 묶음을 실제 대상 이름·링크로 해석한다.
@@ -107,7 +108,7 @@ async function resolveTargets(logs) {
     target[`${type}:${id}`] = { name, url };
   };
 
-  const [journals, clients, plans, projects, stages, tasks, items] = await Promise.all([
+  const [journals, clients, plans, projects, stages, tasks, items, users] = await Promise.all([
     idsOf('journal').length
       ? prisma.salesJournal.findMany({
           where: { id: { in: idsOf('journal') } },
@@ -144,6 +145,9 @@ async function resolveTargets(logs) {
           select: { id: true, taskName: true, category: { select: { labelId: true, label: { select: { productName: true } } } } },
         })
       : [],
+    idsOf('user').length
+      ? prisma.user.findMany({ where: { id: { in: idsOf('user') } }, select: { id: true, name: true, email: true } })
+      : [],
   ]);
 
   journals.forEach((j) => put('journal', j.id, j.title || `${j.client?.name || '거래처'} 영업일지`, `/sales/${j.id}`));
@@ -157,6 +161,7 @@ async function resolveTargets(logs) {
   tasks.forEach((t) =>
     put('launchTask', t.id, `${t.stage?.project?.productName || ''} · ${t.name}`.trim(), `/launches/${t.stage?.projectId || ''}`),
   );
+  users.forEach((u) => put('user', u.id, u.name ? `${u.name} (${u.email})` : u.email, '/admin'));
   items.forEach((i) =>
     put('review', i.id, `${i.category?.label?.productName || ''} · ${i.taskName}`.trim(), `/labels/${i.category?.labelId || ''}`),
   );

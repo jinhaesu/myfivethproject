@@ -83,6 +83,11 @@ const FIELD_LABELS = {
     isCompleted: '완료 여부',
     note: '비고',
   },
+  user: {
+    name: '이름',
+    department: '부서',
+    role: '권한',
+  },
   launchStage: {
     name: '단계명',
     department: '담당 부서',
@@ -111,6 +116,10 @@ const VALUE_LABELS = {
     requested: '요청됨',
     delivered: '전달 완료',
     canceled: '취소',
+  },
+  role: {
+    admin: '관리자',
+    user: '일반',
   },
   stage: {
     lead: '영업 시작',

@@ -440,3 +440,11 @@ model ChangeLog {
 
   @@index([entityType, entityId, createdAt])
 }
+
+// ── 앱 전역 설정 (key-value) ─────────────────────────────────
+// 현재는 관리 메뉴 진입 비밀번호 해시(admin_password_hash) 보관용.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { userLabel, userShort } from '@/lib/user';
 import { CenterSpinner, Button } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
@@ -18,6 +19,7 @@ const NAV = [
   { href: '/sales/calendar', label: '영업 캘린더', match: (p: string) => p.startsWith('/sales/calendar') },
   { href: '/launches', label: '출시 관리', match: (p: string) => p.startsWith('/launches') },
   { href: '/discontinuations', label: '단종 관리', match: (p: string) => p.startsWith('/discontinuations') },
+  { href: '/admin', label: '관리', match: (p: string) => p.startsWith('/admin') },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -106,8 +108,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-              <span className="hidden sm:inline text-[12px] text-[var(--text-3)]">
-                {user.name || user.email}
+              {/* 헤더는 폭이 좁아 축약 표기, 전체는 툴팁으로 */}
+              <span className="hidden sm:inline text-[12px] text-[var(--text-3)]" title={userLabel(user)}>
+                {userShort(user)}
                 {user.department ? (
                   <span className="text-[var(--text-4)] ml-1.5">/ {user.department}</span>
                 ) : null}
@@ -200,7 +203,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="border-t border-[var(--border-1)] p-4 flex-shrink-0">
-              <div className="text-[13px] text-[var(--text-2)] truncate">{user.name || user.email}</div>
+              {/* 드로어는 공간이 있어 이름+이메일 전체 표기 */}
+              <div className="text-[13px] text-[var(--text-2)] break-words">{userLabel(user)}</div>
               {user.department ? (
                 <div className="text-[11.5px] text-[var(--text-4)] mt-0.5 truncate">{user.department}</div>
               ) : null}

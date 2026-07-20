@@ -17,6 +17,7 @@ import {
   fmtKRW,
   weightedRevenue,
 } from '@/lib/sales';
+import { userShort, userLabelOrEmpty } from '@/lib/user';
 import {
   PageHeader,
   Card,
@@ -400,8 +401,11 @@ export default function SalesClientDetailPage() {
                 <span className="ml-auto text-[11.5px] text-[var(--text-3)] tabular flex-shrink-0">
                   {fmtDate(j.meetingDate)}
                 </span>
-                <span className="hidden sm:inline text-[11.5px] text-[var(--text-4)] flex-shrink-0 w-20 text-right truncate">
-                  {j.author?.name || ''}
+                <span
+                  className="hidden sm:inline text-[11.5px] text-[var(--text-4)] flex-shrink-0 w-20 text-right truncate"
+                  title={userLabelOrEmpty(j.author)}
+                >
+                  {j.author ? userShort(j.author) : ''}
                 </span>
               </Link>
             ))}

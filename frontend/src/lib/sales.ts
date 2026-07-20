@@ -308,7 +308,8 @@ export interface DashboardData {
   upcomingTodos: DashboardTodo[];
   recentJournals: {
     id: string; title: string | null; clientName: string | null; stage: string | null;
-    authorName: string | null; createdAt: string; meetingDate: string | null;
+    authorName: string | null; authorEmail: string | null;
+    createdAt: string; meetingDate: string | null;
   }[];
   isSuperAdmin: boolean;
 }
