@@ -5,6 +5,7 @@ import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
 import { LaunchProject, getDday } from '@/lib/launch';
+import { userLabel, userShort } from '@/lib/user';
 import {
   PageHeader,
   Card,
@@ -171,6 +172,10 @@ export default function LaunchesPage() {
                       {progress}%
                     </span>
                   </div>
+
+                  <p className="mt-2 text-[11.5px] text-[var(--text-4)] break-words">
+                    등록 {userShort(p.createdBy)} · {new Date(p.createdAt).toLocaleDateString('ko-KR')}
+                  </p>
                 </Card>
               </Link>
             );
@@ -187,6 +192,7 @@ export default function LaunchesPage() {
               <TH className="hidden sm:table-cell">현재 단계</TH>
               <TH className="hidden md:table-cell">진행률</TH>
               <TH>상태</TH>
+              <TH className="hidden lg:table-cell">등록자</TH>
               <TH className="hidden md:table-cell" align="right">등록일</TH>
             </TR>
           </THead>
@@ -246,6 +252,11 @@ export default function LaunchesPage() {
                   </TD>
                   <TD>
                     <StatusPill status={p.status} />
+                  </TD>
+                  <TD className="hidden lg:table-cell" muted>
+                    <span className="block max-w-[160px] truncate" title={userLabel(p.createdBy)}>
+                      {userShort(p.createdBy)}
+                    </span>
                   </TD>
                   <TD className="hidden md:table-cell" align="right" muted numeric>
                     {new Date(p.createdAt).toLocaleDateString('ko-KR')}
