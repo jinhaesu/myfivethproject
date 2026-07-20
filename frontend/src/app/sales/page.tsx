@@ -5,9 +5,23 @@ import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
-import { SalesJournal, SALES_STAGES, fmtDate } from '@/lib/sales';
+import { SalesJournal, SALES_STAGES, STAGE_LABEL, STAGE_TONE, fmtDate } from '@/lib/sales';
 import { userShort, userLabelOrEmpty } from '@/lib/user';
-import { PageHeader, Button, Badge, EmptyState, CenterSpinner } from '@/components/ui';
+import {
+  PageHeader,
+  Button,
+  Badge,
+  EmptyState,
+  CenterSpinner,
+  Card,
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
 
 // 단계별 상단 수평선 색상 (파이프라인 컬럼 헤더)
 const STAGE_LINE: Record<string, string> = {
@@ -23,10 +37,46 @@ function journalStage(j: SalesJournal): string {
   return j.stage || clientStage || 'lead';
 }
 
+// 표 보기 정렬 기준 — 작성자별로 모아 보려는 목적이 커서 작성자 정렬을 넣었다
+type SortKey = 'meetingDate' | 'author' | 'client' | 'stage';
+
+function sortJournals(list: SalesJournal[], key: SortKey, asc: boolean): SalesJournal[] {
+  const val = (j: SalesJournal): string => {
+    if (key === 'author') return userShort(j.author || null) || '';
+    if (key === 'client') return (j.client as { name?: string } | undefined)?.name || '';
+    if (key === 'stage') return String(SALES_STAGES.findIndex((s) => s.key === journalStage(j)));
+    return j.meetingDate || '';
+  };
+  const sorted = [...list].sort((a, b) => val(a).localeCompare(val(b), 'ko'));
+  return asc ? sorted : sorted.reverse();
+}
+
 export default function SalesJournalListPage() {
   const [journals, setJournals] = useState<SalesJournal[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  // 보기 방식은 사람마다 취향이 갈려 브라우저에 기억시킨다
+  const [view, setView] = useState<'board' | 'table'>('board');
+  const [sortKey, setSortKey] = useState<SortKey>('meetingDate');
+  const [sortAsc, setSortAsc] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('salesJournalView');
+    if (saved === 'table' || saved === 'board') setView(saved);
+  }, []);
+
+  const changeView = (v: 'board' | 'table') => {
+    setView(v);
+    localStorage.setItem('salesJournalView', v);
+  };
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortAsc((v) => !v);
+    else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -52,11 +102,35 @@ export default function SalesJournalListPage() {
         title="영업일지"
         description="영업 단계별로 정리된 영업일지 파이프라인. 작성자·참고자·최고관리자만 열람할 수 있습니다."
         actions={
-          <Link href="/sales/new">
-            <Button variant="primary" size="md">
-              + 새 영업일지
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* 보기 전환 — 파이프라인(단계별 진행 파악용) / 표(작성자·거래처 비교용) */}
+            <div className="inline-flex rounded-md border border-[var(--border-1)] overflow-hidden">
+              {([
+                ['board', '파이프라인'],
+                ['table', '표'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => changeView(key)}
+                  aria-pressed={view === key}
+                  className={cn(
+                    'px-3 py-1.5 min-h-[36px] text-[12.5px] transition-colors',
+                    view === key
+                      ? 'bg-[var(--bg-2)] text-[var(--text-1)]'
+                      : 'text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)]',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Link href="/sales/new">
+              <Button variant="primary" size="md">
+                + 새 영업일지
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -81,6 +155,13 @@ export default function SalesJournalListPage() {
               </Button>
             </Link>
           }
+        />
+      ) : view === 'table' ? (
+        <JournalTable
+          journals={sortJournals(journals, sortKey, sortAsc)}
+          sortKey={sortKey}
+          sortAsc={sortAsc}
+          onSort={toggleSort}
         />
       ) : (
         <>
@@ -169,5 +250,135 @@ export default function SalesJournalListPage() {
         </>
       )}
     </AppLayout>
+  );
+}
+
+// 표 보기 — 작성자·거래처 기준으로 비교·정렬해서 보기 위한 목록
+function JournalTable({
+  journals,
+  sortKey,
+  sortAsc,
+  onSort,
+}: {
+  journals: SalesJournal[];
+  sortKey: SortKey;
+  sortAsc: boolean;
+  onSort: (k: SortKey) => void;
+}) {
+  const arrow = (k: SortKey) => (sortKey === k ? (sortAsc ? ' ↑' : ' ↓') : '');
+  const SortTH = ({ k, label, className }: { k: SortKey; label: string; className?: string }) => (
+    <TH className={className}>
+      <button
+        type="button"
+        onClick={() => onSort(k)}
+        className="hover:text-[var(--text-1)] transition-colors"
+      >
+        {label}
+        <span className="text-[var(--brand-400)]">{arrow(k)}</span>
+      </button>
+    </TH>
+  );
+
+  return (
+    <>
+      {/* 모바일: 표 대신 카드 — 컬럼이 6개라 좁은 화면에서 읽기 어렵다 */}
+      <div className="sm:hidden space-y-2">
+        {journals.map((j) => {
+          const client = j.client as { name?: string } | undefined;
+          const stage = journalStage(j);
+          return (
+            <Link key={j.id} href={`/sales/${j.id}`} className="block">
+              <Card padding="md" className="hover-lift">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 text-[14px] font-medium text-[var(--brand-400)] break-words">
+                    {j.title || '(제목 없음)'}
+                  </span>
+                  {j.passwordProtected && (
+                    <span className="text-[11px] text-[var(--text-4)] shrink-0" title="열람 잠금">
+                      🔒
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  <Badge tone={STAGE_TONE[stage] || 'neutral'} size="xs">
+                    {STAGE_LABEL[stage] || stage}
+                  </Badge>
+                  {j.isFirstMeeting && (
+                    <Badge tone="info" size="xs">
+                      최초
+                    </Badge>
+                  )}
+                  {client?.name && (
+                    <span className="text-[11.5px] text-[var(--text-3)] break-words">{client.name}</span>
+                  )}
+                </div>
+                <p className="mt-2 text-[11.5px] text-[var(--text-4)] break-words">
+                  작성 {userShort(j.author || null)} · 미팅 {fmtDate(j.meetingDate)}
+                </p>
+              </Card>
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="hidden sm:block">
+        <Table>
+          <THead>
+            <TR>
+              <TH>제목</TH>
+              <SortTH k="client" label="거래처" />
+              <SortTH k="stage" label="단계" className="hidden md:table-cell" />
+              <SortTH k="meetingDate" label="미팅일" />
+              <SortTH k="author" label="작성자" />
+              <TH className="hidden lg:table-cell" align="right">
+                작성일
+              </TH>
+            </TR>
+          </THead>
+          <TBody>
+            {journals.map((j) => {
+              const client = j.client as { name?: string } | undefined;
+              const stage = journalStage(j);
+              return (
+                <TR key={j.id}>
+                  <TD emphasis>
+                    <Link
+                      href={`/sales/${j.id}`}
+                      className="text-[var(--brand-400)] hover:text-[var(--brand-200)] font-medium transition-colors"
+                    >
+                      {j.title || '(제목 없음)'}
+                    </Link>
+                    {j.passwordProtected && (
+                      <span className="ml-1.5 text-[11px] text-[var(--text-4)]" title="열람 잠금">
+                        🔒
+                      </span>
+                    )}
+                  </TD>
+                  <TD muted>
+                    <span className="block max-w-[180px] truncate">{client?.name || '—'}</span>
+                  </TD>
+                  <TD className="hidden md:table-cell">
+                    <Badge tone={STAGE_TONE[stage] || 'neutral'} size="xs">
+                      {STAGE_LABEL[stage] || stage}
+                    </Badge>
+                  </TD>
+                  <TD muted numeric>
+                    {fmtDate(j.meetingDate)}
+                  </TD>
+                  <TD muted>
+                    <span className="block max-w-[160px] truncate" title={userLabelOrEmpty(j.author)}>
+                      {userShort(j.author || null)}
+                    </span>
+                  </TD>
+                  <TD className="hidden lg:table-cell" align="right" muted numeric>
+                    {fmtDate(j.createdAt)}
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      </div>
+    </>
   );
 }
