@@ -832,6 +832,7 @@ export default function LaunchDetailPage() {
                 dday !== null ? ` (${dday === 0 ? 'D-DAY' : dday > 0 ? `D-${dday}` : `D+${-dday}`})` : ''
               }`
             : isDisc ? '목표일 미정' : '출시일 미정',
+          project.createdBy ? `등록 ${userLabel(project.createdBy)}` : null,
           project.description,
         ]
           .filter(Boolean)
