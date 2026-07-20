@@ -12,11 +12,12 @@ const TONE: Record<Tone, string> = {
   ghost: 'bg-transparent border border-[var(--border-1)]',
 };
 
+// 모바일에서는 좌우 여백을 한 단계 줄여 좁은 화면의 가로 폭을 본문에 더 내준다
 const PAD: Record<Pad, string> = {
   none: '',
-  sm: 'p-3',
-  md: 'p-4',
-  lg: 'p-5',
+  sm: 'p-2.5 sm:p-3',
+  md: 'p-3.5 sm:p-4',
+  lg: 'p-4 sm:p-5',
 };
 
 export interface CardProps extends HTMLAttributes<HTMLDivElement> {
@@ -35,7 +36,7 @@ export function Card({
   return (
     <div
       className={cn(
-        'rounded-lg',
+        'rounded-lg min-w-0',
         TONE[tone],
         PAD[padding],
         interactive && 'hover-lift',
@@ -58,14 +59,21 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-start justify-between gap-3 mb-3', className)}>
-      <div>
+    <div
+      className={cn(
+        'flex flex-col sm:flex-row items-start sm:justify-between gap-2 sm:gap-3 mb-3',
+        className,
+      )}
+    >
+      <div className="min-w-0">
         <div className="text-[var(--text-1)] font-semibold tracking-tight">{title}</div>
         {subtitle ? (
           <div className="text-[var(--text-3)] text-[12.5px] mt-0.5">{subtitle}</div>
         ) : null}
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:flex-shrink-0">{actions}</div>
+      ) : null}
     </div>
   );
 }

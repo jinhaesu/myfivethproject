@@ -436,6 +436,10 @@ export default function NewLabelPage() {
             </div>
           ))}
         </div>
+        {/* 모바일: 스텝 이름이 숨겨지므로 현재 단계를 따로 표시 */}
+        <p className="sm:hidden mt-2 text-center text-xs text-blue-600 font-bold">
+          {step + 1}. {STEPS[step]}
+        </p>
       </div>
 
       {error && (
@@ -575,7 +579,7 @@ export default function NewLabelPage() {
               {/* 링크 입력 모드 */}
               {ingredientInputMode === 'link' && (
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                     <h2 className="text-lg font-bold">원재료 링크 입력</h2>
                     <button type="button" onClick={addLink} className="btn-secondary text-sm">+ 링크 추가</button>
                   </div>
@@ -752,7 +756,7 @@ export default function NewLabelPage() {
               {/* 직접 입력 모드 */}
               {ingredientInputMode === 'manual' && (
                 <div>
-              <div className="flex justify-between items-center mb-2">
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                 <h2 className="text-lg font-bold">배합비 (원재료)</h2>
                 <button type="button" onClick={addIngredient} className="btn-secondary text-sm">+ 원재료 추가</button>
               </div>
@@ -827,7 +831,7 @@ export default function NewLabelPage() {
                     {/* 복합원재료: 구성성분 입력 */}
                     {ing.ingredientType === 'compound' && (
                       <div className="mt-2 ml-4 p-2 bg-purple-50 rounded border border-purple-200">
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1">
                           <span className="text-xs font-bold text-purple-700">구성성분 (5% 이상 시 상위 5개 이상 필요)</span>
                           <button type="button" onClick={() => {
                             const updated = [...ingredients];
@@ -1168,7 +1172,7 @@ export default function NewLabelPage() {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-xs text-yellow-700">
                 AI가 추정한 값입니다. 실제 영양분석 결과로 수정해주세요.
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   { key: 'calories', label: '열량', unit: 'kcal' },
                   { key: 'carbohydrates', label: '탄수화물', unit: 'g' },

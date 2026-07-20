@@ -94,6 +94,9 @@
   body {
     background: var(--bg-canvas);
     color: var(--text-1);
+    /* 모바일에서 넓은 표·배지가 페이지 전체를 가로로 밀어내는 것을 막는다.
+       clip은 hidden과 달리 스크롤 컨테이너를 만들지 않아 sticky 헤더가 그대로 동작한다. */
+    overflow-x: clip;
     font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont,
                  'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
     font-size: var(--fs-base);
@@ -194,6 +197,39 @@
     outline: none;
     box-shadow: 0 0 0 2px var(--bg-canvas), 0 0 0 4px var(--brand-400);
   }
+
+  /* 스크롤은 되지만 스크롤바는 감춘다 (모바일 탭 바 등) */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* 터치 기기에서 관성 스크롤이 붙는 가로 스크롤 영역 */
+  .touch-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}
+
+/* ============================================================
+ * 모바일 대응
+ * ============================================================ */
+
+/* iOS Safari는 글자 크기가 16px 미만인 입력창을 탭하면 화면을 확대해 버린다.
+ * 개별 페이지에 흩어진 raw <input>까지 한 번에 막기 위해 요소 선택자로 처리한다.
+ * (:not() 두 번으로 특이도를 클래스보다 높여 Tailwind 유틸을 이긴다) */
+@media (max-width: 639px) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea,
+  .input-field {
+    font-size: 16px;
+  }
+
+  /* 모바일에서는 스크롤바를 얇게 — 좁은 화면의 가로 폭을 아끼기 위함 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
 }
 
 /* ============================================================

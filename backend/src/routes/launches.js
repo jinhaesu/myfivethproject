@@ -13,6 +13,7 @@ const {
   kstDateStr,
 } = require('../lib/launchEmails');
 const { createMagicLink } = require('../lib/magicLink');
+const { logUpdate, logCreate, logDelete, logEvent } = require('../lib/changeLog');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -25,6 +26,9 @@ function getResend() {
 }
 
 const EMAIL_FROM = () => process.env.EMAIL_FROM || 'noreply@joinandjoin.com';
+
+// 변경 이력 엔티티 타입 — 같은 테이블이지만 출시/단종을 구분해 남긴다
+const logEntity = (kind) => (kind === 'discontinuation' ? 'discontinuation' : 'launch');
 
 // 응답에서 비밀번호 해시 제거 + editProtected 불린만 노출
 function sanitizeProject(p) {
@@ -182,6 +186,13 @@ router.post('/', authenticate, async (req, res) => {
       include: PROJECT_INCLUDE,
     });
 
+    await logCreate(prisma, {
+      entityType: logEntity(kind),
+      entityId: project.id,
+      actor: req.user,
+      summary: kind === 'discontinuation' ? '단종 프로젝트 생성' : '출시 프로젝트 생성',
+    });
+
     res.status(201).json({ project: sanitizeProject(project) });
   } catch (error) {
     console.error('Create launch project error:', error);
@@ -289,6 +300,15 @@ router.put('/:id', authenticate, async (req, res) => {
       data,
       include: PROJECT_INCLUDE,
     });
+
+    await logUpdate(prisma, {
+      entityType: logEntity(existing.kind),
+      entityId: existing.id,
+      actor: req.user,
+      before: existing,
+      after: data,
+    });
+
     res.json({ project: sanitizeProject(project) });
   } catch (error) {
     console.error('Update launch project error:', error);
@@ -304,6 +324,14 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
     }
     if (!isEditAllowed(req, existing)) return editLockedResponse(res);
+
+    await logDelete(prisma, {
+      entityType: logEntity(existing.kind),
+      entityId: existing.id,
+      actor: req.user,
+      summary: `삭제: ${existing.productName}`,
+    });
+
     await prisma.launchProject.delete({ where: { id: req.params.id } });
     res.json({ message: '프로젝트가 삭제되었습니다.' });
   } catch (error) {
@@ -361,6 +389,17 @@ router.put('/stages/:stageId', authenticate, async (req, res) => {
       include: { tasks: { orderBy: { sortOrder: 'asc' } } },
     });
 
+    // startedAt/completedAt은 상태 변경에 딸린 값이라 이력에서 제외
+    await logUpdate(prisma, {
+      entityType: 'launchStage',
+      entityId: existing.id,
+      entityLabel: existing.name,
+      actor: req.user,
+      before: existing,
+      after: data,
+      fields: ['name', 'department', 'ownerName', 'ownerEmail', 'status', 'dueDate'],
+    });
+
     // 단계 시작 시 프로젝트도 진행 중으로
     if (startingNow && existing.project.status === 'planning') {
       await prisma.launchProject.update({
@@ -403,6 +442,17 @@ router.put('/tasks/:taskId', authenticate, async (req, res) => {
 
     const task = await prisma.launchTask.update({ where: { id: req.params.taskId }, data });
 
+    // completedAt/completedBy는 체크에 딸린 값이라 이력에서 제외 (담당자는 actor로 남음)
+    await logUpdate(prisma, {
+      entityType: 'launchTask',
+      entityId: existing.id,
+      entityLabel: existing.name,
+      actor: req.user,
+      before: existing,
+      after: data,
+      fields: ['isCompleted', 'note'],
+    });
+
     let stageCompleted = false;
     let nextStageStarted = null;
 
@@ -415,6 +465,14 @@ router.put('/tasks/:taskId', authenticate, async (req, res) => {
         await prisma.launchStage.update({
           where: { id: existing.stageId },
           data: { status: 'completed', completedAt: new Date() },
+        });
+        // 체크 완료로 자동 전환된 단계도 이력에 남긴다 (수동 변경과 구분되게 summary로 기록)
+        await logEvent(prisma, {
+          entityType: 'launchStage',
+          entityId: existing.stageId,
+          action: 'update',
+          summary: `체크리스트 전량 완료로 '${existing.stage.name}' 단계 자동 완료`,
+          actor: req.user,
         });
 
         // 다음 단계 자동 시작 + 담당자 알림
@@ -431,6 +489,13 @@ router.put('/tasks/:taskId', authenticate, async (req, res) => {
               data: { status: 'in_progress', startedAt: new Date() },
               include: { tasks: { orderBy: { sortOrder: 'asc' } } },
             });
+            await logEvent(prisma, {
+              entityType: 'launchStage',
+              entityId: started.id,
+              action: 'update',
+              summary: `이전 단계 완료로 '${started.name}' 단계 자동 시작`,
+              actor: req.user,
+            });
             const notification = await sendStageNotification(existing.stage.project, started, {
               type: 'stage_start',
             });
@@ -442,12 +507,26 @@ router.put('/tasks/:taskId', authenticate, async (req, res) => {
             where: { id: existing.stage.projectId },
             data: { status: 'completed' },
           });
+          await logEvent(prisma, {
+            entityType: existing.stage.project.kind === 'discontinuation' ? 'discontinuation' : 'launch',
+            entityId: existing.stage.projectId,
+            action: 'update',
+            summary: '마지막 단계 완료로 프로젝트 자동 완료',
+            actor: req.user,
+          });
         }
       } else if (!allDone && existing.stage.status === 'completed') {
         // 완료된 단계에서 체크 해제 → 진행 중으로 되돌림
         await prisma.launchStage.update({
           where: { id: existing.stageId },
           data: { status: 'in_progress', completedAt: null },
+        });
+        await logEvent(prisma, {
+          entityType: 'launchStage',
+          entityId: existing.stageId,
+          action: 'update',
+          summary: `체크 해제로 '${existing.stage.name}' 단계 진행 중으로 되돌림`,
+          actor: req.user,
         });
       }
     }

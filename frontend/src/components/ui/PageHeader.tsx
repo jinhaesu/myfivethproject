@@ -19,7 +19,7 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        'flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6',
+        'flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 sm:gap-4 mb-5 sm:mb-6',
         className,
       )}
     >
@@ -29,14 +29,17 @@ export function PageHeader({
             {eyebrow}
           </div>
         ) : null}
-        <h1 className="text-[26px] font-semibold tracking-tight text-[var(--text-1)] leading-[1.18]">
+        <h1 className="text-[21px] sm:text-[26px] font-semibold tracking-tight text-[var(--text-1)] leading-[1.22] sm:leading-[1.18] break-keep">
           {title}
         </h1>
         {description ? (
           <p className="text-[13px] text-[var(--text-3)] mt-1.5 max-w-2xl">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex items-center gap-2 flex-shrink-0">{actions}</div> : null}
+      {/* 모바일에서는 액션 버튼이 줄바꿈되며 쌓이도록 — 넘쳐서 잘리지 않게 */}
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:flex-shrink-0">{actions}</div>
+      ) : null}
     </header>
   );
 }

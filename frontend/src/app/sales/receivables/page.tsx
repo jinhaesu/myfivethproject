@@ -146,16 +146,20 @@ export default function ReceivablesPage() {
         />
       ) : (
         <>
-          <div className="mb-3 flex items-center gap-3 text-[12.5px] text-[var(--text-3)]">
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-[var(--text-3)]">
             <span>
               {year}년 총 매출채권 잔액 합계{' '}
               <span className="text-[var(--brand-400)] font-semibold tabular">{fmtKRW(grandTotal)}</span>
             </span>
-            <span className="text-[var(--text-4)]">·</span>
+            <span className="text-[var(--text-4)] hidden sm:inline">·</span>
             <span>거래처 {data.rows.length}곳</span>
           </div>
+          {/* 12개월 매트릭스는 카드로 접기 어려워 가로 스크롤 + 거래처명 고정으로 처리 */}
+          <p className="sm:hidden text-[11.5px] text-[var(--text-4)] mb-2">
+            좌우로 밀어서 각 월을 확인하세요. 거래처명은 왼쪽에 고정됩니다 →
+          </p>
           <Card padding="none" className="overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="touch-scroll-x">
               <table className="border-collapse text-[12.5px] min-w-max">
                 <thead>
                   <tr>
@@ -187,7 +191,8 @@ export default function ReceivablesPage() {
                       >
                         <Link
                           href={`/sales/clients/${row.clientId}`}
-                          className="text-[var(--brand-400)] hover:text-[var(--brand-200)] font-medium transition-colors"
+                          className="block max-w-[120px] sm:max-w-none truncate text-[var(--brand-400)] hover:text-[var(--brand-200)] font-medium transition-colors"
+                          title={row.name}
                         >
                           {row.name}
                         </Link>

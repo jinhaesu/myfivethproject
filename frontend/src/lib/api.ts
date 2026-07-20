@@ -404,6 +404,20 @@ export const api = {
       return request(`/sales/calendar${q.toString() ? `?${q.toString()}` : ''}`);
     },
   },
+  changelog: {
+    // 출시/단종/검수 등 열람 제한이 없는 자료의 변경 이력
+    list: (entityType: string, entityId: string) =>
+      request(`/changelog/${entityType}/${entityId}`),
+    // 출시 프로젝트 본체 + 하위 단계·업무 이력을 한 번에
+    project: (projectId: string) => request(`/changelog/project/${projectId}/all`),
+    // 라벨(제품) 단위 QCQA 검수 항목 이력
+    labelReview: (labelId: string) => request(`/changelog/label/${labelId}/review`),
+    // 영업일지는 열람 권한 검사가 필요해 sales 라우트에서 처리
+    journal: (journalId: string, viewToken?: string) =>
+      request(`/sales/journals/${journalId}/history`, {
+        headers: viewToken ? { 'X-Journal-Token': viewToken } : {},
+      }),
+  },
   uploads: {
     uploadDesign: (labelId: string, file: File) =>
       uploadFile(`/uploads/${labelId}/design`, file, 'designFile'),

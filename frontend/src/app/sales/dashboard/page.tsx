@@ -115,7 +115,7 @@ export default function SalesDashboardPage() {
 
           {/* 단계별 파이프라인 */}
           <Card padding="lg">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-4">
               <div className="text-[var(--text-1)] font-semibold tracking-tight">단계별 파이프라인</div>
               <div className="text-[12.5px] text-[var(--text-3)]">
                 가중 예상매출 합계{' '}
@@ -130,15 +130,15 @@ export default function SalesDashboardPage() {
                 const pct = Math.round((s.weighted / maxWeighted) * 100);
                 return (
                   <div key={s.stage} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between text-[12.5px]">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                        <span className="text-[var(--text-1)] font-medium">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 text-[12.5px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                        <span className="text-[var(--text-1)] font-medium truncate">
                           {STAGE_LABEL[s.stage] || s.label}
                         </span>
-                        <span className="text-[var(--text-4)] tabular">거래처 {s.count}</span>
+                        <span className="text-[var(--text-4)] tabular flex-shrink-0">거래처 {s.count}</span>
                       </div>
-                      <div className="tabular">
+                      <div className="tabular pl-4 sm:pl-0 flex-shrink-0">
                         <span className="text-[var(--text-1)] font-semibold">{fmtKRW(s.weighted)}</span>
                         <span className="text-[var(--text-4)] ml-2">/ {fmtKRW(s.expected)}</span>
                       </div>
@@ -207,13 +207,17 @@ export default function SalesDashboardPage() {
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-[13px] text-[var(--text-1)] truncate">{c.name}</span>
-                        <Badge tone={STAGE_TONE[c.stage] || 'neutral'} size="xs">
-                          {STAGE_LABEL[c.stage] || c.stage}
-                        </Badge>
+                        <span className="flex-shrink-0">
+                          <Badge tone={STAGE_TONE[c.stage] || 'neutral'} size="xs">
+                            {STAGE_LABEL[c.stage] || c.stage}
+                          </Badge>
+                        </span>
                       </div>
-                      <Badge tone={c.days >= 30 ? 'danger' : 'warning'} size="xs">
-                        {c.days}일째 무접촉
-                      </Badge>
+                      <span className="flex-shrink-0">
+                        <Badge tone={c.days >= 30 ? 'danger' : 'warning'} size="xs">
+                          {c.days}일째 무접촉
+                        </Badge>
+                      </span>
                     </Link>
                   ))}
                 </div>

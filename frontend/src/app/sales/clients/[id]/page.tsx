@@ -212,8 +212,8 @@ export default function SalesClientDetailPage() {
       <PageHeader
         eyebrow="거래처"
         title={
-          <span className="flex items-center gap-2.5">
-            {client.name}
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
+            <span className="break-words">{client.name}</span>
             <Badge tone={STAGE_TONE[client.stage] || 'neutral'} size="md">
               {STAGE_LABEL[client.stage] || client.stage}
             </Badge>
@@ -285,13 +285,14 @@ export default function SalesClientDetailPage() {
               ))}
             </div>
           ) : (
+            /* 모바일에서는 라벨 128px + 값이 한 줄에 안 들어가 세로로 쌓는다 */
             <dl className="flex flex-col divide-y divide-[var(--border-1)]">
-              <div className="flex gap-3 py-2">
-                <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">예상 매출(월)</dt>
+              <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">예상 매출(월)</dt>
                 <dd className="text-[12.5px] text-[var(--text-1)] tabular">{fmtKRW(client.expectedRevenue)}</dd>
               </div>
-              <div className="flex gap-3 py-2">
-                <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">성사 확률</dt>
+              <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">성사 확률</dt>
                 <dd className="text-[12.5px] text-[var(--text-1)] tabular">
                   {client.winProbability != null ? (
                     `${client.winProbability}%`
@@ -303,8 +304,8 @@ export default function SalesClientDetailPage() {
                   )}
                 </dd>
               </div>
-              <div className="flex gap-3 py-2">
-                <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">가중 예상매출</dt>
+              <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">가중 예상매출</dt>
                 <dd className="text-[12.5px] font-semibold text-[var(--success-fg)] tabular">
                   {fmtKRW(weightedRevenue(client))}
                 </dd>
@@ -312,8 +313,8 @@ export default function SalesClientDetailPage() {
               {PROFILE_FIELDS.map((f) => {
                 const v = client[f.key] as string | null;
                 return (
-                  <div key={f.key as string} className="flex gap-3 py-2">
-                    <dt className="w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">{f.label}</dt>
+                  <div key={f.key as string} className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                    <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">{f.label}</dt>
                     <dd className="text-[12.5px] text-[var(--text-1)] whitespace-pre-wrap break-words">
                       {v || '—'}
                     </dd>
@@ -391,7 +392,7 @@ export default function SalesClientDetailPage() {
           <div className="flex flex-col divide-y divide-[var(--border-1)]">
             {client.journals.map((j) => (
               <Link key={j.id} href={`/sales/${j.id}`} className="flex items-center gap-3 py-2.5 group">
-                <span className="text-[13px] text-[var(--brand-400)] group-hover:text-[var(--brand-200)] font-medium truncate">
+                <span className="min-w-0 text-[13px] text-[var(--brand-400)] group-hover:text-[var(--brand-200)] font-medium truncate">
                   {j.title || '(제목 없음)'}
                 </span>
                 {j.isFirstMeeting ? <Badge tone="violet" size="xs">최초미팅</Badge> : null}
@@ -424,7 +425,7 @@ export default function SalesClientDetailPage() {
           <div className="flex flex-col divide-y divide-[var(--border-1)]">
             {client.plans.map((p) => (
               <div key={p.id} className="flex items-center gap-3 py-2.5">
-                <span className="text-[13px] text-[var(--text-1)] truncate">{p.title}</span>
+                <span className="min-w-0 text-[13px] text-[var(--text-1)] truncate">{p.title}</span>
                 {p.stage ? <Badge tone="neutral" size="xs">{STAGE_LABEL[p.stage] || p.stage}</Badge> : null}
                 <span className="ml-auto text-[11.5px] text-[var(--text-3)] tabular">{fmtDate(p.planDate)}</span>
               </div>

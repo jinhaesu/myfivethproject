@@ -178,6 +178,105 @@ export default function DashboardPage() {
         />
       ) : (
         <>
+          {/* 모바일: 표 대신 카드 목록 — 좁은 화면에서 숨겨지던 강조 표기·첨부·진행률까지 보여준다 */}
+          <div className="sm:hidden space-y-2">
+            {labels.map((label) => {
+              const progress = getReviewProgress(label);
+              const claims = (label.healthClaims as HealthClaim[]) || [];
+              const eligibleClaims = claims.filter((c) => c.eligible);
+
+              return (
+                <Link key={label.id} href={`/labels/${label.id}`} className="block">
+                  <Card padding="md" className="hover-lift">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-[14px] font-medium text-[var(--brand-400)] break-words">
+                          {label.productName}
+                        </span>
+                        {label.productType && (
+                          <p className="text-[11px] text-[var(--text-4)] mt-0.5">{label.productType}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0">
+                        <StatusPill status={label.status} />
+                      </span>
+                    </div>
+
+                    {eligibleClaims.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {eligibleClaims.slice(0, 3).map((c) => (
+                          <span
+                            key={c.id}
+                            className={`px-1.5 py-0.5 rounded-full text-[10.5px] font-bold ${getClaimBadgeColor(
+                              c,
+                            )}`}
+                          >
+                            {c.name}
+                          </span>
+                        ))}
+                        {eligibleClaims.length > 3 && (
+                          <Badge tone="neutral" size="xs">
+                            +{eligibleClaims.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {label.designFileUrl ? (
+                        <Badge tone="violet" size="xs">
+                          디자인 {label.designFileName?.endsWith('.pdf') ? 'PDF' : 'IMG'}
+                        </Badge>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">디자인 미첨부</span>
+                      )}
+                      {label.manufacturingReportUrl ? (
+                        <>
+                          <Badge tone="info" size="xs">
+                            품목제조보고
+                          </Badge>
+                          {label.manufacturingReportMaskingLocked ? (
+                            <Badge tone="success" size="xs">
+                              마스킹
+                            </Badge>
+                          ) : label.manufacturingReportMaskedUrl ? (
+                            <Badge tone="warning" size="xs">
+                              자동
+                            </Badge>
+                          ) : (
+                            <Badge tone="warning" size="xs">
+                              미마스킹
+                            </Badge>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">보고서 미첨부</span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-[var(--bg-3)] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--brand-500)] transition-all duration-base ease-out-soft"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className="text-[11.5px] text-[var(--text-3)] tabular w-9 text-right shrink-0">
+                        {progress}%
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-[11px] text-[var(--text-4)] break-words">
+                      {label.createdBy.name || label.createdBy.email} ·{' '}
+                      {new Date(label.createdAt).toLocaleDateString('ko-KR')}
+                    </p>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="hidden sm:block">
           <Table>
             <THead>
               <TR>
@@ -315,18 +414,19 @@ export default function DashboardPage() {
               })}
             </TBody>
           </Table>
+          </div>
 
-          {/* 페이지네이션 */}
+          {/* 페이지네이션 — 페이지 수가 많아도 모바일에서 줄바꿈되도록 */}
           {pagination.totalPages > 1 && (
-            <div className="flex justify-center mt-5 gap-1">
+            <div className="flex flex-wrap justify-center mt-5 gap-1">
               {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
                 <button
                   key={page}
                   onClick={() => fetchLabels(page)}
                   className={
                     page === pagination.page
-                      ? 'px-2.5 py-1 rounded-md text-[12.5px] bg-[var(--brand-500)] text-white tabular'
-                      : 'px-2.5 py-1 rounded-md text-[12.5px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] tabular'
+                      ? 'min-w-[36px] px-2.5 py-2 sm:py-1 rounded-md text-[12.5px] bg-[var(--brand-500)] text-white tabular'
+                      : 'min-w-[36px] px-2.5 py-2 sm:py-1 rounded-md text-[12.5px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] tabular'
                   }
                 >
                   {page}

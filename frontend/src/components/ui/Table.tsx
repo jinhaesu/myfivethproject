@@ -8,8 +8,9 @@ export function Table({
   ...rest
 }: TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="rounded-lg border border-[var(--border-1)] bg-[var(--bg-1)] overflow-hidden">
-      <div className="overflow-x-auto">
+    // min-w-0 / max-w-full: 표가 넓어도 페이지 전체를 가로로 밀지 않고 이 안에서만 스크롤되게 한다
+    <div className="rounded-lg border border-[var(--border-1)] bg-[var(--bg-1)] overflow-hidden min-w-0 max-w-full">
+      <div className="touch-scroll-x">
         <table className={cn('w-full text-[13px]', className)} {...rest} />
       </div>
     </div>
@@ -47,7 +48,7 @@ export function TH({ className, align = 'left', numeric, children, ...rest }: Th
   return (
     <th
       className={cn(
-        'px-4 py-2.5 font-medium text-[11px] uppercase tracking-[0.04em] text-[var(--text-3)]',
+        'px-3 sm:px-4 py-2.5 font-medium text-[11px] uppercase tracking-[0.04em] text-[var(--text-3)] whitespace-nowrap',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         align === 'left' && 'text-left',
@@ -80,7 +81,7 @@ export function TD({
   return (
     <td
       className={cn(
-        'px-4 py-2.5 text-[var(--text-2)]',
+        'px-3 sm:px-4 py-2.5 text-[var(--text-2)]',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         numeric && 'tabular text-right',

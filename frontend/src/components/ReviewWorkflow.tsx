@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import ChangeLogSection from '@/components/ChangeLogSection';
 
 interface ReviewItem {
   id: string;
@@ -160,9 +161,9 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
     <div>
       {/* 전체 진행률 */}
       <div className="card mb-6">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-lg font-bold">검토 진행 현황</h3>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm text-gray-500">
               {completedCount} / {totalCount} 완료
             </span>
@@ -201,7 +202,7 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
       {/* 이메일 알림 모달 */}
       {showEmailModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowEmailModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">검토 요청 이메일 발송</h3>
             <p className="text-xs text-gray-500 mb-4">
               검토 담당자에게 &quot;{productName}&quot; 제품의 검토 요청 이메일을 발송합니다.
@@ -292,15 +293,184 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
               className={`rounded-xl border-l-4 overflow-hidden ${catColor}`}
             >
               {/* 카테고리 헤더 */}
-              <div className="px-5 py-3 flex items-center justify-between">
-                <h4 className="font-bold text-gray-800">{category.name}</h4>
+              <div className="px-4 sm:px-5 py-3 flex items-center justify-between gap-2">
+                <h4 className="font-bold text-gray-800 min-w-0 break-words">{category.name}</h4>
                 <span className="text-sm text-gray-600">
                   {catCompleted}/{catTotal}
                 </span>
               </div>
 
-              {/* 검토 항목 테이블 */}
-              <div className="bg-white overflow-x-auto">
+              {/* 검토 항목 — 모바일 카드 뷰 (표는 minWidth 700px라 폰에서 가로 스크롤하며 입력해야 함) */}
+              <div className="sm:hidden bg-white divide-y divide-gray-100">
+                {category.items.map((item) => {
+                  const isLoading = loadingItems[item.id];
+                  const deptColor = DEPT_COLORS[item.department] || 'bg-gray-100 text-gray-700';
+                  const hasNoReviewer = !item.reviewerName;
+                  const showWarning = reviewerWarning === item.id;
+
+                  return (
+                    <div key={item.id} className={`p-3 ${item.isCompleted ? 'bg-green-50/50' : ''}`}>
+                      <div className="flex items-start gap-2.5">
+                        <button
+                          onClick={() => handleToggleItem(item.id, item.isCompleted, item.reviewerName)}
+                          disabled={isLoading}
+                          aria-label={item.isCompleted ? '검토 완료 해제' : '검토 완료로 표시'}
+                          className={`mt-0.5 shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                            item.isCompleted
+                              ? 'bg-green-500 border-green-500 text-white'
+                              : hasNoReviewer
+                              ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                              : 'border-gray-300'
+                          } ${isLoading ? 'opacity-50' : ''}`}
+                        >
+                          {item.isCompleted && (
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <span
+                              className={`text-sm break-words ${
+                                item.isCompleted ? 'line-through text-gray-400' : 'text-gray-800'
+                              }`}
+                            >
+                              {item.taskName}
+                            </span>
+                            <span
+                              className={`shrink-0 inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${deptColor}`}
+                            >
+                              {item.department}
+                            </span>
+                          </div>
+
+                          {showWarning && (
+                            <p className="mt-1 text-xs text-red-600">검토자를 먼저 입력해주세요</p>
+                          )}
+
+                          {/* 검토자 */}
+                          <div className="mt-2">
+                            <span className="text-xs text-gray-400">검토자</span>
+                            {editingName === item.id ? (
+                              <div className="mt-1 space-y-1.5">
+                                <input
+                                  type="text"
+                                  value={nameInputs[item.id] ?? item.reviewerName ?? ''}
+                                  onChange={(e) =>
+                                    setNameInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveName(item.id);
+                                    if (e.key === 'Escape') setEditingName(null);
+                                  }}
+                                  className="input-field text-sm w-full"
+                                  placeholder="검토자 이름 입력"
+                                  autoFocus
+                                />
+                                <div className="flex gap-3">
+                                  <button
+                                    onClick={() => handleSaveName(item.id)}
+                                    disabled={isLoading}
+                                    className="text-xs text-blue-600 py-1"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingName(null)}
+                                    className="text-xs text-gray-400 py-1"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                onClick={() => {
+                                  setEditingName(item.id);
+                                  setNameInputs((prev) => ({ ...prev, [item.id]: item.reviewerName || '' }));
+                                }}
+                                className={`mt-1 text-sm rounded px-2 py-2 min-h-[40px] flex items-center break-words ${
+                                  item.reviewerName
+                                    ? 'text-gray-700 bg-gray-50'
+                                    : 'border border-dashed border-gray-300'
+                                }`}
+                              >
+                                {item.reviewerName ? (
+                                  <span>{item.reviewerName}</span>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">검토자 입력 (필수)</span>
+                                )}
+                              </div>
+                            )}
+                            {item.completedAt && editingName !== item.id && (
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                {new Date(item.completedAt).toLocaleDateString('ko-KR')}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 비고 */}
+                          <div className="mt-2">
+                            <span className="text-xs text-gray-400">비고</span>
+                            {editingNote === item.id ? (
+                              <div className="mt-1 space-y-1.5">
+                                <input
+                                  type="text"
+                                  value={noteInputs[item.id] ?? item.reviewerNote ?? ''}
+                                  onChange={(e) =>
+                                    setNoteInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveNote(item.id);
+                                    if (e.key === 'Escape') setEditingNote(null);
+                                  }}
+                                  className="input-field text-sm w-full"
+                                  placeholder="비고 입력"
+                                  autoFocus
+                                />
+                                <div className="flex gap-3">
+                                  <button
+                                    onClick={() => handleSaveNote(item.id)}
+                                    disabled={isLoading}
+                                    className="text-xs text-blue-600 py-1"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingNote(null)}
+                                    className="text-xs text-gray-400 py-1"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                onClick={() => {
+                                  setEditingNote(item.id);
+                                  setNoteInputs((prev) => ({ ...prev, [item.id]: item.reviewerNote || '' }));
+                                }}
+                                className="mt-1 text-sm text-gray-600 rounded px-2 py-2 min-h-[40px] flex items-center break-words bg-gray-50"
+                              >
+                                {item.reviewerNote ? (
+                                  <span>{item.reviewerNote}</span>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">탭하여 입력</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 검토 항목 테이블 (데스크톱) */}
+              <div className="bg-white overflow-x-auto hidden sm:block">
                 <table className="w-full" style={{ minWidth: '700px' }}>
                   <thead className="bg-gray-50 border-y border-gray-200">
                     <tr>
@@ -508,6 +678,9 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
           );
         })}
       </div>
+
+      {/* 검수 항목 수정 이력 — 누가 언제 무엇을 체크·수정했는지 */}
+      <ChangeLogSection entityType="labelReview" entityId={labelId} title="검수 수정 이력" />
     </div>
   );
 }

@@ -19,11 +19,13 @@ const VARIANT: Record<Variant, string> = {
     'bg-transparent hover:bg-[var(--bg-2)] text-[var(--text-1)] border-[var(--border-2)]',
 };
 
+// 모바일에서는 min-height로 터치 타겟을 넓힌다 (min-height가 height를 이김).
+// xs는 표 행·헤더 안에 촘촘히 들어가는 크기라 44px까지 키우면 레이아웃이 깨져 36px로 둔다.
 const SIZE: Record<Size, string> = {
-  xs: 'h-7 px-2 text-[12px] gap-1.5',
-  sm: 'h-8 px-3 text-[13px] gap-1.5',
-  md: 'h-9 px-3.5 text-sm gap-2',
-  lg: 'h-11 px-4 text-sm gap-2',
+  xs: 'h-7 min-h-[36px] sm:min-h-0 px-2 text-[12px] gap-1.5',
+  sm: 'h-8 min-h-[40px] sm:min-h-0 px-3 text-[13px] gap-1.5',
+  md: 'h-9 min-h-[44px] sm:min-h-0 px-3.5 text-sm gap-2',
+  lg: 'h-11 min-h-[44px] sm:min-h-0 px-4 text-sm gap-2',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
