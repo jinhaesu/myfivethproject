@@ -13,6 +13,7 @@ import {
   fmtDate,
   toDateInput,
 } from '@/lib/sales';
+import { googleCalendarUrl, downloadEventIcs, downloadIcs } from '@/lib/calendarExport';
 import {
   PageHeader,
   Card,
@@ -162,7 +163,12 @@ export default function SalesPlansPage() {
         eyebrow="Sales Calendar"
         title="영업 캘린더"
         description="출시·단종·영업 미팅·영업계획·할일 일정을 통합해서 보여줍니다."
-        actions={<PlanFormToggle onCreated={load} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportRangeButton events={visibleEvents} periodLabel={periodLabel} />
+            <PlanFormToggle onCreated={load} />
+          </div>
+        }
       />
 
       {/* 컨트롤 바 */}
@@ -257,8 +263,10 @@ export default function SalesPlansPage() {
 
       {/* 캘린더 그리드 */}
       <Card padding="none" className="overflow-hidden mb-6">
-        <div className="overflow-x-auto">
-          <div className="min-w-[720px]">
+        {/* 월 뷰는 모바일 전용 축약 레이아웃이 있고, 일 뷰는 세로 목록이라 최소 너비가 필요 없다.
+            주 뷰만 7일을 나란히 놓아야 해서 가로 스크롤을 유지한다. */}
+        <div className={view === 'week' ? 'touch-scroll-x' : ''}>
+          <div className={view === 'week' ? 'min-w-[720px]' : ''}>
             {view === 'month' && <MonthGrid from={from} monthOf={monthOf} today={today} byDay={byDay} />}
             {view === 'week' && <WeekGrid from={from} today={today} byDay={byDay} />}
             {view === 'day' && <DayView day={startOfDay(anchor)} byDay={byDay} />}
@@ -267,6 +275,11 @@ export default function SalesPlansPage() {
       </Card>
 
       {/* 하단 리스트 */}
+      {view === 'month' && (
+        <p className="sm:hidden text-[11.5px] text-[var(--text-4)] mb-2 -mt-3">
+          달력의 점은 일정 유형입니다. 자세한 내용은 아래 목록에서 확인하세요.
+        </p>
+      )}
       <div className="mb-2 text-[12.5px] text-[var(--text-3)]">
         이 기간의 일정 {visibleEvents.length}건
         {hiddenTypes.size > 0 && (
@@ -311,7 +324,10 @@ export default function SalesPlansPage() {
                       {ev.clientName || '—'}
                     </TD>
                     <TD align="right">
-                      {planId && <DeletePlanButton planId={planId} onDeleted={load} />}
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        <EventExportActions ev={ev} />
+                        {planId && <DeletePlanButton planId={planId} onDeleted={load} />}
+                      </div>
                     </TD>
                   </TR>
                 );
@@ -374,7 +390,7 @@ function MonthGrid({
           return (
             <div
               key={key}
-              className="min-h-[94px] border-b border-r border-[var(--border-1)] p-1 flex flex-col gap-0.5"
+              className="min-h-[56px] sm:min-h-[94px] border-b border-r border-[var(--border-1)] p-1 flex flex-col gap-0.5"
             >
               <div className="flex items-center justify-between px-0.5">
                 <span
@@ -394,7 +410,22 @@ function MonthGrid({
                   {d.getDate()}
                 </span>
               </div>
-              <div className="flex flex-col gap-0.5 overflow-hidden">
+              {/* 모바일: 칸이 좁아 제목을 못 담으므로 유형별 점으로만 표시 (상세는 아래 목록에서 확인) */}
+              <div className="sm:hidden flex flex-wrap items-center gap-[3px] px-0.5">
+                {list.slice(0, 4).map((ev) => (
+                  <span
+                    key={ev.id}
+                    title={`[${EVENT_META[ev.type].label}] ${ev.title}`}
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: EVENT_META[ev.type].color }}
+                  />
+                ))}
+                {list.length > 4 && (
+                  <span className="text-[9.5px] text-[var(--text-4)] leading-none">+{list.length - 4}</span>
+                )}
+              </div>
+              {/* 데스크톱: 제목까지 보여주는 기존 칩 */}
+              <div className="hidden sm:flex flex-col gap-0.5 overflow-hidden">
                 {list.slice(0, 3).map((ev) => (
                   <EventChip key={ev.id} ev={ev} />
                 ))}
@@ -471,23 +502,63 @@ function DayView({ day, byDay }: { day: Date; byDay: Record<string, CalendarEven
           {list.map((ev) => {
             const meta = EVENT_META[ev.type];
             return (
-              <Link
+              <div
                 key={ev.id}
-                href={ev.url}
-                className="flex items-center gap-3 p-3 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)] transition-colors"
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)]"
               >
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: meta.color }} />
                 <Badge tone={meta.tone} size="xs">
                   {meta.label}
                 </Badge>
-                <span className="text-[13px] text-[var(--text-1)] truncate flex-1">{ev.title}</span>
+                <Link
+                  href={ev.url}
+                  className="text-[13px] text-[var(--text-1)] hover:text-[var(--brand-400)] transition-colors truncate flex-1 min-w-[140px]"
+                >
+                  {ev.title}
+                </Link>
                 {ev.clientName && <span className="text-[12px] text-[var(--text-3)]">{ev.clientName}</span>}
-              </Link>
+                <EventExportActions ev={ev} />
+              </div>
             );
           })}
         </div>
       )}
     </div>
+  );
+}
+
+// 일정 하나를 구글 캘린더로 보내거나 .ics로 내려받는 버튼 묶음
+function EventExportActions({ ev }: { ev: CalendarEvent }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <a
+        href={googleCalendarUrl(ev)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="구글 캘린더에 이 일정 추가"
+        className="inline-flex items-center h-7 px-2 rounded-md border border-[var(--border-2)] text-[12px] text-[var(--text-2)] hover:bg-[var(--bg-2)] hover:text-[var(--text-1)] transition-colors whitespace-nowrap"
+      >
+        구글 캘린더
+      </a>
+      <Button variant="ghost" size="xs" title="이 일정을 .ics 파일로 저장" onClick={() => downloadEventIcs(ev)}>
+        .ics
+      </Button>
+    </div>
+  );
+}
+
+// 현재 조회 범위의 일정 전체를 .ics 한 파일로 내보낸다
+function ExportRangeButton({ events, periodLabel }: { events: CalendarEvent[]; periodLabel: string }) {
+  if (events.length === 0) return null;
+  return (
+    <Button
+      variant="secondary"
+      size="md"
+      title={`${periodLabel} 일정 ${events.length}건을 .ics 파일로 내보냅니다`}
+      onClick={() => downloadIcs(events, `영업캘린더_${periodLabel.replace(/[^0-9가-힣]/g, '')}.ics`)}
+    >
+      일정 내보내기 ({events.length})
+    </Button>
   );
 }
 
@@ -585,11 +656,11 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 sm:p-8 bg-[var(--bg-overlay)] backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg mt-10" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-start justify-center p-3 sm:p-8 bg-[var(--bg-overlay)] backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg mt-4 sm:mt-10 mb-6" onClick={(e) => e.stopPropagation()}>
         <Card padding="lg" tone="elevated">
           <div className="text-[15px] font-semibold text-[var(--text-1)] mb-4">영업계획 등록</div>
-          <div className="flex flex-col gap-3 max-h-[85vh] overflow-y-auto">
+          <div className="flex flex-col gap-3 max-h-[70vh] sm:max-h-[85vh] overflow-y-auto">
             <Field label="제목" required>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: ○○마트 2차 제안 미팅 준비" />
             </Field>

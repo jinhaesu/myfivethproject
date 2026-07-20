@@ -155,7 +155,7 @@ export default function NewSalesClientPage() {
 
         {error ? <div className="text-[12.5px] text-[var(--danger-fg)]">{error}</div> : null}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" size="md" onClick={submit} loading={saving}>
             거래처 등록
           </Button>

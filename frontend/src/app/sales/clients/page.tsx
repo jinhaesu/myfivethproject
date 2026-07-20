@@ -76,13 +76,18 @@ export default function SalesClientsPage() {
           }
         />
       ) : (
-        <div className="overflow-x-auto pb-2">
-          <div className="flex gap-3 min-w-max">
+        <>
+          {/* 모바일에서는 단계 컬럼이 화면을 넘어가므로 스크롤 가능함을 알린다 */}
+          <p className="sm:hidden text-[11.5px] text-[var(--text-4)] mb-2">
+            좌우로 밀어서 다른 영업 단계를 볼 수 있습니다 →
+          </p>
+          <div className="touch-scroll-x pb-2">
+            <div className="flex gap-3 min-w-max">
             {SALES_STAGES.map((stage) => {
               const list = byStage(stage.key);
               const stageWeighted = list.reduce((sum, c) => sum + weightedRevenue(c), 0);
               return (
-                <div key={stage.key} className="w-[264px] flex-shrink-0">
+                <div key={stage.key} className="w-[80vw] max-w-[264px] sm:w-[264px] flex-shrink-0">
                   <div className="flex items-center justify-between px-1 mb-1">
                     <span className="text-[12.5px] font-medium text-[var(--text-2)]">
                       {stage.label}
@@ -168,8 +173,9 @@ export default function SalesClientsPage() {
                 </div>
               );
             })}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </AppLayout>
   );

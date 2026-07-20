@@ -272,6 +272,7 @@ export interface CalendarEvent {
   status?: string;
   done?: boolean;
   clientName?: string | null;
+  location?: string | null; // 미팅 장소 — 구글 캘린더/.ics 내보내기에 사용
   url: string;
 }
 

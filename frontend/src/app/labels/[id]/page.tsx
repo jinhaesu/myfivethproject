@@ -552,6 +552,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                     label.productName,
                   );
                   return (
+                    <div className="touch-scroll-x">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
@@ -584,6 +585,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                         })}
                       </tbody>
                     </table>
+                    </div>
                   );
                 })()}
               </>

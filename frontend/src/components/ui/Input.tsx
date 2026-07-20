@@ -5,10 +5,12 @@ import { cn } from '@/lib/cn';
 
 type Size = 'sm' | 'md' | 'lg';
 
+// 모바일: 터치 타겟 확보(min-h)와 iOS 자동 확대 방지(16px 이상)를 함께 적용.
+// 640px 이상에서는 기존 데스크톱 치수 그대로.
 const SIZE_INPUT: Record<Size, string> = {
-  sm: 'h-8 px-2.5 text-[12.5px] rounded-md',
-  md: 'h-9 px-3 text-[13px] rounded-md',
-  lg: 'h-10 px-3.5 text-sm rounded-md',
+  sm: 'h-8 min-h-[40px] sm:min-h-0 px-2.5 text-[16px] sm:text-[12.5px] rounded-md',
+  md: 'h-9 min-h-[44px] sm:min-h-0 px-3 text-[16px] sm:text-[13px] rounded-md',
+  lg: 'h-10 min-h-[44px] sm:min-h-0 px-3.5 text-[16px] sm:text-sm rounded-md',
 };
 
 const BASE =
@@ -71,7 +73,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
       ref={ref}
       className={cn(
         BASE,
-        'px-3 py-2 text-[13px] rounded-md min-h-[88px] leading-[1.5]',
+        'px-3 py-2 text-[16px] sm:text-[13px] rounded-md min-h-[88px] leading-[1.5]',
         invalid && INVALID,
         className,
       )}

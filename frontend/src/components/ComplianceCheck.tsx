@@ -130,8 +130,12 @@ export default function ComplianceCheck({ result, targetMarkets }: Props) {
                             {issue.category}
                           </span>
                         </div>
-                        <p className="text-[13px] text-[var(--text-1)] leading-[1.55]">{issue.message}</p>
-                        <p className="text-[11.5px] text-[var(--text-3)] mt-1.5">근거 · {issue.regulation}</p>
+                        <p className="text-[13px] text-[var(--text-1)] leading-[1.55] break-words">
+                          {issue.message}
+                        </p>
+                        <p className="text-[11.5px] text-[var(--text-3)] mt-1.5 break-words">
+                          근거 · {issue.regulation}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -150,8 +154,8 @@ export default function ComplianceCheck({ result, targetMarkets }: Props) {
                       key={i}
                       className="text-[13px] text-[var(--text-2)] flex items-start gap-2 leading-[1.55]"
                     >
-                      <span className="text-[var(--info-fg)] mt-0.5">›</span>
-                      <span>{rec}</span>
+                      <span className="text-[var(--info-fg)] mt-0.5 shrink-0">›</span>
+                      <span className="min-w-0 break-words">{rec}</span>
                     </li>
                   ))}
                 </ul>

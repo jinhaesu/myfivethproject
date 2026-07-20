@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
+import ChangeLogSection from '@/components/ChangeLogSection';
 import SalesTabs from '@/components/SalesTabs';
 import { api, getFileUrl } from '@/lib/api';
 import {
@@ -154,7 +155,7 @@ export default function SalesJournalDetailPage() {
               placeholder="열람 비밀번호"
             />
             {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="primary" size="md" onClick={unlock} loading={unlocking}>
                 잠금 해제
               </Button>
@@ -410,6 +411,9 @@ export default function SalesJournalDetailPage() {
             <span className="text-[13px] text-[var(--text-4)]">등록된 향후 스케쥴이 없습니다.</span>
           )}
         </Card>
+
+        {/* 수정 이력 */}
+        <ChangeLogSection entityType="journal" entityId={journal.id} viewToken={viewToken} />
       </div>
     </AppLayout>
   );
@@ -515,13 +519,14 @@ function ShareCard({ journal, onChanged }: { journal: SalesJournal; onChanged: (
               <span className="text-[11.5px] text-[var(--text-4)]">{fmtDateTime(journal.sharedAt)} 생성</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          {/* 모바일에서는 URL 입력창과 복사 버튼이 나란히 놓기엔 좁아 세로로 쌓는다 */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <Input readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
             <Button variant="primary" size="md" onClick={enableAndCopy} loading={busy} className="flex-shrink-0">
               {copied ? '복사됨 ✓' : '링크 복사'}
             </Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <a href={shareUrl} target="_blank" rel="noreferrer">
               <Button variant="ghost" size="sm">
                 공유 화면 미리보기 →
@@ -1019,13 +1024,22 @@ function EditForm({
             <div className="hidden sm:grid grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 px-1 pb-1.5 text-[11px] text-[var(--text-3)]">
               <span>제품명</span><span>중량</span><span>USP</span><span>맛</span><span>제안가격</span><span />
             </div>
+            {/* 모바일에서는 헤더 행이 없으므로 각 입력 위에 라벨을 붙이고 행을 카드로 구분한다 */}
             <div className="flex flex-col gap-2">
               {quoteItems.map((q, i) => (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 items-start">
+                <div
+                  key={i}
+                  className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 items-start rounded-md border border-[var(--border-1)] p-3 sm:border-0 sm:p-0"
+                >
+                  <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">제품명 {i + 1}</span>
                   <Input value={q.productName} onChange={(e) => updateQuote(i, 'productName', e.target.value)} placeholder="제품명" />
+                  <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">중량</span>
                   <Input value={q.weightSpec} onChange={(e) => updateQuote(i, 'weightSpec', e.target.value)} placeholder="예: 80g" />
+                  <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">USP</span>
                   <Input value={q.usp} onChange={(e) => updateQuote(i, 'usp', e.target.value)} placeholder="예: 고단백" />
+                  <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">맛</span>
                   <Input value={q.flavor} onChange={(e) => updateQuote(i, 'flavor', e.target.value)} placeholder="예: 초코" />
+                  <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">제안가격</span>
                   <Input value={q.price} onChange={(e) => updateQuote(i, 'price', e.target.value)} placeholder="예: 개당 1,200원" />
                   {quoteItems.length > 1 && (
                     <Button variant="ghost" size="sm" onClick={() => removeQuote(i)}>삭제</Button>
@@ -1076,9 +1090,15 @@ function EditForm({
         />
         <div className="flex flex-col gap-3">
           {todos.map((t, i) => (
-            <div key={i} className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start">
+            <div
+              key={i}
+              className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start rounded-md border border-[var(--border-1)] p-3 sm:border-0 sm:p-0"
+            >
+              <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">기한</span>
               <Input type="date" value={t.dueDate} onChange={(e) => updateTodo(i, 'dueDate', e.target.value)} />
+              <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">해야 할 일</span>
               <Input value={t.content} onChange={(e) => updateTodo(i, 'content', e.target.value)} placeholder="해야 할 일" />
+              <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">대략적 계획 (선택)</span>
               <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
               {todos.length > 1 && (
                 <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
@@ -1116,7 +1136,7 @@ function EditForm({
 
       {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" size="md" onClick={save} loading={saving}>
           저장
         </Button>

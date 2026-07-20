@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
+import ChangeLogSection from '@/components/ChangeLogSection';
 import { api } from '@/lib/api';
 import {
   LaunchProject,
@@ -879,8 +880,8 @@ export default function LaunchDetailPage() {
       />
 
       {locked && (
-        <div className="mb-5 px-4 py-3 rounded-md bg-[var(--warning-bg)] border border-[var(--warning-border)] flex items-center justify-between gap-3">
-          <span className="text-[13px] text-[var(--warning-fg)]">
+        <div className="mb-5 px-4 py-3 rounded-md bg-[var(--warning-bg)] border border-[var(--warning-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <span className="min-w-0 text-[13px] text-[var(--warning-fg)] break-words">
             🔒 프로젝트 등록 정보(제품·전략 등)와 삭제만 잠겨 있습니다. 단계 진행·체크리스트·비고 등 운영 업무는 잠금 없이 가능합니다. 정보를 수정하려면 잠금을 해제하세요.
           </span>
           <Button variant="secondary" size="sm" onClick={unlock}>
@@ -1002,8 +1003,8 @@ export default function LaunchDetailPage() {
         ) : (
           <ul className="divide-y divide-[var(--border-1)]">
             {project.notifications.map((n) => (
-              <li key={n.id} className="py-2 flex items-center justify-between gap-3">
-                <span className="text-[12.5px] text-[var(--text-2)]">
+              <li key={n.id} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3">
+                <span className="min-w-0 text-[12.5px] text-[var(--text-2)] break-words">
                   {NOTIFICATION_TYPE_LABEL[n.type] || n.type}
                   <span className="text-[var(--text-4)] ml-2">→ {n.sentTo}</span>
                 </span>
@@ -1015,6 +1016,11 @@ export default function LaunchDetailPage() {
           </ul>
         )}
       </Card>
+
+      {/* 수정 이력 — 프로젝트 본체 + 하위 단계·체크리스트 변경까지 한 번에 */}
+      <div className="mt-6">
+        <ChangeLogSection entityType="project" entityId={project.id} />
+      </div>
     </AppLayout>
   );
 }

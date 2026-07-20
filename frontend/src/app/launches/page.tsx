@@ -120,6 +120,64 @@ export default function LaunchesPage() {
           }
         />
       ) : (
+        <>
+        {/* 모바일: 표 대신 카드 목록 — 좁은 화면에서 숨겨지던 현재 단계·진행률까지 함께 보여준다 */}
+        <div className="sm:hidden space-y-2">
+          {projects.map((p) => {
+            const progress = getProgress(p);
+            return (
+              <Link key={p.id} href={`/launches/${p.id}`} className="block">
+                <Card padding="md" className="hover-lift">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 text-[14px] font-medium text-[var(--brand-400)] break-words">
+                      {p.productName}
+                    </span>
+                    <span className="shrink-0">
+                      <StatusPill status={p.status} />
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    <DdayBadge targetLaunchDate={p.targetLaunchDate} />
+                    {p.targetLaunchDate && (
+                      <span className="text-[11.5px] text-[var(--text-3)] tabular">
+                        {new Date(p.targetLaunchDate).toLocaleDateString('ko-KR')}
+                      </span>
+                    )}
+                    {p.brandType && (
+                      <Badge tone="violet" size="xs">
+                        {p.brandType}
+                      </Badge>
+                    )}
+                    {p.storageCondition && (
+                      <Badge tone="info" size="xs">
+                        {p.storageCondition}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <p className="mt-2 text-[12px] text-[var(--text-3)] break-words">
+                    {getCurrentStage(p)}
+                  </p>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-[var(--bg-3)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[var(--brand-500)] transition-all duration-base ease-out-soft"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <span className="text-[11.5px] text-[var(--text-3)] tabular w-9 text-right shrink-0">
+                      {progress}%
+                    </span>
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="hidden sm:block">
         <Table>
           <THead>
             <TR>
@@ -197,6 +255,8 @@ export default function LaunchesPage() {
             })}
           </TBody>
         </Table>
+        </div>
+        </>
       )}
     </AppLayout>
   );

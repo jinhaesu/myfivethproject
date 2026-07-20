@@ -4,6 +4,7 @@ const { Resend } = require('resend');
 const { authenticate } = require('../middleware/auth');
 const { ctaButton } = require('../lib/launchEmails');
 const { createMagicLink } = require('../lib/magicLink');
+const { logUpdate } = require('../lib/changeLog');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -49,6 +50,17 @@ router.put('/items/:itemId', authenticate, async (req, res) => {
       include: {
         reviewer: { select: { id: true, name: true, department: true } },
       },
+    });
+
+    // completedAt은 체크에 딸린 값이라 이력에서 제외 (검수자는 actor로 남음)
+    await logUpdate(prisma, {
+      entityType: 'review',
+      entityId: itemId,
+      entityLabel: item.taskName,
+      actor: req.user,
+      before: item,
+      after: updateData,
+      fields: ['isCompleted', 'reviewerNote', 'reviewerName'],
     });
 
     // 모든 리뷰가 완료되었는지 확인

@@ -9,6 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const storage = require('../lib/storage');
 const { buildJournalDocx, journalFileName } = require('../lib/journalDoc');
+const { logUpdate, logCreate, logDelete, logEvent } = require('../lib/changeLog');
 const {
   SALES_STAGES,
   SALES_STAGE_KEYS,
@@ -254,6 +255,10 @@ router.post('/clients', authenticate, async (req, res) => {
       },
       include: CLIENT_INCLUDE,
     });
+    await logCreate(prisma, {
+      entityType: 'client', entityId: client.id, actor: req.user,
+      summary: `거래처 등록: ${client.name}`,
+    });
     res.json({ client });
   } catch (error) {
     console.error('Create client error:', error);
@@ -318,6 +323,9 @@ router.put('/clients/:id', authenticate, async (req, res) => {
       data,
       include: CLIENT_INCLUDE,
     });
+    await logUpdate(prisma, {
+      entityType: 'client', entityId: client.id, actor: req.user, before: existing, after: data,
+    });
     res.json({ client });
   } catch (error) {
     console.error('Update client error:', error);
@@ -327,7 +335,13 @@ router.put('/clients/:id', authenticate, async (req, res) => {
 
 router.delete('/clients/:id', authenticate, async (req, res) => {
   try {
+    const existing = await prisma.salesClient.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: '거래처를 찾을 수 없습니다.' });
     await prisma.salesClient.delete({ where: { id: req.params.id } });
+    await logDelete(prisma, {
+      entityType: 'client', entityId: existing.id, actor: req.user,
+      summary: `거래처 삭제: ${existing.name}`,
+    });
     res.json({ ok: true });
   } catch (error) {
     console.error('Delete client error:', error);
@@ -559,6 +573,9 @@ router.post('/journals', authenticate, async (req, res) => {
     if (stage) {
       await prisma.salesClient.update({ where: { id: clientId }, data: { stage: normalizeStage(stage) } });
     }
+    await logCreate(prisma, {
+      entityType: 'journal', entityId: journal.id, actor: req.user, summary: '영업일지 생성',
+    });
     res.json({ journal: { ...journal, passwordProtected: !!passwordHash } });
   } catch (error) {
     console.error('Create journal error:', error);
@@ -611,6 +628,32 @@ router.get('/journals/:id', authenticate, async (req, res) => {
   }
 });
 
+// 수정 이력 — 상세 조회와 동일한 열람 권한(참고자·비밀번호 잠금) 적용
+router.get('/journals/:id/history', authenticate, async (req, res) => {
+  try {
+    const journal = await prisma.salesJournal.findUnique({
+      where: { id: req.params.id },
+      include: { referrers: true },
+    });
+    if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
+    if (!canViewJournal(req.user, journal)) {
+      return res.status(403).json({ error: '이 영업일지를 열람할 권한이 없습니다.' });
+    }
+    if (!isJournalOwner(req.user, journal) && journal.passwordHash && !hasJournalViewToken(req, journal)) {
+      return res.status(403).json({ error: '열람 비밀번호가 필요합니다.', passwordRequired: true });
+    }
+    const logs = await prisma.changeLog.findMany({
+      where: { entityType: 'journal', entityId: journal.id },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.json(logs);
+  } catch (error) {
+    console.error('Journal history error:', error);
+    res.status(500).json({ error: '수정 이력을 불러오지 못했습니다.' });
+  }
+});
+
 // 열람 비밀번호 검증 → 뷰 토큰 발급
 router.post('/journals/:id/verify-password', authenticate, async (req, res) => {
   try {
@@ -642,7 +685,11 @@ router.post('/journals/:id/verify-password', authenticate, async (req, res) => {
 // 수정 (작성자 · 최고관리자) — referrers/todos 전체 교체
 router.put('/journals/:id', authenticate, async (req, res) => {
   try {
-    const journal = await prisma.salesJournal.findUnique({ where: { id: req.params.id } });
+    // 수정 이력 diff의 기준이 되는 before 스냅샷 (하위 항목은 건수만)
+    const journal = await prisma.salesJournal.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { todos: true, quoteItems: true, referrers: true } } },
+    });
     if (!journal) return res.status(404).json({ error: '영업일지를 찾을 수 없습니다.' });
     if (!isJournalOwner(req.user, journal)) {
       return res.status(403).json({ error: '수정 권한이 없습니다.' });
@@ -666,8 +713,11 @@ router.put('/journals/:id', authenticate, async (req, res) => {
     }
     // referrers 교체
     const ops = [];
+    // 하위 항목은 통째로 교체되므로 값 diff 대신 건수 변화만 이력에 남긴다
+    const newCounts = {};
     if (Array.isArray(b.referrers)) {
       const emails = [...new Set(b.referrers.map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
+      newCounts.referrers = emails.length;
       ops.push(prisma.salesJournalReferrer.deleteMany({ where: { journalId: journal.id } }));
       if (emails.length) {
         ops.push(prisma.salesJournalReferrer.createMany({ data: emails.map((email) => ({ journalId: journal.id, email })) }));
@@ -677,11 +727,13 @@ router.put('/journals/:id', authenticate, async (req, res) => {
       const todoData = b.todos
         .map((t) => ({ journalId: journal.id, dueDate: parseDate(t.dueDate), content: String(t.content || '').trim(), plan: t.plan || null, isDone: !!t.isDone }))
         .filter((t) => t.dueDate && t.content);
+      newCounts.todos = todoData.length;
       ops.push(prisma.salesTodo.deleteMany({ where: { journalId: journal.id } }));
       if (todoData.length) ops.push(prisma.salesTodo.createMany({ data: todoData }));
     }
     if (Array.isArray(b.quoteItems)) {
       const quoteData = buildQuoteData(b.quoteItems).map((q) => ({ ...q, journalId: journal.id }));
+      newCounts.quoteItems = quoteData.length;
       ops.push(prisma.salesQuoteItem.deleteMany({ where: { journalId: journal.id } }));
       if (quoteData.length) ops.push(prisma.salesQuoteItem.createMany({ data: quoteData }));
       // 견적 항목이 있으면 hasQuote 자동 true
@@ -691,6 +743,30 @@ router.put('/journals/:id', authenticate, async (req, res) => {
     await prisma.$transaction(ops);
     if (b.stage) {
       await prisma.salesClient.update({ where: { id: journal.clientId }, data: { stage: normalizeStage(b.stage) } });
+    }
+
+    // ── 수정 이력 ──
+    await logUpdate(prisma, {
+      entityType: 'journal', entityId: journal.id, actor: req.user, before: journal, after: data,
+    });
+    // 열람 비밀번호는 해시를 남길 수 없으므로 설정/해제/변경 사실만 기록
+    if (b.password !== undefined && data.passwordHash !== journal.passwordHash) {
+      const summary = !journal.passwordHash
+        ? '열람 비밀번호 설정'
+        : !data.passwordHash
+          ? '열람 비밀번호 해제'
+          : '열람 비밀번호 변경';
+      await logEvent(prisma, { entityType: 'journal', entityId: journal.id, action: 'update', summary, actor: req.user });
+    }
+    // 하위 항목 건수 변화
+    for (const [key, label] of [['todos', '향후 스케쥴'], ['quoteItems', '견적 항목'], ['referrers', '참고자']]) {
+      if (newCounts[key] === undefined) continue;
+      const before = journal._count[key];
+      if (before === newCounts[key]) continue;
+      await logEvent(prisma, {
+        entityType: 'journal', entityId: journal.id, action: 'update', actor: req.user,
+        summary: `${label} ${before}건 → ${newCounts[key]}건`,
+      });
     }
     const updated = await prisma.salesJournal.findUnique({
       where: { id: journal.id },
@@ -712,6 +788,10 @@ router.delete('/journals/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: '삭제 권한이 없습니다.' });
     }
     await prisma.salesJournal.delete({ where: { id: req.params.id } });
+    await logDelete(prisma, {
+      entityType: 'journal', entityId: journal.id, actor: req.user,
+      summary: `영업일지 삭제: ${journal.title || '(제목 없음)'}`,
+    });
     res.json({ ok: true });
   } catch (error) {
     console.error('Delete journal error:', error);
@@ -760,6 +840,11 @@ router.post('/journals/:id/share', authenticate, async (req, res) => {
         where: { id: journal.id },
         data: { shareToken: token, sharedAt: new Date() },
       });
+      // 토큰 값은 이력에 남기지 않는다 (링크를 아는 사람은 누구나 열람 가능하므로)
+      await logEvent(prisma, {
+        entityType: 'journal', entityId: journal.id, action: 'update', actor: req.user,
+        summary: journal.shareToken ? '외부 공유 링크 재발급' : '외부 공유 링크 생성',
+      });
     }
     res.json({ shareToken: token });
   } catch (error) {
@@ -780,6 +865,12 @@ router.delete('/journals/:id/share', authenticate, async (req, res) => {
       where: { id: journal.id },
       data: { shareToken: null, sharedAt: null },
     });
+    if (journal.shareToken) {
+      await logEvent(prisma, {
+        entityType: 'journal', entityId: journal.id, action: 'update', actor: req.user,
+        summary: '외부 공유 링크 해제',
+      });
+    }
     res.json({ ok: true });
   } catch (error) {
     console.error('Revoke share link error:', error);
@@ -1008,6 +1099,10 @@ router.post('/plans', authenticate, async (req, res) => {
       },
       include: { author: { select: USER_SELECT }, client: { select: { id: true, name: true } } },
     });
+    await logCreate(prisma, {
+      entityType: 'plan', entityId: plan.id, actor: req.user,
+      summary: `영업계획 등록: ${plan.title}`,
+    });
     res.json({ plan });
   } catch (error) {
     console.error('Create plan error:', error);
@@ -1017,6 +1112,8 @@ router.post('/plans', authenticate, async (req, res) => {
 
 router.put('/plans/:id', authenticate, async (req, res) => {
   try {
+    const existing = await prisma.salesPlan.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: '영업계획을 찾을 수 없습니다.' });
     const b = req.body;
     const data = {};
     if (b.title !== undefined) {
@@ -1038,6 +1135,9 @@ router.put('/plans/:id', authenticate, async (req, res) => {
       data,
       include: { author: { select: USER_SELECT }, client: { select: { id: true, name: true } } },
     });
+    await logUpdate(prisma, {
+      entityType: 'plan', entityId: plan.id, actor: req.user, before: existing, after: data,
+    });
     res.json({ plan });
   } catch (error) {
     console.error('Update plan error:', error);
@@ -1047,7 +1147,13 @@ router.put('/plans/:id', authenticate, async (req, res) => {
 
 router.delete('/plans/:id', authenticate, async (req, res) => {
   try {
+    const existing = await prisma.salesPlan.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: '영업계획을 찾을 수 없습니다.' });
     await prisma.salesPlan.delete({ where: { id: req.params.id } });
+    await logDelete(prisma, {
+      entityType: 'plan', entityId: existing.id, actor: req.user,
+      summary: `영업계획 삭제: ${existing.title}`,
+    });
     res.json({ ok: true });
   } catch (error) {
     console.error('Delete plan error:', error);
@@ -1164,6 +1270,7 @@ router.get('/calendar', authenticate, async (req, res) => {
           title: `${j.client?.name || '거래처'} 미팅${j.meetingPurpose ? ` · ${j.meetingPurpose}` : ''}`,
           date: j.meetingDate,
           clientName: j.client?.name || null,
+          location: j.meetingLocation || null, // 구글 캘린더/.ics 내보내기용
           url: `/sales/${j.id}`,
         });
       }
@@ -1194,6 +1301,7 @@ router.get('/calendar', authenticate, async (req, res) => {
         title: pl.title,
         date: pl.planDate,
         clientName: pl.client?.name || null,
+        location: pl.location || null, // 구글 캘린더/.ics 내보내기용
         url: `/sales/calendar`,
       });
     }

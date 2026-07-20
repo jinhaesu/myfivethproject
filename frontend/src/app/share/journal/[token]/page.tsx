@@ -6,11 +6,12 @@ import { api, getFileUrl } from '@/lib/api';
 import { SalesJournal, SalesClient, STAGE_LABEL, STAGE_TONE, fmtDate } from '@/lib/sales';
 import { Card, CardHeader, Button, Badge, CenterSpinner } from '@/components/ui';
 
+// 외부 팀이 주로 휴대폰으로 열어보는 문서라 모바일 본문을 한 단계 크게 잡는다.
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-1 sm:gap-3 py-2 border-b border-[var(--border-1)] last:border-0">
+    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-1 sm:gap-3 py-2.5 sm:py-2 border-b border-[var(--border-1)] last:border-0">
       <div className="text-[12.5px] text-[var(--text-3)]">{label}</div>
-      <div className="text-[13px] text-[var(--text-1)] whitespace-pre-wrap break-words">
+      <div className="text-[15px] sm:text-[13px] leading-relaxed text-[var(--text-1)] whitespace-pre-wrap break-words">
         {value || <span className="text-[var(--text-4)]">—</span>}
       </div>
     </div>
@@ -93,7 +94,7 @@ export default function SharedJournalPage() {
               <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-4)]">
                 Shared Sales Journal
               </div>
-              <h1 className="text-[22px] font-semibold tracking-tight text-[var(--text-1)] mt-1">
+              <h1 className="text-[20px] sm:text-[22px] font-semibold tracking-tight text-[var(--text-1)] mt-1 break-words">
                 {journal.title || '영업일지'}
               </h1>
               <div className="flex items-center gap-1.5 flex-wrap mt-2">
@@ -146,7 +147,7 @@ export default function SharedJournalPage() {
                 }
               />
               {journal.quoteItems && journal.quoteItems.length > 0 ? (
-                <div className="mt-3 overflow-x-auto">
+                <div className="mt-3 touch-scroll-x">
                   <table className="w-full text-[12.5px] border-collapse min-w-[520px]">
                     <thead>
                       <tr className="text-left text-[var(--text-3)]">
@@ -212,7 +213,7 @@ export default function SharedJournalPage() {
                             {fmtDate(t.dueDate)}
                           </Badge>
                           <span
-                            className={`text-[13px] ${t.isDone ? 'line-through text-[var(--text-4)]' : 'text-[var(--text-1)]'}`}
+                            className={`text-[15px] sm:text-[13px] ${t.isDone ? 'line-through text-[var(--text-4)]' : 'text-[var(--text-1)]'}`}
                           >
                             {t.content}
                           </span>

@@ -418,3 +418,25 @@ model SalesPlan {
   client   SalesClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientId String?
 }
+
+// ── 변경 이력 (Change Log) ───────────────────────────────────
+// 영업일지·출시·단종·검수 등 주요 자료의 생성/수정/삭제 내역을 남긴다.
+// User FK를 걸지 않고 이름·이메일을 비정규화 저장 — 담당자 계정이 삭제돼도 이력은 보존.
+model ChangeLog {
+  id         String   @id @default(uuid())
+  entityType String // journal | client | plan | launch | discontinuation | review | reviewItem | launchTask
+  entityId   String
+  entityLabel String? // 집계 뷰에서 어느 항목의 변경인지 식별용 (검수 항목명·단계명 등)
+  action     String // create | update | delete
+  field      String? // 변경된 필드 키 (action=update)
+  fieldLabel String? // 화면 표기용 한글 라벨
+  oldValue   String? // 변경 전 값 (요약·절삭됨)
+  newValue   String? // 변경 후 값 (요약·절삭됨)
+  summary    String? // 필드 단위가 아닌 변경 요약 (create/delete 등)
+  actorId    String?
+  actorName  String?
+  actorEmail String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+}

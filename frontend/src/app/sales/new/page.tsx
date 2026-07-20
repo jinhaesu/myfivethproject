@@ -547,13 +547,22 @@ export default function NewSalesJournalPage() {
                   <span>제안가격</span>
                   <span />
                 </div>
+                {/* 모바일에서는 헤더 행이 없으므로 각 입력 위에 라벨을 붙이고 행을 카드로 구분한다 */}
                 <div className="flex flex-col gap-2">
                   {quoteItems.map((q, i) => (
-                    <div key={i} className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 items-start">
+                    <div
+                      key={i}
+                      className="grid grid-cols-1 sm:grid-cols-[1.4fr_0.9fr_1.2fr_0.9fr_1fr_auto] gap-2 items-start rounded-md border border-[var(--border-1)] p-3 sm:border-0 sm:p-0"
+                    >
+                      <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">제품명 {i + 1}</span>
                       <Input value={q.productName} onChange={(e) => updateQuote(i, 'productName', e.target.value)} placeholder="제품명" />
+                      <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">중량</span>
                       <Input value={q.weightSpec} onChange={(e) => updateQuote(i, 'weightSpec', e.target.value)} placeholder="예: 80g" />
+                      <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">USP</span>
                       <Input value={q.usp} onChange={(e) => updateQuote(i, 'usp', e.target.value)} placeholder="예: 고단백" />
+                      <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">맛</span>
                       <Input value={q.flavor} onChange={(e) => updateQuote(i, 'flavor', e.target.value)} placeholder="예: 초코" />
+                      <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">제안가격</span>
                       <Input value={q.price} onChange={(e) => updateQuote(i, 'price', e.target.value)} placeholder="예: 개당 1,200원" />
                       {quoteItems.length > 1 && (
                         <Button variant="ghost" size="sm" onClick={() => removeQuote(i)}>
@@ -753,8 +762,13 @@ export default function NewSalesJournalPage() {
                 const inList = suggestions.includes(t.content);
                 const showCustom = !!t.custom || (!!t.content && !inList);
                 return (
-                  <div key={i} className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start">
+                  <div
+                    key={i}
+                    className="grid grid-cols-1 sm:grid-cols-[150px_1fr_1fr_auto] gap-2 items-start rounded-md border border-[var(--border-1)] p-3 sm:border-0 sm:p-0"
+                  >
+                    <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">기한</span>
                     <Input type="date" value={t.dueDate} onChange={(e) => updateTodo(i, 'dueDate', e.target.value)} />
+                    <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">해야 할 일</span>
                     {showCustom ? (
                       <div className="flex items-center gap-1.5">
                         <Input
@@ -790,6 +804,7 @@ export default function NewSalesJournalPage() {
                         <option value={TODO_OTHER}>기타 (직접 입력)</option>
                       </Select>
                     )}
+                    <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">대략적 계획 (선택)</span>
                     <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
                     {todos.length > 1 && (
                       <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
@@ -814,7 +829,7 @@ export default function NewSalesJournalPage() {
 
           {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" size="md" onClick={submit} loading={submitting}>
               영업일지 저장
             </Button>
