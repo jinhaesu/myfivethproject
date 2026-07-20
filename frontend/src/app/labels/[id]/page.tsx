@@ -283,7 +283,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
     setDeleting(true);
     try {
       await api.labels.delete(id);
-      router.push('/dashboard');
+      router.push('/labels');
     } catch (err: any) {
       setError(err.message);
       setDeleting(false);
@@ -303,7 +303,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
       <AppLayout>
         <div className="card text-center py-12">
           <p className="text-red-600 mb-4">{error || '라벨을 찾을 수 없습니다.'}</p>
-          <button onClick={() => router.push('/dashboard')} className="btn-primary">
+          <button onClick={() => router.push('/labels')} className="btn-primary">
             대시보드로 돌아가기
           </button>
         </div>
