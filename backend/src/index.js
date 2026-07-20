@@ -11,6 +11,7 @@ const uploadRoutes = require('./routes/uploads');
 const launchRoutes = require('./routes/launches');
 const salesRoutes = require('./routes/sales');
 const changeLogRoutes = require('./routes/changelog');
+const adminRoutes = require('./routes/admin');
 const { startLaunchScheduler } = require('./lib/launchScheduler');
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/launches', launchRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/changelog', changeLogRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

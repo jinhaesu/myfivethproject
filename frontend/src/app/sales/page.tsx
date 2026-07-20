@@ -6,6 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
 import { SalesJournal, SALES_STAGES, fmtDate } from '@/lib/sales';
+import { userShort, userLabelOrEmpty } from '@/lib/user';
 import { PageHeader, Button, Badge, EmptyState, CenterSpinner } from '@/components/ui';
 
 // 단계별 상단 수평선 색상 (파이프라인 컬럼 헤더)
@@ -142,8 +143,11 @@ export default function SalesJournalListPage() {
                                     최초
                                   </Badge>
                                 )}
-                                <span className="text-[11px] text-[var(--text-4)] truncate max-w-[90px]">
-                                  {author?.name || author?.email || ''}
+                                <span
+                                  className="text-[11px] text-[var(--text-4)] truncate max-w-[90px]"
+                                  title={userLabelOrEmpty(author)}
+                                >
+                                  {author ? userShort(author) : ''}
                                 </span>
                               </div>
                             </div>

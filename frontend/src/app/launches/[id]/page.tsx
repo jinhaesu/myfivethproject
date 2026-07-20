@@ -19,6 +19,7 @@ import {
   USP_OPTIONS,
   DISCONTINUE_REASONS,
 } from '@/lib/launch';
+import { userLabel } from '@/lib/user';
 import {
   PageHeader,
   Card,
@@ -261,7 +262,7 @@ function SampleRequestSection({
                 {r.weightSpec && <span>중량/규격: {r.weightSpec}</span>}
                 {r.salesChannel && <span>채널: {r.salesChannel}</span>}
                 <span className="text-[var(--text-4)]">
-                  요청 {r.requestedBy?.name || r.requestedBy?.email} ·{' '}
+                  요청 {userLabel(r.requestedBy)} ·{' '}
                   {new Date(r.createdAt).toLocaleDateString('ko-KR')}
                 </span>
               </div>

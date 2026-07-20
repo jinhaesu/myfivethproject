@@ -18,6 +18,7 @@ import {
   fmtDateTime,
   toDateInput,
 } from '@/lib/sales';
+import { userLabel } from '@/lib/user';
 import {
   PageHeader,
   Card,
@@ -276,7 +277,7 @@ export default function SalesJournalDetailPage() {
               )
             }
           />
-          <Row label="작성자" value={author ? `${author.name || ''} ${author.email ? `(${author.email})` : ''}`.trim() : '—'} />
+          <Row label="작성자" value={author ? userLabel(author) : '—'} />
           <Row label="작성일" value={fmtDateTime(journal.createdAt)} />
         </Card>
 

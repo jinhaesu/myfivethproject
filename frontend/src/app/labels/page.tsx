@@ -5,6 +5,7 @@ import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
 import { HealthClaim, getClaimBadgeColor } from '@/lib/healthClaims';
+import { userLabel } from '@/lib/user';
 import {
   PageHeader,
   Card,
@@ -267,7 +268,7 @@ export default function DashboardPage() {
                     </div>
 
                     <p className="mt-2 text-[11px] text-[var(--text-4)] break-words">
-                      {label.createdBy.name || label.createdBy.email} ·{' '}
+                      {userLabel(label.createdBy)} ·{' '}
                       {new Date(label.createdAt).toLocaleDateString('ko-KR')}
                     </p>
                   </Card>
@@ -404,7 +405,10 @@ export default function DashboardPage() {
                       </div>
                     </TD>
                     <TD className="hidden md:table-cell" muted>
-                      {label.createdBy.name || label.createdBy.email}
+                      {/* 이름(이메일)은 길어질 수 있어 열 너비를 지키고 전체는 툴팁으로 */}
+                      <span className="block max-w-[220px] truncate" title={userLabel(label.createdBy)}>
+                        {userLabel(label.createdBy)}
+                      </span>
                     </TD>
                     <TD align="right" muted numeric>
                       {new Date(label.createdAt).toLocaleDateString('ko-KR')}

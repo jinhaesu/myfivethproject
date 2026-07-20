@@ -239,7 +239,9 @@ router.post('/:id/verify-edit-password', authenticate, async (req, res) => {
     }
     const ok = bcrypt.compareSync(String(password || ''), project.editPasswordHash);
     if (!ok) {
-      return res.status(401).json({ error: '비밀번호가 일치하지 않습니다.' });
+      // invalidPassword 플래그로 '세션 만료'가 아님을 프론트에 알린다
+      // (없으면 공용 request()가 401을 로그아웃 신호로 오해해, 비밀번호를 한 번 틀리면 로그아웃된다)
+      return res.status(401).json({ error: '비밀번호가 일치하지 않습니다.', invalidPassword: true });
     }
     const editToken = jwt.sign(
       { scope: 'project-edit', projectId: project.id },

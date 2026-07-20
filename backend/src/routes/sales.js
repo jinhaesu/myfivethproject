@@ -668,7 +668,9 @@ router.post('/journals/:id/verify-password', authenticate, async (req, res) => {
     if (!journal.passwordHash) return res.json({ token: null, unlocked: true });
     const { password } = req.body;
     if (!password || !bcrypt.compareSync(String(password), journal.passwordHash)) {
-      return res.status(401).json({ error: '비밀번호가 일치하지 않습니다.' });
+      // invalidPassword 플래그로 '세션 만료'가 아님을 프론트에 알린다
+      // (없으면 공용 request()가 401을 로그아웃 신호로 오해해, 비밀번호를 한 번 틀리면 로그아웃된다)
+      return res.status(401).json({ error: '비밀번호가 일치하지 않습니다.', invalidPassword: true });
     }
     const token = jwt.sign(
       { scope: 'journal-view', journalId: journal.id },
@@ -1401,7 +1403,9 @@ router.get('/dashboard', authenticate, async (req, res) => {
 
     const recentJournals = viewable.slice(0, 8).map((j) => ({
       id: j.id, title: j.title, clientName: j.client?.name || null, stage: j.stage,
-      authorName: j.author?.name || j.author?.email || null,
+      // 이름·이메일을 따로 내려 화면에서 '이름 (이메일)'로 조합할 수 있게 한다
+      authorName: j.author?.name || null,
+      authorEmail: j.author?.email || null,
       createdAt: j.createdAt, meetingDate: j.meetingDate,
     }));
 
