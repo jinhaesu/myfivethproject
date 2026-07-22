@@ -1327,6 +1327,7 @@ router.get('/calendar', authenticate, async (req, res) => {
           type: 'meeting',
           title: `${j.client?.name || '거래처'} 미팅${j.meetingPurpose ? ` · ${j.meetingPurpose}` : ''}`,
           date: j.meetingDate,
+          clientId: j.client?.id || null, // 화면의 거래처 필터가 이름이 아닌 id로 매칭한다
           clientName: j.client?.name || null,
           location: j.meetingLocation || null, // 구글 캘린더/.ics 내보내기용
           url: `/sales/${j.id}`,
@@ -1340,6 +1341,7 @@ router.get('/calendar', authenticate, async (req, res) => {
             title: t.content,
             date: t.dueDate,
             done: t.isDone,
+            clientId: j.client?.id || null,
             clientName: j.client?.name || null,
             url: `/sales/${j.id}`,
           });
@@ -1358,6 +1360,7 @@ router.get('/calendar', authenticate, async (req, res) => {
         type: 'plan',
         title: pl.title,
         date: pl.planDate,
+        clientId: pl.client?.id || null,
         clientName: pl.client?.name || null,
         location: pl.location || null, // 구글 캘린더/.ics 내보내기용
         url: `/sales/calendar`,

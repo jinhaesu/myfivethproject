@@ -66,20 +66,62 @@ export default function SalesPlansPage() {
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [hiddenTypes, setHiddenTypes] = useState<Set<CalendarEventType>>(new Set());
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState<SalesClient[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 유형 필터 적용 후 이벤트 (렌더링은 전부 이 목록 기준)
-  const visibleEvents = useMemo(
-    () => events.filter((e) => !hiddenTypes.has(e.type)),
-    [events, hiddenTypes],
+  // 거래처 목록은 기간과 무관하게 고정 — 달을 넘겨도 선택이 목록에서 사라지지 않아야 한다
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.sales.listClients();
+        setClients(data.clients || []);
+      } catch {
+        /* 거래처 목록을 못 받아도 캘린더 자체는 보여준다 */
+      }
+    })();
+  }, []);
+
+  // 거래처 필터 적용 후 (출시·단종은 거래처가 없으므로 특정 거래처 선택 시 함께 빠진다)
+  const clientFiltered = useMemo(
+    () => (clientId ? events.filter((e) => e.clientId === clientId) : events),
+    [events, clientId],
   );
 
-  // 현재 범위의 유형별 개수 (필터 칩에 표시 — 미필터 events 기준)
+  // 유형 필터까지 적용한 최종 이벤트 (렌더링·내보내기는 전부 이 목록 기준)
+  const visibleEvents = useMemo(
+    () => clientFiltered.filter((e) => !hiddenTypes.has(e.type)),
+    [clientFiltered, hiddenTypes],
+  );
+
+  // 각 필터의 개수는 "다른 쪽 필터를 적용한 뒤" 기준이라, 지금 고르면 몇 건이 남는지 그대로 보여준다
   const typeCounts = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const e of events) c[e.type] = (c[e.type] || 0) + 1;
+    for (const e of clientFiltered) c[e.type] = (c[e.type] || 0) + 1;
     return c;
-  }, [events]);
+  }, [clientFiltered]);
+
+  const clientCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const e of events) {
+      if (e.clientId && !hiddenTypes.has(e.type)) c[e.clientId] = (c[e.clientId] || 0) + 1;
+    }
+    return c;
+  }, [events, hiddenTypes]);
+
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.id === clientId) || null,
+    [clients, clientId],
+  );
+  // 이 기간에 일정이 있는 거래처를 위로 올려, 빈 거래처를 훑지 않아도 되게 한다
+  const clientsWithEvents = useMemo(
+    () => clients.filter((c) => clientCounts[c.id]),
+    [clients, clientCounts],
+  );
+  const clientsWithoutEvents = useMemo(
+    () => clients.filter((c) => !clientCounts[c.id]),
+    [clients, clientCounts],
+  );
 
   const toggleType = (t: CalendarEventType) =>
     setHiddenTypes((prev) => {
@@ -165,7 +207,11 @@ export default function SalesPlansPage() {
         description="출시·단종·영업 미팅·영업계획·할일 일정을 통합해서 보여줍니다."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <ExportRangeButton events={visibleEvents} periodLabel={periodLabel} />
+            <ExportRangeButton
+              events={visibleEvents}
+              periodLabel={periodLabel}
+              clientName={selectedClient?.name}
+            />
             <PlanFormToggle onCreated={load} />
           </div>
         }
@@ -215,6 +261,56 @@ export default function SalesPlansPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 거래처 필터 */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-[12px] text-[var(--text-3)]">거래처</span>
+        <Select
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          className="w-full sm:w-[280px]"
+        >
+          <option value="">전체 거래처</option>
+          {clientsWithEvents.length > 0 && (
+            <optgroup label="이 기간에 일정 있음">
+              {clientsWithEvents.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({clientCounts[c.id]})
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {clientsWithoutEvents.length > 0 && (
+            <optgroup label="이 기간에 일정 없음">
+              {clientsWithoutEvents.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </Select>
+        {selectedClient && (
+          <>
+            <Link
+              href={`/sales/clients/${selectedClient.id}`}
+              className="text-[12px] text-[var(--brand-400)] hover:text-[var(--brand-200)] transition-colors"
+            >
+              거래처 상세
+            </Link>
+            <button
+              type="button"
+              onClick={() => setClientId('')}
+              className="text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+            >
+              필터 해제
+            </button>
+            <span className="text-[11.5px] text-[var(--text-4)]">
+              출시·단종 일정은 거래처가 연결되어 있지 않아 표시되지 않습니다.
+            </span>
+          </>
+        )}
       </div>
 
       {/* 유형 필터 */}
@@ -281,15 +377,27 @@ export default function SalesPlansPage() {
         </p>
       )}
       <div className="mb-2 text-[12.5px] text-[var(--text-3)]">
-        이 기간의 일정 {visibleEvents.length}건
-        {hiddenTypes.size > 0 && (
-          <span className="text-[var(--text-4)]"> (일부 유형 숨김 · 전체 {events.length}건)</span>
+        {selectedClient ? `${selectedClient.name} 일정 ` : '이 기간의 일정 '}
+        {visibleEvents.length}건
+        {(hiddenTypes.size > 0 || selectedClient) && (
+          <span className="text-[var(--text-4)]"> (필터 적용 중 · 이 기간 전체 {events.length}건)</span>
         )}
       </div>
       {loading ? (
         <CenterSpinner label="일정 불러오는 중" />
       ) : visibleEvents.length === 0 ? (
-        <EmptyState title="이 기간에 표시할 일정이 없습니다" description="유형 필터를 조정하거나 다른 기간을 선택해보세요." />
+        <EmptyState
+          title={
+            selectedClient
+              ? `이 기간에 ${selectedClient.name} 일정이 없습니다`
+              : '이 기간에 표시할 일정이 없습니다'
+          }
+          description={
+            selectedClient
+              ? '다른 기간을 보거나 거래처 필터를 해제해보세요.'
+              : '유형 필터를 조정하거나 다른 기간을 선택해보세요.'
+          }
+        />
       ) : (
         <Table>
           <THead>
@@ -547,15 +655,25 @@ function EventExportActions({ ev }: { ev: CalendarEvent }) {
   );
 }
 
-// 현재 조회 범위의 일정 전체를 .ics 한 파일로 내보낸다
-function ExportRangeButton({ events, periodLabel }: { events: CalendarEvent[]; periodLabel: string }) {
+// 현재 조회 범위의 일정 전체를 .ics 한 파일로 내보낸다 (화면에 적용한 필터를 그대로 따른다)
+function ExportRangeButton({
+  events,
+  periodLabel,
+  clientName,
+}: {
+  events: CalendarEvent[];
+  periodLabel: string;
+  clientName?: string;
+}) {
   if (events.length === 0) return null;
+  const slug = (s: string) => s.replace(/[^0-9A-Za-z가-힣]/g, '');
+  const fileName = `영업캘린더_${clientName ? `${slug(clientName)}_` : ''}${slug(periodLabel)}.ics`;
   return (
     <Button
       variant="secondary"
       size="md"
-      title={`${periodLabel} 일정 ${events.length}건을 .ics 파일로 내보냅니다`}
-      onClick={() => downloadIcs(events, `영업캘린더_${periodLabel.replace(/[^0-9가-힣]/g, '')}.ics`)}
+      title={`${clientName ? `${clientName} · ` : ''}${periodLabel} 일정 ${events.length}건을 .ics 파일로 내보냅니다`}
+      onClick={() => downloadIcs(events, fileName)}
     >
       일정 내보내기 ({events.length})
     </Button>

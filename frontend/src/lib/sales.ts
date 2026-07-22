@@ -344,6 +344,7 @@ export interface CalendarEvent {
   date: string;
   status?: string;
   done?: boolean;
+  clientId?: string | null; // 출시·단종은 거래처가 없어 null
   clientName?: string | null;
   location?: string | null; // 미팅 장소 — 구글 캘린더/.ics 내보내기에 사용
   url: string;
