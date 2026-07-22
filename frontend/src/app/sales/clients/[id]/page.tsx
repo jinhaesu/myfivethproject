@@ -551,6 +551,9 @@ export default function SalesClientDetailPage() {
       {/* 관련 출시 제품 — 전용 제품과 샘플 제안을 한 자리에서 본다 */}
       <ClientLaunchSection
         projects={client.launchProjects || []}
+        channelProjects={(client.targetedLaunches || [])
+          .map((t) => t.project)
+          .filter((p): p is ClientLaunchProject => !!p)}
         samples={client.sampleRequests || []}
       />
 
@@ -619,22 +622,46 @@ export default function SalesClientDetailPage() {
 }
 
 // 이 거래처와 이어진 제품 — 전용 출시(제품이 이 거래처 것)와 샘플 제안(브랜드 제품을 제안)
+function LaunchRow({ p }: { p: ClientLaunchProject }) {
+  return (
+    <Link href={`/launches/${p.id}`}>
+      <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)] transition-colors">
+        <Badge tone={p.kind === 'discontinuation' ? 'danger' : 'info'} size="xs">
+          {p.kind === 'discontinuation' ? '단종' : '출시'}
+        </Badge>
+        <span className="text-[12.5px] text-[var(--text-1)] flex-1 min-w-[140px] truncate">
+          {p.productName}
+        </span>
+        {p.storageCondition ? (
+          <span className="text-[11px] text-[var(--text-4)]">{p.storageCondition}</span>
+        ) : null}
+        {p.targetLaunchDate ? (
+          <span className="text-[11px] text-[var(--text-3)] tabular">{fmtDate(p.targetLaunchDate)}</span>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
 function ClientLaunchSection({
   projects,
+  channelProjects,
   samples,
 }: {
   projects: ClientLaunchProject[];
+  channelProjects: ClientLaunchProject[];
   samples: ClientSampleRequest[];
 }) {
-  // 전용 제품의 샘플은 위 목록과 겹치므로, 여기서는 브랜드 제품 제안만 남긴다
-  const brandSamples = samples.filter((s) => s.project && s.project.launchScope !== 'client');
-  if (projects.length === 0 && brandSamples.length === 0) return null;
+  // 전용·채널 제품의 샘플은 위 목록과 겹치므로, 여기서는 브랜드 제품 제안만 남긴다
+  const brandSamples = samples.filter((s) => s.project && s.project.launchScope === 'brand');
+  const total = projects.length + channelProjects.length + brandSamples.length;
+  if (total === 0) return null;
 
   return (
     <Card className="mt-4">
       <CardHeader
-        title={`관련 출시 제품 (${projects.length + brandSamples.length})`}
-        subtitle="이 거래처 전용으로 개발 중인 제품과, 브랜드 제품 중 이 거래처에 샘플을 제안한 건입니다."
+        title={`관련 출시 제품 (${total})`}
+        subtitle="이 거래처를 대상으로 개발 중인 제품과, 브랜드 제품 중 이 거래처에 샘플을 제안한 건입니다."
       />
       <div className="flex flex-col gap-4">
         {projects.length > 0 && (
@@ -642,24 +669,22 @@ function ClientLaunchSection({
             <div className="text-[12px] font-medium text-[var(--text-2)] mb-1.5">거래처 전용 제품</div>
             <div className="flex flex-col gap-1.5">
               {projects.map((p) => (
-                <Link key={p.id} href={`/launches/${p.id}`}>
-                  <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)] transition-colors">
-                    <Badge tone={p.kind === 'discontinuation' ? 'danger' : 'info'} size="xs">
-                      {p.kind === 'discontinuation' ? '단종' : '출시'}
-                    </Badge>
-                    <span className="text-[12.5px] text-[var(--text-1)] flex-1 min-w-[140px] truncate">
-                      {p.productName}
-                    </span>
-                    {p.storageCondition ? (
-                      <span className="text-[11px] text-[var(--text-4)]">{p.storageCondition}</span>
-                    ) : null}
-                    {p.targetLaunchDate ? (
-                      <span className="text-[11px] text-[var(--text-3)] tabular">
-                        {fmtDate(p.targetLaunchDate)}
-                      </span>
-                    ) : null}
-                  </div>
-                </Link>
+                <LaunchRow key={p.id} p={p} />
+              ))}
+            </div>
+          </div>
+        )}
+        {channelProjects.length > 0 && (
+          <div>
+            <div className="text-[12px] font-medium text-[var(--text-2)] mb-1.5">
+              채널 전용 제품
+              <span className="ml-1.5 font-normal text-[11px] text-[var(--text-4)]">
+                이 거래처를 포함한 여러 곳이 대상입니다
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {channelProjects.map((p) => (
+                <LaunchRow key={p.id} p={p} />
               ))}
             </div>
           </div>

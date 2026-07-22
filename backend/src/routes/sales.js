@@ -336,6 +336,17 @@ router.get('/clients/:id', authenticate, async (req, res) => {
             status: true, storageCondition: true, brandType: true,
           },
         },
+        // 채널 전용 출시에서 이 거래처가 대상에 포함된 건
+        targetedLaunches: {
+          select: {
+            project: {
+              select: {
+                id: true, kind: true, productName: true, targetLaunchDate: true,
+                status: true, storageCondition: true, brandType: true, launchScope: true,
+              },
+            },
+          },
+        },
         // 브랜드 공식 출시 제품 중 이 거래처에 제안한 샘플 (전용 제품 샘플도 함께 잡힌다)
         sampleRequests: {
           orderBy: { dueDate: 'desc' },
@@ -1362,6 +1373,7 @@ router.get('/calendar', authenticate, async (req, res) => {
         id: true, kind: true, productName: true, targetLaunchDate: true,
         status: true, description: true, launchScope: true,
         client: { select: { id: true, name: true } },
+        targetClients: { select: { client: { select: { id: true, name: true } } } },
       },
     });
     for (const p of projects) {
@@ -1371,10 +1383,12 @@ router.get('/calendar', authenticate, async (req, res) => {
         title: p.productName,
         date: p.targetLaunchDate,
         status: p.status,
-        // 거래처 전용 출시만 그 거래처 필터에 걸린다.
-        // 브랜드 공식 출시는 특정 거래처 것이 아니므로 clientId 없이 둔다.
+        // 거래처 전용은 그 거래처, 채널 전용은 대상 거래처 전부의 필터에 걸린다.
+        // 브랜드 공식 출시는 특정 거래처 것이 아니므로 어디에도 걸리지 않는다.
         clientId: p.client?.id || null,
         clientName: p.client?.name || null,
+        targetClientIds: (p.targetClients || []).map((t) => t.client.id),
+        targetClientNames: (p.targetClients || []).map((t) => t.client.name),
         launchScope: p.launchScope || 'brand',
         // 달력에서 바로 요약을 열어볼 수 있도록 프로젝트 개요를 함께 내려준다
         detail: p.description || null,

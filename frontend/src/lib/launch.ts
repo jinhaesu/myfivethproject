@@ -55,7 +55,7 @@ export interface ClientBrief {
   stage?: string;
 }
 
-// 출시 대상 구분 — 브랜드 공식 출시는 채널 무관, 거래처 전용은 특정 거래처에 묶인다
+// 출시 대상 구분 — 대상이 '없음 / 여러 곳 / 한 곳'으로 갈린다
 export const LAUNCH_SCOPES: { key: string; label: string; hint: string }[] = [
   {
     key: 'brand',
@@ -63,14 +63,24 @@ export const LAUNCH_SCOPES: { key: string; label: string; hint: string }[] = [
     hint: '자사 정식 라인업. 특정 거래처에 종속되지 않고 여러 채널에 제안합니다.',
   },
   {
+    key: 'channel',
+    label: '채널 전용',
+    hint: '편의점 계열처럼 여러 거래처를 한 묶음으로 겨냥하는 제품입니다. 대상 거래처를 여러 곳 고릅니다.',
+  },
+  {
     key: 'client',
     label: '거래처 전용',
-    hint: 'PB·전용 규격처럼 특정 거래처를 위해 만드는 제품입니다.',
+    hint: 'PB·전용 규격처럼 한 거래처를 위해 만드는 제품입니다.',
   },
 ];
 
 export function launchScopeLabel(scope?: string | null): string {
   return LAUNCH_SCOPES.find((s) => s.key === scope)?.label || '브랜드 공식 출시';
+}
+
+export interface LaunchTargetClient {
+  clientId: string;
+  client?: ClientBrief | null;
 }
 
 export interface LaunchProject {
@@ -85,9 +95,10 @@ export interface LaunchProject {
   editProtected: boolean;
   discontinueReason: string | null;
   brandType: string | null;
-  launchScope: string; // brand | client
+  launchScope: string; // brand | channel | client
   clientId: string | null;
   client?: ClientBrief | null;
+  targetClients?: LaunchTargetClient[]; // 채널 전용의 대상 거래처들
   salesChannels: string | null;
   storageCondition: string | null;
   usp: string[] | null;
