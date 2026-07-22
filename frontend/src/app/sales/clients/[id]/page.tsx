@@ -18,6 +18,9 @@ import {
   DEAL_STATUS_LABEL,
   DEAL_STATUS_TONE,
   LOST_REASONS,
+  STORAGE_CONDITIONS,
+  STORAGE_CONDITION_TONE,
+  storageLabel,
   dealStatusOf,
   fmtDate,
   fmtKRW,
@@ -63,8 +66,11 @@ export default function SalesClientDetailPage() {
   const [editError, setEditError] = useState('');
 
   // 담당자 추가 폼
-  const [newContact, setNewContact] = useState({ name: '', position: '', title: '', phone: '', email: '' });
+  const [newContact, setNewContact] = useState({
+    name: '', position: '', title: '', phone: '', email: '', storageCondition: '',
+  });
   const [addingContact, setAddingContact] = useState(false);
+  const [contactError, setContactError] = useState('');
   // 명함 OCR
   const ocrFileRef = useRef<HTMLInputElement>(null);
   const [cardFile, setCardFile] = useState<File | null>(null);
@@ -154,6 +160,11 @@ export default function SalesClientDetailPage() {
 
   const addContact = async () => {
     if (!newContact.name.trim()) return;
+    if (!newContact.storageCondition) {
+      setContactError('보관 조건을 선택해주세요. (냉동/냉장/상온/전체)');
+      return;
+    }
+    setContactError('');
     setAddingContact(true);
     try {
       const res = await api.sales.createContact(id, {
@@ -162,6 +173,7 @@ export default function SalesClientDetailPage() {
         title: newContact.title.trim() || undefined,
         phone: newContact.phone.trim() || undefined,
         email: newContact.email.trim() || undefined,
+        storageCondition: newContact.storageCondition,
       });
       // OCR로 첨부한 명함 이미지가 있으면 생성된 담당자에 업로드
       if (cardFile && res?.contact?.id) {
@@ -171,12 +183,13 @@ export default function SalesClientDetailPage() {
           console.error('Failed to upload OCR card image:', e);
         }
       }
-      setNewContact({ name: '', position: '', title: '', phone: '', email: '' });
+      setNewContact({ name: '', position: '', title: '', phone: '', email: '', storageCondition: '' });
       setCardFile(null);
       setOcrError('');
       await load();
     } catch (error) {
       console.error('Failed to add contact:', error);
+      setContactError((error as Error)?.message || '담당자 등록에 실패했습니다.');
     } finally {
       setAddingContact(false);
     }
@@ -201,6 +214,8 @@ export default function SalesClientDetailPage() {
         title: contact?.title?.trim() || prev.title,
         phone: contact?.phone?.trim() || prev.phone,
         email: contact?.email?.trim() || prev.email,
+        // 보관 조건은 명함에 적혀 있지 않다 — 담당자가 직접 고르게 둔다
+        storageCondition: prev.storageCondition,
       }));
     } catch (e) {
       setOcrError((e as Error)?.message || '명함 인식에 실패했습니다.');
@@ -448,8 +463,23 @@ export default function SalesClientDetailPage() {
         <Card>
           <CardHeader title={`담당자 명함 (${client.contacts?.length ?? 0})`} />
           <div className="flex flex-col gap-3">
+            {(client.contacts || []).length === 0 && (
+              <div className="rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] p-3">
+                <div className="text-[12.5px] font-medium text-[var(--danger-fg)]">
+                  등록된 담당자 명함이 없습니다
+                </div>
+                <p className="text-[11.5px] text-[var(--text-2)] mt-1">
+                  담당자를 1명 이상 등록해야 이 거래처로 영업일지를 저장할 수 있습니다. 아래에서 바로 등록해주세요.
+                </p>
+              </div>
+            )}
             {(client.contacts || []).map((c) => (
-              <ContactCard key={c.id} contact={c} onChange={load} />
+              <ContactCard
+                key={c.id}
+                contact={c}
+                onChange={load}
+                canDelete={(client.contacts || []).length > 1}
+              />
             ))}
 
             <div className="rounded-lg border border-dashed border-[var(--border-2)] p-3">
@@ -482,13 +512,32 @@ export default function SalesClientDetailPage() {
               )}
               <div className="grid sm:grid-cols-2 gap-2">
                 <Input inputSize="sm" placeholder="이름 *" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} />
+                <Select
+                  inputSize="sm"
+                  value={newContact.storageCondition}
+                  onChange={(e) => setNewContact({ ...newContact, storageCondition: e.target.value })}
+                >
+                  <option value="">보관 조건 * (냉동/냉장/상온/전체)</option>
+                  {STORAGE_CONDITIONS.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </Select>
                 <Input inputSize="sm" placeholder="직급" value={newContact.position} onChange={(e) => setNewContact({ ...newContact, position: e.target.value })} />
                 <Input inputSize="sm" placeholder="직함" value={newContact.title} onChange={(e) => setNewContact({ ...newContact, title: e.target.value })} />
                 <Input inputSize="sm" placeholder="연락처" value={newContact.phone} onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })} />
-                <Input inputSize="sm" placeholder="이메일" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} className="sm:col-span-2" />
+                <Input inputSize="sm" placeholder="이메일" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} />
               </div>
+              {contactError && <div className="mt-2 text-[11.5px] text-[var(--danger-fg)]">{contactError}</div>}
               <div className="mt-2">
-                <Button variant="secondary" size="sm" onClick={addContact} loading={addingContact} disabled={!newContact.name.trim()}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={addContact}
+                  loading={addingContact}
+                  disabled={!newContact.name.trim() || !newContact.storageCondition}
+                >
                   + 담당자 추가
                 </Button>
               </div>
@@ -561,9 +610,34 @@ export default function SalesClientDetailPage() {
   );
 }
 
-function ContactCard({ contact, onChange }: { contact: SalesContact; onChange: () => void }) {
+function ContactCard({
+  contact,
+  onChange,
+  canDelete,
+}: {
+  contact: SalesContact;
+  onChange: () => void;
+  canDelete: boolean;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState('');
+  const [savingStorage, setSavingStorage] = useState(false);
+
+  // 마이그레이션 이전 명함은 보관 조건이 비어 있다 — 그 자리에서 바로 채울 수 있게 한다
+  const setStorage = async (value: string) => {
+    if (!value) return;
+    setSavingStorage(true);
+    setErr('');
+    try {
+      await api.sales.updateContact(contact.id, { storageCondition: value });
+      onChange();
+    } catch (error) {
+      setErr((error as Error)?.message || '보관 조건 저장에 실패했습니다.');
+    } finally {
+      setSavingStorage(false);
+    }
+  };
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -579,11 +653,13 @@ function ContactCard({ contact, onChange }: { contact: SalesContact; onChange: (
 
   const remove = async () => {
     if (!confirm(`담당자 "${contact.name}"을(를) 삭제하시겠습니까?`)) return;
+    setErr('');
     try {
       await api.sales.deleteContact(contact.id);
       onChange();
     } catch (error) {
       console.error('Failed to delete contact:', error);
+      setErr((error as Error)?.message || '담당자 삭제에 실패했습니다.');
     }
   };
 
@@ -602,9 +678,34 @@ function ContactCard({ contact, onChange }: { contact: SalesContact; onChange: (
       )}
       <div className="mt-2 flex items-baseline gap-2 flex-wrap">
         <span className="text-[13px] font-semibold text-[var(--text-1)]">{contact.name}</span>
+        {contact.storageCondition ? (
+          <Badge tone={STORAGE_CONDITION_TONE[contact.storageCondition] || 'neutral'} size="xs">
+            {storageLabel(contact.storageCondition)}
+          </Badge>
+        ) : null}
         {contact.position ? <span className="text-[11.5px] text-[var(--text-3)]">{contact.position}</span> : null}
         {contact.title ? <span className="text-[11.5px] text-[var(--text-4)]">· {contact.title}</span> : null}
       </div>
+      {!contact.storageCondition && (
+        <div className="mt-2 rounded-md border border-[var(--warning-border)] bg-[var(--warning-bg)] p-2">
+          <div className="text-[11.5px] text-[var(--text-2)] mb-1.5">
+            보관 조건이 지정되지 않았습니다. 어느 구분을 맡는 담당자인가요?
+          </div>
+          <Select
+            inputSize="sm"
+            value=""
+            disabled={savingStorage}
+            onChange={(e) => setStorage(e.target.value)}
+          >
+            <option value="">보관 조건 선택</option>
+            {STORAGE_CONDITIONS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       <div className="mt-0.5 flex flex-col gap-0.5 text-[11.5px] text-[var(--text-3)]">
         {contact.phone ? <span className="tabular">{contact.phone}</span> : null}
         {contact.email ? <span className="break-all">{contact.email}</span> : null}
@@ -624,8 +725,17 @@ function ContactCard({ contact, onChange }: { contact: SalesContact; onChange: (
         <Button variant="ghost" size="xs" onClick={() => fileRef.current?.click()} loading={uploading}>
           명함 업로드
         </Button>
-        <Button variant="ghost" size="xs" onClick={remove}>삭제</Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={remove}
+          disabled={!canDelete}
+          title={canDelete ? '' : '거래처마다 명함이 최소 1건 있어야 해 마지막 담당자는 삭제할 수 없습니다.'}
+        >
+          삭제
+        </Button>
       </div>
+      {err && <div className="mt-1.5 text-[11.5px] text-[var(--danger-fg)]">{err}</div>}
     </div>
   );
 }

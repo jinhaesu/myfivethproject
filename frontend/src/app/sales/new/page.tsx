@@ -7,7 +7,15 @@ import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import MeetingPurposeField from '@/components/MeetingPurposeField';
 import { api, getFileUrl } from '@/lib/api';
-import { SalesClient, SalesContact, SALES_STAGES, todoSuggestionsForStage } from '@/lib/sales';
+import {
+  SalesClient,
+  SalesContact,
+  SALES_STAGES,
+  STORAGE_CONDITIONS,
+  STORAGE_CONDITION_TONE,
+  storageLabel,
+  todoSuggestionsForStage,
+} from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -17,6 +25,7 @@ import {
   Select,
   Textarea,
   Field,
+  Badge,
   CenterSpinner,
 } from '@/components/ui';
 
@@ -78,9 +87,40 @@ export default function NewSalesJournalPage() {
 
   // 거래처에 등록된 명함 — 불러오기용
   const [contacts, setContacts] = useState<SalesContact[]>([]);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
   const [pickedContactIds, setPickedContactIds] = useState<string[]>([]);
   const toggleContact = (id: string) =>
     setPickedContactIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  // 명함이 0건인 거래처는 일지를 저장할 수 없다 — 화면을 떠나지 않고 여기서 바로 등록한다
+  const [quickContact, setQuickContact] = useState({
+    name: '', position: '', phone: '', email: '', storageCondition: '',
+  });
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState('');
+  const needsContact = !!clientId && contactsLoaded && contacts.length === 0;
+
+  const addQuickContact = async () => {
+    if (!quickContact.name.trim() || !quickContact.storageCondition) return;
+    setQuickBusy(true);
+    setQuickError('');
+    try {
+      await api.sales.createContact(clientId, {
+        name: quickContact.name.trim(),
+        position: quickContact.position.trim() || undefined,
+        phone: quickContact.phone.trim() || undefined,
+        email: quickContact.email.trim() || undefined,
+        storageCondition: quickContact.storageCondition,
+      });
+      const data = await api.sales.listContacts(clientId);
+      setContacts(data.contacts || []);
+      setQuickContact({ name: '', position: '', phone: '', email: '', storageCondition: '' });
+    } catch (e) {
+      setQuickError((e as Error)?.message || '담당자 등록에 실패했습니다.');
+    } finally {
+      setQuickBusy(false);
+    }
+  };
 
   // 샘플 제공 + 견적 제안 그리드
   const [sampleProvided, setSampleProvided] = useState(false);
@@ -190,6 +230,7 @@ export default function NewSalesJournalPage() {
   // 거래처가 바뀌면 등록된 명함 목록을 다시 불러온다
   useEffect(() => {
     setPickedContactIds([]);
+    setContactsLoaded(false);
     if (!clientId) {
       setContacts([]);
       return;
@@ -202,6 +243,9 @@ export default function NewSalesJournalPage() {
       } catch (e) {
         console.error('Failed to load contacts:', e);
         if (alive) setContacts([]);
+      } finally {
+        // 조회를 마치기 전에는 "명함 없음"으로 단정하지 않는다
+        if (alive) setContactsLoaded(true);
       }
     })();
     return () => {
@@ -254,7 +298,13 @@ export default function NewSalesJournalPage() {
     if (hasQuote && !quoteItems.some((q) => q.productName.trim())) {
       missing.push('견적 항목 (제품명 1건 이상)');
     }
-    return missing.length ? `필수 항목을 입력해주세요: ${missing.join(', ')}` : '';
+    if (missing.length) return `필수 항목을 입력해주세요: ${missing.join(', ')}`;
+    // 서버도 같은 규칙으로 막지만, 다 쓰고 저장 버튼에서 튕기는 것보다 먼저 알려준다
+    if (needsContact) {
+      const clientName = clients.find((c) => c.id === clientId)?.name || '이 거래처';
+      return `${clientName}에 등록된 담당자 명함이 없습니다. 기본 정보의 담당자 등록을 먼저 완료해주세요.`;
+    }
+    return '';
   };
 
   const submit = async () => {
@@ -432,6 +482,74 @@ export default function NewSalesJournalPage() {
                 </label>
               </Field>
             </div>
+
+            {/* 명함 0건 거래처 — 일지 저장 전에 담당자를 특정해 둔다 */}
+            {needsContact && (
+              <div className="mt-4 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] p-3">
+                <div className="text-[12.5px] font-medium text-[var(--danger-fg)]">
+                  이 거래처는 등록된 담당자 명함이 없습니다
+                </div>
+                <p className="text-[11.5px] text-[var(--text-2)] mt-1 mb-2.5">
+                  담당자 1명을 등록해야 영업일지를 저장할 수 있습니다. 여기서 바로 등록하면 거래처 마스터에도 함께 저장됩니다.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Input
+                    inputSize="sm"
+                    placeholder="담당자명 *"
+                    value={quickContact.name}
+                    onChange={(e) => setQuickContact({ ...quickContact, name: e.target.value })}
+                  />
+                  <Select
+                    inputSize="sm"
+                    value={quickContact.storageCondition}
+                    onChange={(e) => setQuickContact({ ...quickContact, storageCondition: e.target.value })}
+                  >
+                    <option value="">보관 조건 * (냉동/냉장/상온/전체)</option>
+                    {STORAGE_CONDITIONS.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input
+                    inputSize="sm"
+                    placeholder="직급·직함"
+                    value={quickContact.position}
+                    onChange={(e) => setQuickContact({ ...quickContact, position: e.target.value })}
+                  />
+                  <Input
+                    inputSize="sm"
+                    placeholder="연락처"
+                    value={quickContact.phone}
+                    onChange={(e) => setQuickContact({ ...quickContact, phone: e.target.value })}
+                  />
+                  <Input
+                    inputSize="sm"
+                    placeholder="이메일"
+                    value={quickContact.email}
+                    onChange={(e) => setQuickContact({ ...quickContact, email: e.target.value })}
+                    className="sm:col-span-2"
+                  />
+                </div>
+                {quickError && (
+                  <div className="mt-2 text-[11.5px] text-[var(--danger-fg)]">{quickError}</div>
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={addQuickContact}
+                    loading={quickBusy}
+                    disabled={!quickContact.name.trim() || !quickContact.storageCondition}
+                  >
+                    + 담당자 등록
+                  </Button>
+                  <span className="text-[11px] text-[var(--text-4)]">
+                    명함 이미지는 거래처 상세에서 첨부할 수 있습니다.
+                  </span>
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* 최초 미팅 거래처 정보 */}
@@ -591,7 +709,7 @@ export default function NewSalesJournalPage() {
                   등록된 명함 불러오기
                 </div>
                 <p className="text-[11px] text-[var(--text-4)] mb-2">
-                  이 거래처에 등록된 담당자 명함을 새로 찍지 않고 그대로 붙일 수 있습니다.
+                  이 거래처에 등록된 담당자 명함을 새로 찍지 않고 그대로 붙일 수 있습니다. 보관 조건으로 담당 구분을 확인하세요.
                 </p>
                 <div className="flex flex-col gap-1.5">
                   {contacts.map((c) => {
@@ -626,9 +744,21 @@ export default function NewSalesJournalPage() {
                           </span>
                         )}
                         <span className="min-w-0">
-                          <span className="block text-[12.5px] text-[var(--text-1)] truncate">
-                            {c.name}
-                            {c.position ? ` ${c.position}` : ''}
+                          <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-1)]">
+                            <span className="truncate">
+                              {c.name}
+                              {c.position ? ` ${c.position}` : ''}
+                            </span>
+                            <Badge
+                              tone={
+                                c.storageCondition
+                                  ? STORAGE_CONDITION_TONE[c.storageCondition] || 'neutral'
+                                  : 'neutral'
+                              }
+                              size="xs"
+                            >
+                              {storageLabel(c.storageCondition)}
+                            </Badge>
                           </span>
                           <span className="block text-[11px] text-[var(--text-3)] truncate">
                             {[c.title, c.phone, c.email].filter(Boolean).join(' · ') || '연락처 미등록'}

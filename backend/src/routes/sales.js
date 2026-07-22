@@ -22,6 +22,8 @@ const {
   DEAL_STATUSES,
   LOST_REASONS,
   MEETING_PURPOSES,
+  STORAGE_CONDITIONS,
+  normalizeStorageCondition,
 } = require('../lib/sales');
 
 const router = express.Router();
@@ -219,7 +221,12 @@ const CLIENT_INCLUDE = {
 
 // 화면 드롭다운이 백엔드와 어긋나지 않도록 선택지를 한 곳에서 내려준다
 router.get('/meta/options', authenticate, (req, res) => {
-  res.json({ dealStatuses: DEAL_STATUSES, lostReasons: LOST_REASONS, meetingPurposes: MEETING_PURPOSES });
+  res.json({
+    dealStatuses: DEAL_STATUSES,
+    lostReasons: LOST_REASONS,
+    meetingPurposes: MEETING_PURPOSES,
+    storageConditions: STORAGE_CONDITIONS,
+  });
 });
 
 router.get('/clients', authenticate, async (req, res) => {
@@ -241,10 +248,18 @@ router.post('/clients', authenticate, async (req, res) => {
       name, bizNumber, stage, ownerOrg, buyerComposition, annualRevenue,
       existingVendors, managedItems, storageCondition, logisticsCondition, note,
       expectedRevenue, winProbability, expectedCloseDate,
-      contactName, contactPhone, contactEmail,
+      contactName, contactPhone, contactEmail, contactPosition, contactStorageCondition,
     } = req.body;
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: '거래처명을 입력해주세요.' });
+    }
+    // 거래처는 있는데 담당자를 아무도 모르는 상태가 계속 생겨서, 첫 명함을 등록 시점에 강제한다
+    if (!contactName || !String(contactName).trim()) {
+      return res.status(400).json({ error: '담당자명을 입력해주세요. 거래처는 담당자 명함 1건 이상이 있어야 등록됩니다.' });
+    }
+    const contactStorage = normalizeStorageCondition(contactStorageCondition);
+    if (!contactStorage) {
+      return res.status(400).json({ error: '담당자의 보관 조건을 선택해주세요. (냉동/냉장/상온/전체)' });
     }
     // 예상 계약일이 비면 매출 타임라인에서 그 딜이 통째로 사라진다 — 등록 시점에 받는다
     const closeDate = parseDate(expectedCloseDate);
@@ -252,16 +267,16 @@ router.post('/clients', authenticate, async (req, res) => {
       return res.status(400).json({ error: '예상 계약일을 입력해주세요. 매출 타임라인 예측에 필요합니다.' });
     }
     // 등록 화면에서 함께 받은 실무 담당자를 첫 명함으로 만들어 둔다 (인수인계 시 연락처 유실 방지)
-    const primaryContact = String(contactName || '').trim()
-      ? {
-          create: [{
-            name: String(contactName).trim(),
-            phone: String(contactPhone || '').trim() || null,
-            email: String(contactEmail || '').trim() || null,
-            sortOrder: 0,
-          }],
-        }
-      : undefined;
+    const primaryContact = {
+      create: [{
+        name: String(contactName).trim(),
+        position: String(contactPosition || '').trim() || null,
+        phone: String(contactPhone || '').trim() || null,
+        email: String(contactEmail || '').trim() || null,
+        storageCondition: contactStorage,
+        sortOrder: 0,
+      }],
+    };
     const client = await prisma.salesClient.create({
       data: {
         name: String(name).trim(),
@@ -270,7 +285,7 @@ router.post('/clients', authenticate, async (req, res) => {
         expectedRevenue: parseRevenue(expectedRevenue),
         winProbability: parseProb(winProbability),
         expectedCloseDate: closeDate,
-        ...(primaryContact ? { contacts: primaryContact } : {}),
+        contacts: primaryContact,
         ownerOrg: ownerOrg || null,
         buyerComposition: buyerComposition || null,
         annualRevenue: annualRevenue || null,
@@ -426,9 +441,14 @@ router.post('/clients/:clientId/contacts', authenticate, async (req, res) => {
   try {
     const client = await prisma.salesClient.findUnique({ where: { id: req.params.clientId } });
     if (!client) return res.status(404).json({ error: '거래처를 찾을 수 없습니다.' });
-    const { name, position, title, phone, email } = req.body;
+    const { name, position, title, phone, email, storageCondition } = req.body;
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: '담당자 이름을 입력해주세요.' });
+    }
+    // 같은 거래처라도 냉동·냉장·상온 바이어가 다르다 — 이 값이 명함을 구분하는 축이라 필수
+    const storage = normalizeStorageCondition(storageCondition);
+    if (!storage) {
+      return res.status(400).json({ error: '보관 조건을 선택해주세요. (냉동/냉장/상온/전체)' });
     }
     const count = await prisma.salesContact.count({ where: { clientId: client.id } });
     const contact = await prisma.salesContact.create({
@@ -439,6 +459,7 @@ router.post('/clients/:clientId/contacts', authenticate, async (req, res) => {
         title: title || null,
         phone: phone || null,
         email: email || null,
+        storageCondition: storage,
         sortOrder: count,
       },
     });
@@ -459,6 +480,13 @@ router.put('/contacts/:id', authenticate, async (req, res) => {
     if (b.name !== undefined && !String(b.name).trim()) {
       return res.status(400).json({ error: '담당자 이름은 비울 수 없습니다.' });
     }
+    if (b.storageCondition !== undefined) {
+      const storage = normalizeStorageCondition(b.storageCondition);
+      if (!storage) {
+        return res.status(400).json({ error: '보관 조건을 선택해주세요. (냉동/냉장/상온/전체)' });
+      }
+      data.storageCondition = storage;
+    }
     const contact = await prisma.salesContact.update({ where: { id: req.params.id }, data });
     res.json({ contact });
   } catch (error) {
@@ -470,7 +498,15 @@ router.put('/contacts/:id', authenticate, async (req, res) => {
 router.delete('/contacts/:id', authenticate, async (req, res) => {
   try {
     const contact = await prisma.salesContact.findUnique({ where: { id: req.params.id } });
-    if (contact?.cardImageUrl) {
+    if (!contact) return res.status(404).json({ error: '담당자를 찾을 수 없습니다.' });
+    // 마지막 1건까지 지울 수 있으면 "명함 1건 이상" 규칙이 뒤에서 뚫린다
+    const count = await prisma.salesContact.count({ where: { clientId: contact.clientId } });
+    if (count <= 1) {
+      return res.status(400).json({
+        error: '거래처마다 담당자 명함이 최소 1건 있어야 합니다. 새 담당자를 먼저 등록한 뒤 삭제해주세요.',
+      });
+    }
+    if (contact.cardImageUrl) {
       const key = contact.cardImageUrl.replace(/^\/uploads\//, '');
       try { await storage.deleteFile(key); } catch (e) { console.error('card delete:', e.message); }
     }
@@ -583,6 +619,13 @@ router.post('/journals', authenticate, async (req, res) => {
     if (!clientId) return res.status(400).json({ error: '거래처를 지정해주세요.' });
     const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
     if (!client) return res.status(404).json({ error: '거래처를 찾을 수 없습니다.' });
+    // 명함 등록을 계속 건너뛰는 걸 막는 실질적 관문 — 일지를 쓰려면 담당자가 특정돼 있어야 한다
+    const contactCount = await prisma.salesContact.count({ where: { clientId } });
+    if (contactCount === 0) {
+      return res.status(400).json({
+        error: `${client.name}에 등록된 담당자 명함이 없습니다. 담당자 1명을 먼저 등록해야 일지를 저장할 수 있습니다.`,
+      });
+    }
 
     const missing = validateJournalBody(req.body);
     if (missing.length) {

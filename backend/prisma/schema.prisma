@@ -311,6 +311,9 @@ model SalesContact {
   email         String? // 이메일
   cardImageUrl  String? // 명함 이미지 URL
   cardImageName String?
+  // 담당 보관 조건 frozen(냉동) | chilled(냉장) | ambient(상온) | all(전체)
+  // 같은 거래처라도 보관 구분별로 바이어가 갈려서, 사실상 명함을 나누는 축이다
+  storageCondition String?
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
 
