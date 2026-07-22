@@ -18,11 +18,11 @@ import {
   STORAGE_CONDITIONS,
   USP_OPTIONS,
   DISCONTINUE_REASONS,
-  LAUNCH_SCOPES,
   launchScopeLabel,
   contactStorageKeyOf,
 } from '@/lib/launch';
 import { SalesClient, storageLabel } from '@/lib/sales';
+import LaunchScopePicker from '@/components/LaunchScopePicker';
 import Link from 'next/link';
 import { userLabel } from '@/lib/user';
 import {
@@ -581,6 +581,9 @@ function ProjectEditForm({
   const [brandType, setBrandType] = useState(project.brandType || '');
   const [launchScope, setLaunchScope] = useState(project.launchScope || 'brand');
   const [clientId, setClientId] = useState(project.clientId || '');
+  const [clientIds, setClientIds] = useState<string[]>(
+    (project.targetClients || []).map((t) => t.clientId),
+  );
   const [clients, setClients] = useState<SalesClient[]>([]);
   const [salesChannels, setSalesChannels] = useState(project.salesChannels || '');
   const [storageCondition, setStorageCondition] = useState(project.storageCondition || '');
@@ -618,6 +621,10 @@ function ProjectEditForm({
       setError('거래처 전용 출시는 대상 거래처를 선택해주세요.');
       return;
     }
+    if (launchScope === 'channel' && clientIds.length === 0) {
+      setError('채널 전용 출시는 대상 거래처를 1곳 이상 선택해주세요.');
+      return;
+    }
     const payload: any = {
       productName: productName.trim(),
       productType,
@@ -631,6 +638,7 @@ function ProjectEditForm({
       payload.brandType = brandType || null;
       payload.launchScope = launchScope;
       payload.clientId = launchScope === 'client' ? clientId : null;
+      payload.clientIds = launchScope === 'channel' ? clientIds : [];
       payload.salesChannels = salesChannels.trim() || null;
       payload.storageCondition = storageCondition || null;
       payload.targetShelfLife = targetShelfLife.trim() || null;
@@ -715,39 +723,18 @@ function ProjectEditForm({
         )}
         {!isDisc && (
           <>
-            <Field
-              label="출시 대상 구분"
-              hint="거래처 전용으로 두면 그 거래처 화면과 캘린더 필터에 이 제품이 함께 잡힙니다."
-            >
-              <Select
-                value={launchScope}
-                onChange={(e) => setLaunchScope(e.target.value)}
-                inputSize="md"
-              >
-                {LAUNCH_SCOPES.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="대상 거래처" required={launchScope === 'client'}>
-              <Select
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                inputSize="md"
-                disabled={launchScope !== 'client'}
-              >
-                <option value="">
-                  {launchScope === 'client' ? '거래처 선택' : '브랜드 공식 출시 — 해당 없음'}
-                </option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <div className="sm:col-span-2">
+              <LaunchScopePicker
+                scope={launchScope}
+                clientId={clientId}
+                clientIds={clientIds}
+                clients={clients}
+                onScopeChange={setLaunchScope}
+                onClientIdChange={setClientId}
+                onClientIdsChange={setClientIds}
+                layout="compact"
+              />
+            </div>
             <Field label="영업채널" hint="쉼표로 구분">
               <Input
                 value={salesChannels}
@@ -1038,7 +1025,7 @@ export default function LaunchDetailPage() {
             {/* 대상 구분은 항상 보여준다 — 자사 라인업인지 남의 PB인지가 가장 먼저 필요한 정보 */}
             <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)]">
               대상
-              <Badge tone={project.launchScope === 'client' ? 'brand' : 'neutral'} size="sm">
+              <Badge tone={project.launchScope === 'brand' ? 'neutral' : 'brand'} size="sm">
                 {launchScopeLabel(project.launchScope)}
               </Badge>
               {project.client ? (
@@ -1049,6 +1036,17 @@ export default function LaunchDetailPage() {
                   {project.client.name}
                 </Link>
               ) : null}
+              {(project.targetClients || []).map((t) =>
+                t.client ? (
+                  <Link
+                    key={t.clientId}
+                    href={`/sales/clients/${t.clientId}`}
+                    className="text-[var(--brand-400)] hover:text-[var(--brand-200)] transition-colors"
+                  >
+                    {t.client.name}
+                  </Link>
+                ) : null,
+              )}
             </span>
             {project.brandType && (
               <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)]">

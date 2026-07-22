@@ -45,7 +45,7 @@ function ClientMappingCard({
   items: ClientSuggestion[];
   onApplied: () => void;
 }) {
-  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
   // 이름으로 후보를 못 찾은 건("[편의점 전용]" 처럼)도 직접 고를 수 있어야 한다
@@ -62,16 +62,30 @@ function ClientMappingCard({
     })();
   }, []);
 
-  const valueOf = (it: ClientSuggestion) =>
-    picked[it.projectId] ?? it.confidentClientId ?? '';
+  // 고른 거래처 수가 곧 구분이다 — 1곳이면 거래처 전용, 여러 곳이면 채널 전용
+  const valueOf = (it: ClientSuggestion): string[] =>
+    picked[it.projectId] ?? (it.confidentClientId ? [it.confidentClientId] : []);
+
+  const toggle = (it: ClientSuggestion, id: string) => {
+    const cur = valueOf(it);
+    setPicked((p) => ({
+      ...p,
+      [it.projectId]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
+    }));
+  };
 
   const apply = async (it: ClientSuggestion) => {
-    const clientId = valueOf(it);
-    if (!clientId) return;
+    const ids = valueOf(it);
+    if (ids.length === 0) return;
     setBusyId(it.projectId);
     setError('');
     try {
-      await api.launches.update(it.projectId, { launchScope: 'client', clientId });
+      await api.launches.update(
+        it.projectId,
+        ids.length === 1
+          ? { launchScope: 'client', clientId: ids[0], clientIds: [] }
+          : { launchScope: 'channel', clientIds: ids },
+      );
       onApplied();
     } catch (e) {
       const msg = (e as Error)?.message || '거래처 지정에 실패했습니다.';
@@ -95,12 +109,17 @@ function ClientMappingCard({
       <div className="flex flex-col gap-2">
         {items.map((it) => {
           const val = valueOf(it);
+          // 후보를 앞에 두고 나머지 거래처를 뒤에 붙인다 (후보가 없는 건도 직접 고를 수 있어야 한다)
+          const chips = [
+            ...it.candidates,
+            ...allClients.filter((c) => !it.candidates.some((x) => x.id === c.id)),
+          ];
           return (
             <div
               key={it.projectId}
-              className="flex flex-wrap items-center gap-2 px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)]"
+              className="px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)]"
             >
-              <div className="min-w-[200px] flex-1">
+              <div className="mb-2">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Link
                     href={`/launches/${it.projectId}`}
@@ -135,42 +154,48 @@ function ClientMappingCard({
                   </div>
                 )}
               </div>
-              <Select
-                inputSize="sm"
-                value={val}
-                onChange={(e) => setPicked((p) => ({ ...p, [it.projectId]: e.target.value }))}
-                className="w-full sm:w-[220px]"
-              >
-                <option value="">거래처 선택</option>
-                {it.candidates.length > 0 && (
-                  <optgroup label="이름에서 찾은 후보">
-                    {it.candidates.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {c.id === it.confidentClientId ? ' (추천)' : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="전체 거래처">
-                  {allClients
-                    .filter((c) => !it.candidates.some((x) => x.id === c.id))
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </optgroup>
-              </Select>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => apply(it)}
-                loading={busyId === it.projectId}
-                disabled={!val}
-              >
-                거래처 전용으로 지정
-              </Button>
+
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {chips.map((c) => {
+                  const on = val.includes(c.id);
+                  const isCandidate = it.candidates.some((x) => x.id === c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggle(it, c.id)}
+                      aria-pressed={on}
+                      className={
+                        'inline-flex items-center h-7 px-2.5 rounded-full border text-[11.5px] transition-colors ' +
+                        (on
+                          ? 'border-[var(--brand-500)] bg-[var(--bg-2)] text-[var(--text-1)]'
+                          : isCandidate
+                          ? 'border-[var(--border-2)] text-[var(--text-2)] hover:bg-[var(--bg-2)]'
+                          : 'border-[var(--border-1)] text-[var(--text-4)] hover:bg-[var(--bg-2)]')
+                      }
+                    >
+                      {on ? '✓ ' : ''}
+                      {c.name}
+                      {c.id === it.confidentClientId ? ' (추천)' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => apply(it)}
+                  loading={busyId === it.projectId}
+                  disabled={val.length === 0}
+                >
+                  {val.length > 1 ? `채널 전용으로 지정 (${val.length}곳)` : '거래처 전용으로 지정'}
+                </Button>
+                <span className="text-[11px] text-[var(--text-4)]">
+                  1곳만 고르면 거래처 전용, 여러 곳을 고르면 채널 전용이 됩니다.
+                </span>
+              </div>
             </div>
           );
         })}
@@ -316,10 +341,15 @@ export default function LaunchesPage() {
                         {new Date(p.targetLaunchDate).toLocaleDateString('ko-KR')}
                       </span>
                     )}
-                    {/* 거래처 전용은 자사 라인업과 섞이면 안 되므로 목록에서 바로 구분한다 */}
+                    {/* 거래처·채널 전용은 자사 라인업과 섞이면 안 되므로 목록에서 바로 구분한다 */}
                     {p.launchScope === 'client' && (
                       <Badge tone="brand" size="xs">
                         {p.client?.name ? `${p.client.name} 전용` : '거래처 전용'}
+                      </Badge>
+                    )}
+                    {p.launchScope === 'channel' && (
+                      <Badge tone="brand" size="xs">
+                        채널 전용 {(p.targetClients || []).length}곳
                       </Badge>
                     )}
                     {p.brandType && (

@@ -254,6 +254,7 @@ export const api = {
       brandType?: string;
       launchScope?: string;
       clientId?: string;
+      clientIds?: string[];
       salesChannels?: string;
       storageCondition?: string;
       usp?: string[];

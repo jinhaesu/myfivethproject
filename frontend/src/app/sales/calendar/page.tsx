@@ -86,9 +86,14 @@ export default function SalesPlansPage() {
     })();
   }, []);
 
-  // 거래처 필터 적용 후 (출시·단종은 거래처가 없으므로 특정 거래처 선택 시 함께 빠진다)
+  // 거래처 필터 — 채널 전용 출시는 대상 거래처 어디를 골라도 잡혀야 한다
   const clientFiltered = useMemo(
-    () => (clientId ? events.filter((e) => e.clientId === clientId) : events),
+    () =>
+      clientId
+        ? events.filter(
+            (e) => e.clientId === clientId || (e.targetClientIds || []).includes(clientId),
+          )
+        : events,
     [events, clientId],
   );
 
@@ -108,7 +113,12 @@ export default function SalesPlansPage() {
   const clientCounts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const e of events) {
-      if (e.clientId && !hiddenTypes.has(e.type)) c[e.clientId] = (c[e.clientId] || 0) + 1;
+      if (hiddenTypes.has(e.type)) continue;
+      // 같은 이벤트가 한 거래처에 두 번 세지 않도록 중복 제거
+      const ids = [e.clientId, ...(e.targetClientIds || [])].filter(Boolean) as string[];
+      ids.filter((id, i) => ids.indexOf(id) === i).forEach((id) => {
+        c[id] = (c[id] || 0) + 1;
+      });
     }
     return c;
   }, [events, hiddenTypes]);
@@ -323,7 +333,7 @@ export default function SalesPlansPage() {
               필터 해제
             </button>
             <span className="text-[11.5px] text-[var(--text-4)]">
-              브랜드 공식 출시 일정은 특정 거래처에 속하지 않아 표시되지 않습니다. (거래처 전용 출시는 표시됨)
+              브랜드 공식 출시 일정은 특정 거래처에 속하지 않아 표시되지 않습니다. (거래처 전용·채널 전용은 표시됨)
             </span>
           </>
         )}
@@ -585,7 +595,16 @@ function EventDetailModal({
   const planId = ev.type === 'plan' ? ev.id.replace(/^plan-/, '') : null;
   const rows: [string, string][] = [];
   if (ev.launchScope) {
-    rows.push(['출시 대상', ev.launchScope === 'client' ? '거래처 전용' : '브랜드 공식 출시']);
+    const scopeLabel =
+      ev.launchScope === 'client'
+        ? '거래처 전용'
+        : ev.launchScope === 'channel'
+        ? '채널 전용'
+        : '브랜드 공식 출시';
+    rows.push(['출시 대상', scopeLabel]);
+  }
+  if (ev.targetClientNames?.length) {
+    rows.push(['대상 거래처', ev.targetClientNames.join(', ')]);
   }
   if (ev.clientName) rows.push(['거래처', ev.clientName]);
   if (ev.stage) rows.push(['영업 단계', STAGE_LABEL[ev.stage] || ev.stage]);

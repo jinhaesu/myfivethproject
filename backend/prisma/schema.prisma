@@ -151,12 +151,15 @@ model LaunchProject {
   discontinueReason String? // 단종 사유 (판매량 저하, 품질 이슈 등)
   // 출시 전략
   brandType         String? // NB, PNB, PB
-  // 출시 대상 구분 brand(브랜드 공식 출시 — 채널 무관) | client(특정 거래처 전용)
-  // 거래처 전용일 때만 clientId가 채워진다. 브랜드 출시는 이후 여러 거래처에 제안되며,
-  // 그 연결은 SampleRequest.clientId로 남는다.
+  // 출시 대상 구분
+  //   brand   브랜드 공식 출시 — 채널 무관 자사 정식 라인업
+  //   channel 채널 전용 — 편의점 계열처럼 여러 거래처를 묶어 대상으로 삼는 제품 (targetClients)
+  //   client  거래처 전용 — PB·전용규격처럼 한 거래처 것 (clientId)
+  // 브랜드 출시가 개별 거래처와 이어진 기록은 SampleRequest.clientId로 남는다.
   launchScope       String    @default("brand")
   client            SalesClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientId          String?
+  targetClients     LaunchProjectClient[]
   salesChannels     String? // 영업채널 (쉼표 구분: 자사몰, 쿠팡, ○○마트 PB 등)
   storageCondition  String? // 실온, 냉장, 냉동
   usp               Json? // USP 배열: 고단백, 저당, 고식이섬유, 개별인정형(식후혈당안정) 등
@@ -170,6 +173,21 @@ model LaunchProject {
   stages         LaunchStage[]
   notifications  LaunchNotificationLog[]
   sampleRequests SampleRequest[]
+}
+
+// 채널 전용 출시의 대상 거래처 — 편의점 계열처럼 한 제품이 여러 거래처를 겨냥할 때 쓴다.
+// 거래처 전용(1곳)은 LaunchProject.clientId로 충분하므로 이 표를 쓰지 않는다.
+model LaunchProjectClient {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  project   LaunchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  client    SalesClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+
+  @@unique([projectId, clientId])
+  @@index([clientId])
 }
 
 // 영업 선제안용 샘플 요청 — 기획·컨셉 단계 완료 후에만 생성 가능
@@ -295,6 +313,8 @@ model SalesClient {
   receivables SalesReceivable[]
   // 이 거래처 전용으로 진행 중인 출시·단종 프로젝트
   launchProjects LaunchProject[]
+  // 채널 전용 출시에서 이 거래처가 대상에 포함된 건
+  targetedLaunches LaunchProjectClient[]
   // 브랜드 공식 출시 제품 중 이 거래처에 제안한 샘플
   sampleRequests SampleRequest[]
 }

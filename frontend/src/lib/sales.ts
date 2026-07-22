@@ -217,6 +217,7 @@ export interface ClientLaunchProject {
   status: string;
   storageCondition: string | null;
   brandType: string | null;
+  launchScope?: string;
 }
 
 export interface ClientSampleRequest {
@@ -282,6 +283,8 @@ export interface SalesClient {
   plans?: SalesPlan[];
   // 이 거래처 전용 출시·단종 프로젝트
   launchProjects?: ClientLaunchProject[];
+  // 채널 전용 출시 중 이 거래처가 대상에 포함된 건
+  targetedLaunches?: { project: ClientLaunchProject | null }[];
   // 이 거래처에 제안한 샘플 (브랜드 공식 출시 제품이 거래처와 이어지는 유일한 기록)
   sampleRequests?: ClientSampleRequest[];
   _count?: { journals: number; plans: number };
@@ -404,7 +407,9 @@ export interface CalendarEvent {
   detail?: string | null; // 미팅 개요 / 계획 내용 / 할일 계획
   author?: string | null;
   parentTitle?: string | null; // 할일이 속한 일지 제목
-  launchScope?: string | null; // 출시·단종 전용: brand | client
+  launchScope?: string | null; // 출시·단종 전용: brand | channel | client
+  targetClientIds?: string[]; // 채널 전용 출시의 대상 거래처들
+  targetClientNames?: string[];
   url: string;
 }
 

@@ -9,10 +9,10 @@ import {
   BRAND_TYPES,
   STORAGE_CONDITIONS,
   USP_OPTIONS,
-  LAUNCH_SCOPES,
   LaunchProject,
 } from '@/lib/launch';
 import { SalesClient } from '@/lib/sales';
+import LaunchScopePicker from '@/components/LaunchScopePicker';
 import {
   PageHeader,
   Card,
@@ -59,6 +59,7 @@ function NewLaunchForm() {
   // 출시 대상 구분 — 거래처 전용일 때만 clientId를 받는다
   const [launchScope, setLaunchScope] = useState('brand');
   const [clientId, setClientId] = useState('');
+  const [clientIds, setClientIds] = useState<string[]>([]);
   const [clients, setClients] = useState<SalesClient[]>([]);
   const [salesChannels, setSalesChannels] = useState('');
   const [storageCondition, setStorageCondition] = useState('');
@@ -94,6 +95,7 @@ function NewLaunchForm() {
             setBrandType(p.brandType || '');
             setLaunchScope(p.launchScope || 'brand');
             setClientId(p.clientId || '');
+            setClientIds((p.targetClients || []).map((t) => t.clientId));
             setSalesChannels(p.salesChannels || '');
             setStorageCondition(p.storageCondition || '');
             const srcUsp = p.usp || [];
@@ -155,6 +157,10 @@ function NewLaunchForm() {
       setError('거래처 전용 출시는 대상 거래처를 선택해주세요.');
       return;
     }
+    if (launchScope === 'channel' && clientIds.length === 0) {
+      setError('채널 전용 출시는 대상 거래처를 1곳 이상 선택해주세요.');
+      return;
+    }
     const missing = template
       .map((s, idx) => {
         const o = owners[idx];
@@ -184,6 +190,7 @@ function NewLaunchForm() {
         brandType: brandType || undefined,
         launchScope,
         clientId: launchScope === 'client' ? clientId : undefined,
+        clientIds: launchScope === 'channel' ? clientIds : undefined,
         salesChannels: salesChannels.trim() || undefined,
         storageCondition: storageCondition || undefined,
         usp: uspAll.length > 0 ? uspAll : undefined,
@@ -293,43 +300,15 @@ function NewLaunchForm() {
           />
           {/* 출시 대상 구분 — 이후 거래처 화면에 뜰지 말지가 여기서 갈린다 */}
           <div className="mb-4">
-            <div className="text-[13px] font-medium text-[var(--text-1)] mb-2">출시 대상 구분</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {LAUNCH_SCOPES.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setLaunchScope(s.key)}
-                  className={
-                    'text-left rounded-lg border p-3 transition-colors ' +
-                    (launchScope === s.key
-                      ? 'border-[var(--brand-500)] bg-[var(--bg-2)]'
-                      : 'border-[var(--border-1)] hover:bg-[var(--bg-2)]')
-                  }
-                >
-                  <div className="text-[13px] font-medium text-[var(--text-1)]">{s.label}</div>
-                  <div className="text-[11.5px] text-[var(--text-3)] mt-0.5">{s.hint}</div>
-                </button>
-              ))}
-            </div>
-            {launchScope === 'client' && (
-              <div className="mt-3">
-                <Field
-                  label="대상 거래처"
-                  required
-                  hint="이 거래처 상세 화면과 영업 캘린더 거래처 필터에 이 제품이 함께 표시됩니다."
-                >
-                  <Select value={clientId} onChange={(e) => setClientId(e.target.value)} inputSize="md">
-                    <option value="">거래처 선택</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            )}
+            <LaunchScopePicker
+              scope={launchScope}
+              clientId={clientId}
+              clientIds={clientIds}
+              clients={clients}
+              onScopeChange={setLaunchScope}
+              onClientIdChange={setClientId}
+              onClientIdsChange={setClientIds}
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

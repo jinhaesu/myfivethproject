@@ -86,6 +86,7 @@ const CLIENT_BRIEF = { select: { id: true, name: true, stage: true } };
 const PROJECT_INCLUDE = {
   createdBy: { select: { id: true, name: true, email: true, department: true } },
   client: CLIENT_BRIEF,
+  targetClients: { include: { client: CLIENT_BRIEF } },
   stages: {
     orderBy: { sortOrder: 'asc' },
     include: { tasks: { orderBy: { sortOrder: 'asc' } } },
@@ -99,26 +100,39 @@ const PROJECT_INCLUDE = {
   },
 };
 
-// 출시 대상 구분 — 브랜드 공식 출시는 채널 무관, 거래처 전용은 특정 거래처에 묶인다
+// 출시 대상 구분 — 채널 전용은 편의점 계열처럼 여러 거래처를 한 묶음으로 겨냥하는 경우
 const LAUNCH_SCOPES = [
   { key: 'brand', label: '브랜드 공식 출시' },
+  { key: 'channel', label: '채널 전용' },
   { key: 'client', label: '거래처 전용' },
 ];
 const LAUNCH_SCOPE_KEYS = LAUNCH_SCOPES.map((s) => s.key);
 const normalizeLaunchScope = (v) => (LAUNCH_SCOPE_KEYS.includes(v) ? v : 'brand');
 
-// 거래처 전용인데 거래처가 비면 구분 자체가 무의미해진다 → 저장 전에 막는다.
+// 구분과 대상 거래처는 한 쌍이다. 대상이 비면 구분 자체가 무의미해지므로 저장 전에 막고,
 // 반대로 브랜드 공식 출시에 거래처가 붙어 있으면 조용히 떼어낸다.
-async function resolveScope(scopeRaw, clientIdRaw) {
+async function resolveScope(scopeRaw, clientIdRaw, clientIdsRaw) {
   const scope = normalizeLaunchScope(scopeRaw);
-  if (scope !== 'client') return { scope, clientId: null };
-  const clientId = clientIdRaw ? String(clientIdRaw) : '';
-  if (!clientId) {
-    return { error: '거래처 전용 출시는 대상 거래처를 선택해야 합니다.' };
+  if (scope === 'brand') return { scope, clientId: null, clientIds: [] };
+
+  if (scope === 'client') {
+    const clientId = clientIdRaw ? String(clientIdRaw) : '';
+    if (!clientId) return { error: '거래처 전용 출시는 대상 거래처를 선택해야 합니다.' };
+    const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
+    if (!client) return { error: '거래처를 찾을 수 없습니다.' };
+    return { scope, clientId, clientIds: [] };
   }
-  const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
-  if (!client) return { error: '거래처를 찾을 수 없습니다.' };
-  return { scope, clientId };
+
+  // channel
+  const ids = [...new Set((Array.isArray(clientIdsRaw) ? clientIdsRaw : []).map(String).filter(Boolean))];
+  if (ids.length === 0) {
+    return { error: '채널 전용 출시는 대상 거래처를 1곳 이상 선택해야 합니다.' };
+  }
+  const found = await prisma.salesClient.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  if (found.length !== ids.length) {
+    return { error: '대상 거래처 중 찾을 수 없는 곳이 있습니다.' };
+  }
+  return { scope, clientId: null, clientIds: ids };
 }
 
 // 프로젝트 목록 (kind 쿼리로 출시/단종 구분, 미지정 시 출시)
@@ -143,12 +157,12 @@ router.post('/', authenticate, async (req, res) => {
     const {
       kind: kindRaw, productName, productType, weightSpec, description, targetLaunchDate, stageOwners,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
-      editPassword, launchScope, clientId,
+      editPassword, launchScope, clientId, clientIds,
     } = req.body;
     if (!productName) {
       return res.status(400).json({ error: '제품명을 입력해주세요.' });
     }
-    const scoped = await resolveScope(launchScope, clientId);
+    const scoped = await resolveScope(launchScope, clientId, clientIds);
     if (scoped.error) return res.status(400).json({ error: scoped.error });
     const kind = kindRaw === 'discontinuation' ? 'discontinuation' : 'launch';
     const template = getTemplate(kind);
@@ -189,6 +203,9 @@ router.post('/', authenticate, async (req, res) => {
         brandType: kind === 'launch' ? (brandType || null) : null,
         launchScope: scoped.scope,
         clientId: scoped.clientId,
+        targetClients: scoped.clientIds.length
+          ? { create: scoped.clientIds.map((id) => ({ clientId: id })) }
+          : undefined,
         salesChannels: kind === 'launch' ? (salesChannels || null) : null,
         storageCondition: kind === 'launch' ? (storageCondition || null) : null,
         usp: kind === 'launch' && Array.isArray(usp) && usp.length > 0 ? usp : undefined,
@@ -296,8 +313,9 @@ router.get('/meta/client-suggestions', authenticate, async (req, res) => {
   try {
     const kind = req.query.kind === 'discontinuation' ? 'discontinuation' : 'launch';
     const [projects, clients] = await Promise.all([
+      // 이미 대상이 지정된 건(전용·채널)은 제외한다
       prisma.launchProject.findMany({
-        where: { kind, clientId: null },
+        where: { kind, clientId: null, targetClients: { none: {} } },
         orderBy: { createdAt: 'desc' },
         select: {
           id: true, productName: true, storageCondition: true,
@@ -397,14 +415,14 @@ router.put('/:id', authenticate, async (req, res) => {
     const {
       productName, productType, weightSpec, description, targetLaunchDate, status,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
-      editPassword, launchScope, clientId,
+      editPassword, launchScope, clientId, clientIds,
     } = req.body;
 
     // 잠금은 '등록 정보' 변경에만 적용. 상태(보류/재개 등) 단독 변경은 운영이라 자유
     const metaTouched = [
       productName, productType, weightSpec, description, targetLaunchDate, discontinueReason,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, editPassword,
-      launchScope, clientId,
+      launchScope, clientId, clientIds,
     ].some((v) => v !== undefined);
     if (metaTouched && !isEditAllowed(req, existing)) return editLockedResponse(res);
 
@@ -428,15 +446,32 @@ router.put('/:id', authenticate, async (req, res) => {
     if (storageCondition !== undefined) data.storageCondition = storageCondition || null;
     if (usp !== undefined) data.usp = Array.isArray(usp) ? usp : [];
     if (targetShelfLife !== undefined) data.targetShelfLife = targetShelfLife || null;
-    // 구분과 거래처는 한 쌍이라 한쪽만 바뀌어도 둘을 함께 다시 판정한다
-    if (launchScope !== undefined || clientId !== undefined) {
-      const scoped = await resolveScope(
+    // 구분과 대상 거래처는 한 쌍이라 한쪽만 바뀌어도 둘을 함께 다시 판정한다
+    let scoped = null;
+    if (launchScope !== undefined || clientId !== undefined || clientIds !== undefined) {
+      const currentTargets = await prisma.launchProjectClient.findMany({
+        where: { projectId: existing.id },
+        select: { clientId: true },
+      });
+      scoped = await resolveScope(
         launchScope !== undefined ? launchScope : existing.launchScope,
         clientId !== undefined ? clientId : existing.clientId,
+        clientIds !== undefined ? clientIds : currentTargets.map((t) => t.clientId),
       );
       if (scoped.error) return res.status(400).json({ error: scoped.error });
       data.launchScope = scoped.scope;
       data.clientId = scoped.clientId;
+    }
+
+    // 대상 목록은 통째로 갈아끼운다 — 부분 갱신은 지운 거래처가 남는 사고를 낸다
+    if (scoped) {
+      await prisma.launchProjectClient.deleteMany({ where: { projectId: existing.id } });
+      if (scoped.clientIds.length) {
+        await prisma.launchProjectClient.createMany({
+          data: scoped.clientIds.map((id) => ({ projectId: existing.id, clientId: id })),
+          skipDuplicates: true,
+        });
+      }
     }
 
     const project = await prisma.launchProject.update({
