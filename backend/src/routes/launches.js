@@ -237,6 +237,100 @@ router.get('/meta/scopes', authenticate, (req, res) => {
   res.json({ launchScopes: LAUNCH_SCOPES });
 });
 
+// ============================================================
+// 거래처 매핑 제안 — 프로젝트명에 이미 들어 있는 거래처 정보를 읽어 후보를 제시한다.
+// 자동 적용은 하지 않는다. 제품명 문자열만 보고 확정하면 남의 PB를 자사 라인업으로,
+// 또는 그 반대로 잘못 표기하게 되고 브랜드 귀속은 계약 사안이라 되돌리기 어렵다.
+// ============================================================
+
+// 거래처명에서 프로젝트명과 대조할 별칭을 뽑는다.
+// "GS25_냉장" → GS25·GS, "SSG (이마트)" → SSG·이마트, "쿠팡 로켓프레시" → 쿠팡
+const ALIAS_STOPWORDS = new Set(['온라인', '담당', '전용', '기타']);
+function clientAliases(name) {
+  const out = new Set();
+  const base = String(name || '').trim();
+  if (!base) return [];
+  out.add(base);
+  const head = base.split(/[_(]/)[0].trim();
+  if (head) {
+    out.add(head);
+    const firstWord = head.split(/\s+/)[0];
+    if (firstWord) out.add(firstWord);
+    // 제품명에는 "GS편의점"처럼 숫자를 뗀 형태로 적히는 경우가 많다
+    const deDigit = head.replace(/\d+/g, '').trim();
+    if (deDigit) out.add(deDigit);
+  }
+  const paren = base.match(/\(([^)]+)\)/);
+  if (paren) out.add(paren[1].trim());
+  return [...out].filter((a) => a.length >= 2 && !ALIAS_STOPWORDS.has(a));
+}
+
+// 이름에 거래처가 안 잡혀도 "전용"·"PB"·"군납"이면 자사 라인업이 아닐 가능성이 높다
+const EXCLUSIVE_HINT = /전용|군납|납품|PB/i;
+
+function suggestClients(project, clients) {
+  const pname = String(project.productName || '');
+  let candidates = clients.filter((c) => clientAliases(c.name).some((a) => pname.includes(a)));
+  let confident = candidates.length === 1 ? candidates[0] : null;
+
+  // 같은 거래처가 보관 구분별로 쪼개져 있으면(코스트코_냉동 / 코스트코_상온) 제품 보관조건으로 좁힌다
+  if (candidates.length > 1) {
+    const sc = String(project.storageCondition || '');
+    const tokens = sc.includes('냉동')
+      ? ['냉동']
+      : sc.includes('냉장')
+      ? ['냉장']
+      : sc.includes('실온') || sc.includes('상온')
+      ? ['상온', '실온']
+      : [];
+    if (tokens.length) {
+      const narrowed = candidates.filter((c) => tokens.some((t) => c.name.includes(t)));
+      if (narrowed.length === 1) confident = narrowed[0];
+      else if (narrowed.length > 1) candidates = narrowed;
+    }
+  }
+  return { candidates, confident };
+}
+
+router.get('/meta/client-suggestions', authenticate, async (req, res) => {
+  try {
+    const kind = req.query.kind === 'discontinuation' ? 'discontinuation' : 'launch';
+    const [projects, clients] = await Promise.all([
+      prisma.launchProject.findMany({
+        where: { kind, clientId: null },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, productName: true, storageCondition: true,
+          brandType: true, launchScope: true, editPasswordHash: true,
+        },
+      }),
+      prisma.salesClient.findMany({ select: { id: true, name: true } }),
+    ]);
+
+    const items = [];
+    for (const p of projects) {
+      const { candidates, confident } = suggestClients(p, clients);
+      const looksExclusive = EXCLUSIVE_HINT.test(p.productName) || p.brandType === 'PB';
+      if (candidates.length === 0 && !looksExclusive) continue;
+      items.push({
+        projectId: p.id,
+        productName: p.productName,
+        storageCondition: p.storageCondition,
+        brandType: p.brandType,
+        editProtected: !!p.editPasswordHash,
+        looksExclusive,
+        // 확정 후보가 있어도 적용은 사람이 누른다
+        confidentClientId: confident ? confident.id : null,
+        candidates: candidates.map((c) => ({ id: c.id, name: c.name })),
+      });
+    }
+    res.json({ items });
+  } catch (error) {
+    console.error('Client suggestion error:', error);
+    res.status(500).json({ error: '거래처 매핑 제안 조회에 실패했습니다.' });
+  }
+});
+
 // 단계 템플릿 조회 (생성 화면 미리보기용, kind별 분기)
 router.get('/meta/template', authenticate, (req, res) => {
   const kind = req.query.kind === 'discontinuation' ? 'discontinuation' : 'launch';

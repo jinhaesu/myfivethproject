@@ -240,6 +240,8 @@ export const api = {
   launches: {
     list: (kind?: string) => request(`/launches${kind ? `?kind=${kind}` : ''}`),
     getTemplate: (kind?: string) => request(`/launches/meta/template${kind ? `?kind=${kind}` : ''}`),
+    clientSuggestions: (kind?: string) =>
+      request(`/launches/meta/client-suggestions${kind ? `?kind=${kind}` : ''}`),
     get: (id: string) => request(`/launches/${id}`),
     create: (data: {
       kind?: string;
