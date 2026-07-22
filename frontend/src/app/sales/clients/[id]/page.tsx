@@ -123,6 +123,11 @@ export default function SalesClientDetailPage() {
       setEditError('실패로 처리하려면 실패 사유를 선택해주세요.');
       return;
     }
+    // 진행 중인 딜에 날짜가 없으면 매출 타임라인에서 통째로 빠진다
+    if ((form.status || 'open') === 'open' && !form.expectedCloseDate) {
+      setEditError('예상 계약일을 입력해주세요. 매출 타임라인 예측에 필요합니다.');
+      return;
+    }
     setSaving(true);
     setEditError('');
     try {
@@ -303,7 +308,11 @@ export default function SalesClientDetailPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="예상 계약일" hint="언제 체결될 것으로 보는지 — 월별 매출 타임라인에 쓰입니다">
+              <Field
+                label="예상 계약일"
+                required={(form.status || 'open') === 'open'}
+                hint="언제 체결될 것으로 보는지 — 월별 매출 타임라인에 쓰입니다"
+              >
                 <Input
                   type="date"
                   value={form.expectedCloseDate || ''}

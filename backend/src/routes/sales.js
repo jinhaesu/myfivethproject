@@ -246,6 +246,11 @@ router.post('/clients', authenticate, async (req, res) => {
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: '거래처명을 입력해주세요.' });
     }
+    // 예상 계약일이 비면 매출 타임라인에서 그 딜이 통째로 사라진다 — 등록 시점에 받는다
+    const closeDate = parseDate(expectedCloseDate);
+    if (!closeDate) {
+      return res.status(400).json({ error: '예상 계약일을 입력해주세요. 매출 타임라인 예측에 필요합니다.' });
+    }
     // 등록 화면에서 함께 받은 실무 담당자를 첫 명함으로 만들어 둔다 (인수인계 시 연락처 유실 방지)
     const primaryContact = String(contactName || '').trim()
       ? {
@@ -264,7 +269,7 @@ router.post('/clients', authenticate, async (req, res) => {
         stage: normalizeStage(stage),
         expectedRevenue: parseRevenue(expectedRevenue),
         winProbability: parseProb(winProbability),
-        expectedCloseDate: parseDate(expectedCloseDate),
+        expectedCloseDate: closeDate,
         ...(primaryContact ? { contacts: primaryContact } : {}),
         ownerOrg: ownerOrg || null,
         buyerComposition: buyerComposition || null,
@@ -362,6 +367,12 @@ router.put('/clients/:id', authenticate, async (req, res) => {
       } else if (existing.status !== next) {
         data.closedAt = new Date();
       }
+    }
+    // 진행 중인 딜은 예상 계약일이 반드시 있어야 한다 (종료된 딜은 이미 결과가 나왔으므로 예외)
+    const nextStatus = data.status !== undefined ? data.status : normalizeDealStatus(existing.status);
+    const nextClose = data.expectedCloseDate !== undefined ? data.expectedCloseDate : existing.expectedCloseDate;
+    if (nextStatus === 'open' && !nextClose) {
+      return res.status(400).json({ error: '예상 계약일을 입력해주세요. 매출 타임라인 예측에 필요합니다.' });
     }
     const client = await prisma.salesClient.update({
       where: { id: req.params.id },
