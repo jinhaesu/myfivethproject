@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
@@ -9,7 +9,9 @@ import { userLabel, userShort } from '@/lib/user';
 import {
   PageHeader,
   Card,
+  CardHeader,
   Button,
+  Select,
   Table,
   THead,
   TBody,
@@ -21,6 +23,164 @@ import {
   EmptyState,
   CenterSpinner,
 } from '@/components/ui';
+
+interface ClientSuggestion {
+  projectId: string;
+  productName: string;
+  storageCondition: string | null;
+  brandType: string | null;
+  editProtected: boolean;
+  looksExclusive: boolean;
+  confidentClientId: string | null;
+  candidates: { id: string; name: string }[];
+}
+
+// 프로젝트명에 이미 들어 있는 거래처 정보를 읽어 매핑 후보를 제시한다.
+// 자동 적용하지 않는 이유 — 제품명만 보고 확정하면 남의 PB를 자사 라인업으로
+// (또는 그 반대로) 잘못 표기하게 되고, 브랜드 귀속은 계약 사안이라 되돌리기 어렵다.
+function ClientMappingCard({
+  items,
+  onApplied,
+}: {
+  items: ClientSuggestion[];
+  onApplied: () => void;
+}) {
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState('');
+  const [error, setError] = useState('');
+  // 이름으로 후보를 못 찾은 건("[편의점 전용]" 처럼)도 직접 고를 수 있어야 한다
+  const [allClients, setAllClients] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.sales.listClients();
+        setAllClients((data.clients || []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      } catch (e) {
+        console.error('Failed to fetch clients:', e);
+      }
+    })();
+  }, []);
+
+  const valueOf = (it: ClientSuggestion) =>
+    picked[it.projectId] ?? it.confidentClientId ?? '';
+
+  const apply = async (it: ClientSuggestion) => {
+    const clientId = valueOf(it);
+    if (!clientId) return;
+    setBusyId(it.projectId);
+    setError('');
+    try {
+      await api.launches.update(it.projectId, { launchScope: 'client', clientId });
+      onApplied();
+    } catch (e) {
+      const msg = (e as Error)?.message || '거래처 지정에 실패했습니다.';
+      setError(
+        it.editProtected
+          ? `${it.productName}: 편집 잠금이 걸려 있습니다. 프로젝트 상세에서 잠금을 해제한 뒤 지정해주세요.`
+          : `${it.productName}: ${msg}`,
+      );
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  return (
+    <Card padding="lg" className="mb-6 border-[var(--warning-border)]">
+      <CardHeader
+        title={`거래처 매핑이 필요한 프로젝트 (${items.length})`}
+        subtitle="제품명에 거래처나 '전용' 표기가 있는데 아직 거래처가 지정되지 않은 건입니다. 지정하면 그 거래처 화면과 영업 캘린더 필터에 함께 잡힙니다."
+      />
+      {error && <div className="mb-3 text-[12px] text-[var(--danger-fg)]">{error}</div>}
+      <div className="flex flex-col gap-2">
+        {items.map((it) => {
+          const val = valueOf(it);
+          return (
+            <div
+              key={it.projectId}
+              className="flex flex-wrap items-center gap-2 px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)]"
+            >
+              <div className="min-w-[200px] flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Link
+                    href={`/launches/${it.projectId}`}
+                    className="text-[12.5px] text-[var(--text-1)] hover:text-[var(--brand-400)] transition-colors"
+                  >
+                    {it.productName}
+                  </Link>
+                  {it.storageCondition ? (
+                    <Badge tone="info" size="xs">
+                      {it.storageCondition}
+                    </Badge>
+                  ) : null}
+                  {it.brandType ? (
+                    <Badge tone="violet" size="xs">
+                      {it.brandType}
+                    </Badge>
+                  ) : null}
+                  {it.editProtected ? (
+                    <Badge tone="neutral" size="xs">
+                      편집 잠김
+                    </Badge>
+                  ) : null}
+                </div>
+                {it.candidates.length === 0 && (
+                  <div className="text-[11px] text-[var(--warning-fg)] mt-0.5">
+                    이름만으로는 거래처를 특정할 수 없습니다. 직접 선택해주세요.
+                  </div>
+                )}
+                {it.candidates.length > 1 && !it.confidentClientId && (
+                  <div className="text-[11px] text-[var(--warning-fg)] mt-0.5">
+                    후보가 여러 곳입니다. 보관 조건으로도 좁혀지지 않아 확인이 필요합니다.
+                  </div>
+                )}
+              </div>
+              <Select
+                inputSize="sm"
+                value={val}
+                onChange={(e) => setPicked((p) => ({ ...p, [it.projectId]: e.target.value }))}
+                className="w-full sm:w-[220px]"
+              >
+                <option value="">거래처 선택</option>
+                {it.candidates.length > 0 && (
+                  <optgroup label="이름에서 찾은 후보">
+                    {it.candidates.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.id === it.confidentClientId ? ' (추천)' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="전체 거래처">
+                  {allClients
+                    .filter((c) => !it.candidates.some((x) => x.id === c.id))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+              </Select>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => apply(it)}
+                loading={busyId === it.projectId}
+                disabled={!val}
+              >
+                거래처 전용으로 지정
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-[var(--text-4)] mt-3">
+        브랜드 공식 출시(자사 정식 라인업)라면 그대로 두면 됩니다. 이 목록은 거래처가 지정되면 사라집니다.
+      </p>
+    </Card>
+  );
+}
 
 function DdayBadge({ targetLaunchDate }: { targetLaunchDate: string | null }) {
   const dday = getDday(targetLaunchDate);
@@ -37,19 +197,26 @@ function DdayBadge({ targetLaunchDate }: { targetLaunchDate: string | null }) {
 export default function LaunchesPage() {
   const [projects, setProjects] = useState<LaunchProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [suggestions, setSuggestions] = useState<ClientSuggestion[]>([]);
+
+  const load = useCallback(async () => {
+    try {
+      const [data, sug] = await Promise.all([
+        api.launches.list('launch'),
+        api.launches.clientSuggestions('launch').catch(() => ({ items: [] })),
+      ]);
+      setProjects(data.projects);
+      setSuggestions(sug.items || []);
+    } catch (error) {
+      console.error('Failed to fetch launch projects:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.launches.list('launch');
-        setProjects(data.projects);
-      } catch (error) {
-        console.error('Failed to fetch launch projects:', error);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    load();
+  }, [load]);
 
   const getProgress = (p: LaunchProject) => {
     const all = p.stages.flatMap((s) => s.tasks);
@@ -105,6 +272,10 @@ export default function LaunchesPage() {
           <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{completedCount}</div>
         </Card>
       </div>
+
+      {!loading && suggestions.length > 0 && (
+        <ClientMappingCard items={suggestions} onApplied={load} />
+      )}
 
       {loading ? (
         <CenterSpinner label="출시 프로젝트 불러오는 중" />
