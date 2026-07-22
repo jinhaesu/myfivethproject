@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import MeetingPurposeField from '@/components/MeetingPurposeField';
+import VoiceJournalRecorder from '@/components/VoiceJournalRecorder';
 import { api, getFileUrl } from '@/lib/api';
 import {
   SalesClient,
@@ -141,6 +142,8 @@ export default function NewSalesJournalPage() {
   const [drafting, setDrafting] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiNote, setAiNote] = useState('');
+  // 음성 받아쓰기 원문 — AI 정리본과 함께 저장해 나중에 대조할 수 있게 한다
+  const [voiceTranscript, setVoiceTranscript] = useState('');
 
   const runAiDraft = async () => {
     if (!clientId) {
@@ -161,6 +164,7 @@ export default function NewSalesJournalPage() {
         clientProfile: isFirstMeeting
           ? { ownerOrg, buyerComposition, annualRevenue, existingVendors, managedItems, storageCondition, logisticsCondition }
           : {},
+        transcript: voiceTranscript.trim() || undefined,
       });
       // 비어 있는 항목만 채움(사용자가 이미 쓴 내용은 보존)
       const fillIfEmpty = (cur: string, setter: (v: string) => void, val: unknown) => {
@@ -194,7 +198,11 @@ export default function NewSalesJournalPage() {
           return merged.length ? merged : [{ dueDate: '', content: '', plan: '' }];
         });
       }
-      setAiNote('Opus 4.8이 비어 있던 항목을 채우고 후속 할일을 제안했습니다. 내용을 검토·수정한 뒤 저장하세요.');
+      setAiNote(
+        voiceTranscript.trim()
+          ? '음성 원문을 바탕으로 Opus 4.8이 일지를 정리했습니다. 받아쓰기는 고유명사·숫자를 자주 틀리니 반드시 검토한 뒤 저장하세요.'
+          : 'Opus 4.8이 비어 있던 항목을 채우고 후속 할일을 제안했습니다. 내용을 검토·수정한 뒤 저장하세요.',
+      );
     } catch (e) {
       setAiError((e as Error)?.message || 'AI 자동 작성에 실패했습니다.');
     } finally {
@@ -334,6 +342,7 @@ export default function NewSalesJournalPage() {
           .filter((t) => t.dueDate && t.content.trim())
           .map((t) => ({ dueDate: t.dueDate, content: t.content.trim(), plan: t.plan.trim() || undefined })),
         password: password.trim() || undefined,
+        voiceTranscript: voiceTranscript.trim() || undefined,
         sampleProvided,
         hasQuote,
         quoteItems: hasQuote
@@ -440,6 +449,17 @@ export default function NewSalesJournalPage() {
               >
                 {drafting ? 'AI 작성 중…' : 'AI로 채우기'}
               </Button>
+            </div>
+
+            <div className="mt-3">
+              <VoiceJournalRecorder
+                transcript={voiceTranscript}
+                onTranscriptChange={setVoiceTranscript}
+                onApply={runAiDraft}
+                applying={drafting}
+                disabled={!clientId}
+                disabledReason={!clientId ? '거래처를 먼저 선택해주세요.' : ''}
+              />
             </div>
           </Card>
 

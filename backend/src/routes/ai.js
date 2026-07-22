@@ -1422,7 +1422,16 @@ const SALES_JOURNAL_DRAFT_SYSTEM = `당신은 식품 제조기업(제과·제빵
 }
 - todos: 미팅 후속 실행 항목 2~5개 제안. dueDate는 반드시 제공된 기준일 이후의 구체적 날짜(YYYY-MM-DD).
 - clientProfile: 최초 미팅일 때만 제공된 단서로 추정해 채우고, 최초 미팅이 아니면 빈 객체 {} 로 두세요.
-- 모든 JSON 문자열 내부의 줄바꿈은 \\n 으로 escape 하세요.`;
+- 모든 JSON 문자열 내부의 줄바꿈은 \\n 으로 escape 하세요.
+
+# 음성 받아쓰기 원문이 함께 제공된 경우
+- 원문은 브라우저 음성인식 결과라 문장부호가 없고, 구어체이며, 오인식이 섞여 있습니다.
+- 말한 내용을 빠짐없이 반영하되, 구어를 영업일지 문체로 정리하세요. ("~했고요" → "~함")
+- 명백한 오인식은 문맥으로 교정하세요. 특히 거래처명·제품명·담당자 직함이 자주 틀립니다.
+  (예: 제공된 거래처명이 "GS25_냉장"인데 원문에 "지에스 이십오 냉장"이라 적혔다면 거래처명으로 교정)
+- 다만 숫자(수량·단가·일정)는 임의로 고치지 마세요. 애매하면 원문 표현을 남기고 "(확인 필요)"를 덧붙입니다.
+- 원문에 없는 사실을 추가하지 마세요. 받아쓰기에서 확인되지 않는 항목은 빈 문자열로 둡니다.
+- 원문에서 "다음 주까지", "이번 달 안에" 같은 상대 표현이 나오면 기준일을 적용해 todos의 실제 날짜로 환산하세요.`;
 
 // 확장 사고(thinking) 사용 여부와 무관하게 텍스트 블록만 안전 추출
 function extractTextBlock(response) {
@@ -1438,8 +1447,11 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
 
     const {
       clientName, clientStage, isFirstMeeting, meetingDate,
-      partial = {}, clientProfile = {},
+      partial = {}, clientProfile = {}, transcript,
     } = req.body || {};
+
+    // 받아쓰기가 길어질수록 프롬프트가 통째로 커진다 — 미팅 하나 분량으로 상한을 둔다
+    const voiceText = String(transcript || '').trim().slice(0, 20000);
 
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); // YYYY-MM-DD
     const baseDate = meetingDate ? String(meetingDate).slice(0, 10) : today;
@@ -1460,6 +1472,7 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
         keyRequests: partial.keyRequests || '',
         productRequests: partial.productRequests || '',
       },
+      ...(voiceText ? { 음성_받아쓰기_원문: voiceText } : {}),
     };
 
     const response = await client.messages.create({
@@ -1475,7 +1488,10 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
             {
               type: 'text',
               text:
-                '다음 정보를 바탕으로 영업일지를 완성해 주세요. 비어 있는 항목을 우선 채우고, 후속 할일(todos)과 (최초 미팅이면) 거래처 프로필을 제안하세요.\n\n' +
+                (voiceText
+                  ? '미팅 직후 음성으로 남긴 받아쓰기 원문이 있습니다. 이 원문을 1차 근거로 삼아 영업일지를 작성해 주세요.\n'
+                  : '다음 정보를 바탕으로 영업일지를 완성해 주세요. ') +
+                '비어 있는 항목을 우선 채우고, 후속 할일(todos)과 (최초 미팅이면) 거래처 프로필을 제안하세요.\n\n' +
                 JSON.stringify(userPayload, null, 2),
             },
           ],

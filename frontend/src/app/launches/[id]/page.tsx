@@ -18,7 +18,12 @@ import {
   STORAGE_CONDITIONS,
   USP_OPTIONS,
   DISCONTINUE_REASONS,
+  LAUNCH_SCOPES,
+  launchScopeLabel,
+  contactStorageKeyOf,
 } from '@/lib/launch';
+import { SalesClient, storageLabel } from '@/lib/sales';
+import Link from 'next/link';
 import { userLabel } from '@/lib/user';
 import {
   PageHeader,
@@ -63,6 +68,7 @@ function SampleRequestSection({
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [clients, setClients] = useState<SalesClient[]>([]);
   const [form, setForm] = useState({
     recipientName: devStage?.ownerName || '',
     recipientEmail: devStage?.ownerEmail || '',
@@ -71,10 +77,30 @@ function SampleRequestSection({
     weightSpec: project.weightSpec || '',
     specDetails: '',
     salesChannel: project.salesChannels || '',
+    // 거래처 전용 제품이면 대상이 이미 정해져 있다
+    clientId: project.clientId || '',
     message: '',
   });
 
   const setField = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.sales.listClients();
+        setClients(data.clients || []);
+      } catch (err) {
+        console.error('Failed to fetch clients:', err);
+      }
+    })();
+  }, []);
+
+  // 제품 보관조건에 맞는 담당자를 짚어준다 — 같은 거래처라도 냉장·상온 바이어가 다르다
+  const wantKey = contactStorageKeyOf(project.storageCondition);
+  const pickedClient = clients.find((c) => c.id === form.clientId) || null;
+  const matchedContacts = (pickedClient?.contacts || []).filter(
+    (ct) => !wantKey || ct.storageCondition === wantKey || ct.storageCondition === 'all',
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,11 +119,16 @@ function SampleRequestSection({
         weightSpec: form.weightSpec.trim() || undefined,
         specDetails: form.specDetails.trim() || undefined,
         salesChannel: form.salesChannel.trim() || undefined,
+        clientId: form.clientId || undefined,
         message: form.message.trim() || undefined,
       }, editToken);
       setNotice(res.message);
       setShowForm(false);
-      setForm((f) => ({ ...f, dueDate: '', quantity: '', weightSpec: project.weightSpec || '', specDetails: '', salesChannel: '', message: '' }));
+      setForm((f) => ({
+        ...f, dueDate: '', quantity: '', weightSpec: project.weightSpec || '',
+        specDetails: '', salesChannel: '', message: '',
+        clientId: project.clientId || '',
+      }));
       onChanged();
     } catch (err: any) {
       setNotice(err.message || '샘플 요청에 실패했습니다.');
@@ -145,6 +176,49 @@ function SampleRequestSection({
           onSubmit={submit}
           className="mb-5 p-4 rounded-md bg-[var(--bg-2)] border border-[var(--border-1)] space-y-3"
         >
+          {/* 제안 대상 거래처 — 브랜드 공식 출시 제품이 어느 거래처와 이어졌는지 남는 유일한 기록 */}
+          <div>
+            <Field
+              label="제안 대상 거래처"
+              hint={
+                project.launchScope === 'client'
+                  ? '거래처 전용 제품이라 대상이 고정되어 있습니다.'
+                  : '어느 거래처에 제안할 샘플인지 남겨두면, 그 거래처 화면에서 이 제품이 보입니다.'
+              }
+            >
+              <Select
+                value={form.clientId}
+                onChange={(e) => setField({ clientId: e.target.value })}
+                inputSize="sm"
+                disabled={project.launchScope === 'client'}
+              >
+                <option value="">거래처 미지정 (사내 검토용)</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {pickedClient && (
+              <div className="mt-1.5 text-[11.5px] text-[var(--text-3)]">
+                {matchedContacts.length > 0 ? (
+                  <>
+                    {wantKey ? `${storageLabel(wantKey)} 담당` : '담당'}:{' '}
+                    <span className="text-[var(--text-1)]">
+                      {matchedContacts
+                        .map((ct) => `${ct.name}${ct.position ? ` ${ct.position}` : ''}`)
+                        .join(', ')}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[var(--warning-fg)]">
+                    이 거래처에 {wantKey ? `${storageLabel(wantKey)} ` : ''}담당 명함이 없습니다. 거래처 화면에서 등록해주세요.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="담당자 이름">
               <Input
@@ -505,6 +579,9 @@ function ProjectEditForm({
     project.discontinueReason || DISCONTINUE_REASONS[0]
   );
   const [brandType, setBrandType] = useState(project.brandType || '');
+  const [launchScope, setLaunchScope] = useState(project.launchScope || 'brand');
+  const [clientId, setClientId] = useState(project.clientId || '');
+  const [clients, setClients] = useState<SalesClient[]>([]);
   const [salesChannels, setSalesChannels] = useState(project.salesChannels || '');
   const [storageCondition, setStorageCondition] = useState(project.storageCondition || '');
   const [targetShelfLife, setTargetShelfLife] = useState(project.targetShelfLife || '');
@@ -521,9 +598,24 @@ function ProjectEditForm({
   const toggleUsp = (option: string) =>
     setUsp((prev) => (prev.includes(option) ? prev.filter((u) => u !== option) : [...prev, option]));
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.sales.listClients();
+        setClients(data.clients || []);
+      } catch (err) {
+        console.error('Failed to fetch clients:', err);
+      }
+    })();
+  }, []);
+
   const save = async () => {
     if (!productName.trim()) {
       setError('제품명을 입력해주세요.');
+      return;
+    }
+    if (launchScope === 'client' && !clientId) {
+      setError('거래처 전용 출시는 대상 거래처를 선택해주세요.');
       return;
     }
     const payload: any = {
@@ -537,6 +629,8 @@ function ProjectEditForm({
       payload.discontinueReason = discontinueReason;
     } else {
       payload.brandType = brandType || null;
+      payload.launchScope = launchScope;
+      payload.clientId = launchScope === 'client' ? clientId : null;
       payload.salesChannels = salesChannels.trim() || null;
       payload.storageCondition = storageCondition || null;
       payload.targetShelfLife = targetShelfLife.trim() || null;
@@ -621,6 +715,39 @@ function ProjectEditForm({
         )}
         {!isDisc && (
           <>
+            <Field
+              label="출시 대상 구분"
+              hint="거래처 전용으로 두면 그 거래처 화면과 캘린더 필터에 이 제품이 함께 잡힙니다."
+            >
+              <Select
+                value={launchScope}
+                onChange={(e) => setLaunchScope(e.target.value)}
+                inputSize="md"
+              >
+                {LAUNCH_SCOPES.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="대상 거래처" required={launchScope === 'client'}>
+              <Select
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                inputSize="md"
+                disabled={launchScope !== 'client'}
+              >
+                <option value="">
+                  {launchScope === 'client' ? '거래처 선택' : '브랜드 공식 출시 — 해당 없음'}
+                </option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="영업채널" hint="쉼표로 구분">
               <Input
                 value={salesChannels}
@@ -905,13 +1032,24 @@ export default function LaunchDetailPage() {
       )}
 
       {/* 출시 전략 (출시 프로젝트 전용) */}
-      {!editMode && !isDisc && (project.brandType ||
-        project.salesChannels ||
-        project.storageCondition ||
-        (project.usp && project.usp.length > 0) ||
-        project.targetShelfLife) && (
+      {!editMode && !isDisc && (
         <Card padding="md" className="mb-5">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            {/* 대상 구분은 항상 보여준다 — 자사 라인업인지 남의 PB인지가 가장 먼저 필요한 정보 */}
+            <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)]">
+              대상
+              <Badge tone={project.launchScope === 'client' ? 'brand' : 'neutral'} size="sm">
+                {launchScopeLabel(project.launchScope)}
+              </Badge>
+              {project.client ? (
+                <Link
+                  href={`/sales/clients/${project.client.id}`}
+                  className="text-[var(--brand-400)] hover:text-[var(--brand-200)] transition-colors"
+                >
+                  {project.client.name}
+                </Link>
+              ) : null}
+            </span>
             {project.brandType && (
               <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--text-3)]">
                 브랜드

@@ -250,6 +250,8 @@ export const api = {
       targetLaunchDate?: string;
       discontinueReason?: string;
       brandType?: string;
+      launchScope?: string;
+      clientId?: string;
       salesChannels?: string;
       storageCondition?: string;
       usp?: string[];
@@ -313,6 +315,7 @@ export const api = {
         weightSpec?: string;
         specDetails?: string;
         salesChannel?: string;
+        clientId?: string;
         message?: string;
       },
       editToken?: string

@@ -289,6 +289,17 @@ export default function SalesJournalDetailPage() {
           <Row label="장소" value={journal.meetingLocation} />
           <Row label="참석자" value={journal.attendees} />
           <Row label="미팅 개요" value={journal.meetingSummary} />
+          {/* 음성으로 쓴 일지는 원문을 함께 남긴다 — AI가 잘못 옮겼는지 여기서 대조한다 */}
+          {journal.voiceTranscript ? (
+            <details className="mt-3 pt-3 border-t border-[var(--border-1)]">
+              <summary className="text-[12px] text-[var(--text-3)] cursor-pointer hover:text-[var(--text-1)] transition-colors">
+                음성 원문 보기 (AI 정리 전)
+              </summary>
+              <div className="mt-2 text-[12.5px] text-[var(--text-3)] whitespace-pre-wrap break-words rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] p-2.5">
+                {journal.voiceTranscript}
+              </div>
+            </details>
+          ) : null}
         </Card>
 
         <Card padding="lg">

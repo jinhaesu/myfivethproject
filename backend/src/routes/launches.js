@@ -81,17 +81,45 @@ async function sendStageNotification(project, stage, { type = 'stage_start', mes
   return { delivered: true };
 }
 
+const CLIENT_BRIEF = { select: { id: true, name: true, stage: true } };
+
 const PROJECT_INCLUDE = {
   createdBy: { select: { id: true, name: true, email: true, department: true } },
+  client: CLIENT_BRIEF,
   stages: {
     orderBy: { sortOrder: 'asc' },
     include: { tasks: { orderBy: { sortOrder: 'asc' } } },
   },
   sampleRequests: {
     orderBy: { createdAt: 'desc' },
-    include: { requestedBy: { select: { id: true, name: true, email: true, department: true } } },
+    include: {
+      requestedBy: { select: { id: true, name: true, email: true, department: true } },
+      client: CLIENT_BRIEF,
+    },
   },
 };
+
+// 출시 대상 구분 — 브랜드 공식 출시는 채널 무관, 거래처 전용은 특정 거래처에 묶인다
+const LAUNCH_SCOPES = [
+  { key: 'brand', label: '브랜드 공식 출시' },
+  { key: 'client', label: '거래처 전용' },
+];
+const LAUNCH_SCOPE_KEYS = LAUNCH_SCOPES.map((s) => s.key);
+const normalizeLaunchScope = (v) => (LAUNCH_SCOPE_KEYS.includes(v) ? v : 'brand');
+
+// 거래처 전용인데 거래처가 비면 구분 자체가 무의미해진다 → 저장 전에 막는다.
+// 반대로 브랜드 공식 출시에 거래처가 붙어 있으면 조용히 떼어낸다.
+async function resolveScope(scopeRaw, clientIdRaw) {
+  const scope = normalizeLaunchScope(scopeRaw);
+  if (scope !== 'client') return { scope, clientId: null };
+  const clientId = clientIdRaw ? String(clientIdRaw) : '';
+  if (!clientId) {
+    return { error: '거래처 전용 출시는 대상 거래처를 선택해야 합니다.' };
+  }
+  const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
+  if (!client) return { error: '거래처를 찾을 수 없습니다.' };
+  return { scope, clientId };
+}
 
 // 프로젝트 목록 (kind 쿼리로 출시/단종 구분, 미지정 시 출시)
 router.get('/', authenticate, async (req, res) => {
@@ -115,11 +143,13 @@ router.post('/', authenticate, async (req, res) => {
     const {
       kind: kindRaw, productName, productType, weightSpec, description, targetLaunchDate, stageOwners,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
-      editPassword,
+      editPassword, launchScope, clientId,
     } = req.body;
     if (!productName) {
       return res.status(400).json({ error: '제품명을 입력해주세요.' });
     }
+    const scoped = await resolveScope(launchScope, clientId);
+    if (scoped.error) return res.status(400).json({ error: scoped.error });
     const kind = kindRaw === 'discontinuation' ? 'discontinuation' : 'launch';
     const template = getTemplate(kind);
     // 편집 비밀번호: 입력 시 해시 저장, 빈칸이면 잠금 없음(null)
@@ -157,6 +187,8 @@ router.post('/', authenticate, async (req, res) => {
         editPasswordHash,
         discontinueReason: kind === 'discontinuation' ? (discontinueReason || null) : null,
         brandType: kind === 'launch' ? (brandType || null) : null,
+        launchScope: scoped.scope,
+        clientId: scoped.clientId,
         salesChannels: kind === 'launch' ? (salesChannels || null) : null,
         storageCondition: kind === 'launch' ? (storageCondition || null) : null,
         usp: kind === 'launch' && Array.isArray(usp) && usp.length > 0 ? usp : undefined,
@@ -198,6 +230,11 @@ router.post('/', authenticate, async (req, res) => {
     console.error('Create launch project error:', error);
     res.status(500).json({ error: '출시 프로젝트 생성에 실패했습니다.' });
   }
+});
+
+// 출시 대상 구분 선택지 — 화면이 백엔드와 어긋나지 않도록 한 곳에서 내려준다
+router.get('/meta/scopes', authenticate, (req, res) => {
+  res.json({ launchScopes: LAUNCH_SCOPES });
 });
 
 // 단계 템플릿 조회 (생성 화면 미리보기용, kind별 분기)
@@ -266,13 +303,14 @@ router.put('/:id', authenticate, async (req, res) => {
     const {
       productName, productType, weightSpec, description, targetLaunchDate, status,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, discontinueReason,
-      editPassword,
+      editPassword, launchScope, clientId,
     } = req.body;
 
     // 잠금은 '등록 정보' 변경에만 적용. 상태(보류/재개 등) 단독 변경은 운영이라 자유
     const metaTouched = [
       productName, productType, weightSpec, description, targetLaunchDate, discontinueReason,
       brandType, salesChannels, storageCondition, usp, targetShelfLife, editPassword,
+      launchScope, clientId,
     ].some((v) => v !== undefined);
     if (metaTouched && !isEditAllowed(req, existing)) return editLockedResponse(res);
 
@@ -296,6 +334,16 @@ router.put('/:id', authenticate, async (req, res) => {
     if (storageCondition !== undefined) data.storageCondition = storageCondition || null;
     if (usp !== undefined) data.usp = Array.isArray(usp) ? usp : [];
     if (targetShelfLife !== undefined) data.targetShelfLife = targetShelfLife || null;
+    // 구분과 거래처는 한 쌍이라 한쪽만 바뀌어도 둘을 함께 다시 판정한다
+    if (launchScope !== undefined || clientId !== undefined) {
+      const scoped = await resolveScope(
+        launchScope !== undefined ? launchScope : existing.launchScope,
+        clientId !== undefined ? clientId : existing.clientId,
+      );
+      if (scoped.error) return res.status(400).json({ error: scoped.error });
+      data.launchScope = scoped.scope;
+      data.clientId = scoped.clientId;
+    }
 
     const project = await prisma.launchProject.update({
       where: { id: req.params.id },
@@ -570,7 +618,10 @@ router.post('/:id/notify', authenticate, async (req, res) => {
 // 샘플 요청 생성 — 기획·컨셉(1단계) 완료 후에만 가능, 담당자 이메일로 상세 발송
 router.post('/:id/sample-requests', authenticate, async (req, res) => {
   try {
-    const { recipientName, recipientEmail, dueDate, quantity, weightSpec, specDetails, salesChannel, message } = req.body;
+    const {
+      recipientName, recipientEmail, dueDate, quantity, weightSpec,
+      specDetails, salesChannel, message, clientId,
+    } = req.body;
 
     if (!recipientEmail || !dueDate) {
       return res.status(400).json({ error: '담당자 이메일과 납기일을 입력해주세요.' });
@@ -582,6 +633,13 @@ router.post('/:id/sample-requests', authenticate, async (req, res) => {
     });
     if (!project) {
       return res.status(404).json({ error: '출시 프로젝트를 찾을 수 없습니다.' });
+    }
+
+    // 거래처 전용 제품의 샘플은 그 거래처 것이 확실하므로 굳이 다시 묻지 않는다
+    let sampleClientId = clientId ? String(clientId) : (project.clientId || null);
+    if (sampleClientId) {
+      const exists = await prisma.salesClient.findUnique({ where: { id: sampleClientId } });
+      if (!exists) return res.status(400).json({ error: '거래처를 찾을 수 없습니다.' });
     }
 
     // 게이트: 첫 단계(기획·컨셉)가 완료되어야 샘플 요청 가능
@@ -601,11 +659,15 @@ router.post('/:id/sample-requests', authenticate, async (req, res) => {
         weightSpec: weightSpec || null,
         specDetails: specDetails || null,
         salesChannel: salesChannel || null,
+        clientId: sampleClientId,
         message: message || null,
         requestedById: req.user.id,
         projectId: project.id,
       },
-      include: { requestedBy: { select: { id: true, name: true, email: true, department: true } } },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true, department: true } },
+        client: CLIENT_BRIEF,
+      },
     });
 
     // 담당자 이메일 발송

@@ -151,6 +151,12 @@ model LaunchProject {
   discontinueReason String? // 단종 사유 (판매량 저하, 품질 이슈 등)
   // 출시 전략
   brandType         String? // NB, PNB, PB
+  // 출시 대상 구분 brand(브랜드 공식 출시 — 채널 무관) | client(특정 거래처 전용)
+  // 거래처 전용일 때만 clientId가 채워진다. 브랜드 출시는 이후 여러 거래처에 제안되며,
+  // 그 연결은 SampleRequest.clientId로 남는다.
+  launchScope       String    @default("brand")
+  client            SalesClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId          String?
   salesChannels     String? // 영업채널 (쉼표 구분: 자사몰, 쿠팡, ○○마트 PB 등)
   storageCondition  String? // 실온, 냉장, 냉동
   usp               Json? // USP 배열: 고단백, 저당, 고식이섬유, 개별인정형(식후혈당안정) 등
@@ -175,7 +181,11 @@ model SampleRequest {
   quantity       String? // 수량
   weightSpec     String? // 중량/규격
   specDetails    String? // 스펙 상세
-  salesChannel   String? // 제안 판매채널
+  salesChannel   String? // 제안 판매채널(자유 입력) — 거래처가 특정되면 clientId를 함께 쓴다
+  // 어느 거래처에 제안하려고 만든 샘플인지. 브랜드 공식 출시 제품이 실제로 어느 거래처와
+  // 이어졌는지는 이 값으로만 알 수 있다.
+  client         SalesClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId       String?
   message        String? // 요청 메시지
   status         String   @default("requested") // requested, in_progress, delivered, canceled
   createdAt      DateTime @default(now())
@@ -283,6 +293,10 @@ model SalesClient {
   journals    SalesJournal[]
   plans       SalesPlan[]
   receivables SalesReceivable[]
+  // 이 거래처 전용으로 진행 중인 출시·단종 프로젝트
+  launchProjects LaunchProject[]
+  // 브랜드 공식 출시 제품 중 이 거래처에 제안한 샘플
+  sampleRequests SampleRequest[]
 }
 
 // 거래처별 월별 매출채권 잔액 (연/월 단위, B2B 채권 관리)
@@ -335,6 +349,8 @@ model SalesJournal {
   meetingSummary  String? // 미팅 개요
   keyRequests     String? // 핵심 요청사항
   productRequests String? // 제품의 구체적 요청 및 기획사항
+  // 음성으로 작성한 경우 받아쓰기 원문. AI가 잘못 옮겼는지 나중에 대조할 수 있어야 한다.
+  voiceTranscript String?
   sampleProvided  Boolean   @default(false) // 샘플 제공 여부
   hasQuote        Boolean   @default(false) // 견적 제안 여부(그리드 표시 토글)
   shareToken      String?   @unique // 외부 공유 링크 토큰(null이면 비공개)

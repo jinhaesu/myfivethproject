@@ -145,6 +145,12 @@ export default function LaunchesPage() {
                         {new Date(p.targetLaunchDate).toLocaleDateString('ko-KR')}
                       </span>
                     )}
+                    {/* 거래처 전용은 자사 라인업과 섞이면 안 되므로 목록에서 바로 구분한다 */}
+                    {p.launchScope === 'client' && (
+                      <Badge tone="brand" size="xs">
+                        {p.client?.name ? `${p.client.name} 전용` : '거래처 전용'}
+                      </Badge>
+                    )}
                     {p.brandType && (
                       <Badge tone="violet" size="xs">
                         {p.brandType}

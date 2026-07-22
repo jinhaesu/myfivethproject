@@ -9,8 +9,10 @@ import {
   BRAND_TYPES,
   STORAGE_CONDITIONS,
   USP_OPTIONS,
+  LAUNCH_SCOPES,
   LaunchProject,
 } from '@/lib/launch';
+import { SalesClient } from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -54,6 +56,10 @@ function NewLaunchForm() {
   const [description, setDescription] = useState('');
   const [targetLaunchDate, setTargetLaunchDate] = useState('');
   const [brandType, setBrandType] = useState('');
+  // 출시 대상 구분 — 거래처 전용일 때만 clientId를 받는다
+  const [launchScope, setLaunchScope] = useState('brand');
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState<SalesClient[]>([]);
   const [salesChannels, setSalesChannels] = useState('');
   const [storageCondition, setStorageCondition] = useState('');
   const [usp, setUsp] = useState<string[]>([]);
@@ -86,6 +92,8 @@ function NewLaunchForm() {
             setWeightSpec(p.weightSpec || '');
             setDescription(p.description || '');
             setBrandType(p.brandType || '');
+            setLaunchScope(p.launchScope || 'brand');
+            setClientId(p.clientId || '');
             setSalesChannels(p.salesChannels || '');
             setStorageCondition(p.storageCondition || '');
             const srcUsp = p.usp || [];
@@ -117,6 +125,18 @@ function NewLaunchForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copyFromId]);
 
+  // 거래처 전용 출시를 고를 때 쓰는 목록
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.sales.listClients();
+        setClients(data.clients || []);
+      } catch (err) {
+        console.error('Failed to fetch clients:', err);
+      }
+    })();
+  }, []);
+
   const setOwner = (idx: number, patch: Partial<StageOwnerInput>) => {
     setOwners((prev) => prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
   };
@@ -129,6 +149,10 @@ function NewLaunchForm() {
     e.preventDefault();
     if (!productName.trim()) {
       setError('제품명을 입력해주세요.');
+      return;
+    }
+    if (launchScope === 'client' && !clientId) {
+      setError('거래처 전용 출시는 대상 거래처를 선택해주세요.');
       return;
     }
     const missing = template
@@ -158,6 +182,8 @@ function NewLaunchForm() {
         description: description.trim() || undefined,
         targetLaunchDate: targetLaunchDate || undefined,
         brandType: brandType || undefined,
+        launchScope,
+        clientId: launchScope === 'client' ? clientId : undefined,
         salesChannels: salesChannels.trim() || undefined,
         storageCondition: storageCondition || undefined,
         usp: uspAll.length > 0 ? uspAll : undefined,
@@ -265,6 +291,47 @@ function NewLaunchForm() {
             title="출시 전략"
             subtitle="브랜드 유형·영업채널·보관조건·USP·타겟 소비기한 — 단계 알림과 샘플 요청 메일에 자동 포함됩니다."
           />
+          {/* 출시 대상 구분 — 이후 거래처 화면에 뜰지 말지가 여기서 갈린다 */}
+          <div className="mb-4">
+            <div className="text-[13px] font-medium text-[var(--text-1)] mb-2">출시 대상 구분</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {LAUNCH_SCOPES.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setLaunchScope(s.key)}
+                  className={
+                    'text-left rounded-lg border p-3 transition-colors ' +
+                    (launchScope === s.key
+                      ? 'border-[var(--brand-500)] bg-[var(--bg-2)]'
+                      : 'border-[var(--border-1)] hover:bg-[var(--bg-2)]')
+                  }
+                >
+                  <div className="text-[13px] font-medium text-[var(--text-1)]">{s.label}</div>
+                  <div className="text-[11.5px] text-[var(--text-3)] mt-0.5">{s.hint}</div>
+                </button>
+              ))}
+            </div>
+            {launchScope === 'client' && (
+              <div className="mt-3">
+                <Field
+                  label="대상 거래처"
+                  required
+                  hint="이 거래처 상세 화면과 영업 캘린더 거래처 필터에 이 제품이 함께 표시됩니다."
+                >
+                  <Select value={clientId} onChange={(e) => setClientId(e.target.value)} inputSize="md">
+                    <option value="">거래처 선택</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="브랜드 유형">
               <Select value={brandType} onChange={(e) => setBrandType(e.target.value)} inputSize="md">

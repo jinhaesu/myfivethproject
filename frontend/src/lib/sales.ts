@@ -209,6 +209,30 @@ export function storageLabel(key?: string | null): string {
   return STORAGE_CONDITIONS.find((s) => s.key === key)?.label || key;
 }
 
+export interface ClientLaunchProject {
+  id: string;
+  kind: string; // launch | discontinuation
+  productName: string;
+  targetLaunchDate: string | null;
+  status: string;
+  storageCondition: string | null;
+  brandType: string | null;
+}
+
+export interface ClientSampleRequest {
+  id: string;
+  dueDate: string;
+  status: string;
+  quantity: string | null;
+  salesChannel: string | null;
+  project: {
+    id: string;
+    productName: string;
+    launchScope: string;
+    storageCondition: string | null;
+  } | null;
+}
+
 export interface UserRef {
   id: string;
   name: string | null;
@@ -256,6 +280,10 @@ export interface SalesClient {
   contacts?: SalesContact[];
   journals?: SalesJournal[];
   plans?: SalesPlan[];
+  // 이 거래처 전용 출시·단종 프로젝트
+  launchProjects?: ClientLaunchProject[];
+  // 이 거래처에 제안한 샘플 (브랜드 공식 출시 제품이 거래처와 이어지는 유일한 기록)
+  sampleRequests?: ClientSampleRequest[];
   _count?: { journals: number; plans: number };
 }
 
@@ -317,6 +345,7 @@ export interface SalesJournal {
   meetingLocation: string | null;
   attendees: string | null;
   meetingSummary: string | null;
+  voiceTranscript?: string | null; // 음성으로 작성한 경우 받아쓰기 원문
   keyRequests: string | null;
   productRequests: string | null;
   createdAt: string;
@@ -375,6 +404,7 @@ export interface CalendarEvent {
   detail?: string | null; // 미팅 개요 / 계획 내용 / 할일 계획
   author?: string | null;
   parentTitle?: string | null; // 할일이 속한 일지 제목
+  launchScope?: string | null; // 출시·단종 전용: brand | client
   url: string;
 }
 
