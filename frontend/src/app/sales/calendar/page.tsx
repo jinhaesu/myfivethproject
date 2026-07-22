@@ -10,6 +10,7 @@ import {
   EVENT_META,
   SalesClient,
   SALES_STAGES,
+  STAGE_LABEL,
   fmtDate,
   toDateInput,
 } from '@/lib/sales';
@@ -69,6 +70,9 @@ export default function SalesPlansPage() {
   const [clientId, setClientId] = useState('');
   const [clients, setClients] = useState<SalesClient[]>([]);
   const [loading, setLoading] = useState(true);
+  // 달력 칸은 3건까지만 보여주고 나머지를 '+N건 더'로 접는다 — 그 나머지를 여는 통로
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const [openEvent, setOpenEvent] = useState<CalendarEvent | null>(null);
 
   // 거래처 목록은 기간과 무관하게 고정 — 달을 넘겨도 선택이 목록에서 사라지지 않아야 한다
   useEffect(() => {
@@ -179,6 +183,18 @@ export default function SalesPlansPage() {
     }
     return map;
   }, [visibleEvents]);
+
+  // Esc로 닫기 — 팝업이 겹쳐 있으면 위(이벤트)부터 닫는다
+  useEffect(() => {
+    if (!openDay && !openEvent) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (openEvent) setOpenEvent(null);
+      else setOpenDay(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openDay, openEvent]);
 
   const shift = (dir: number) => {
     if (view === 'month') setAnchor((a) => addMonths(a, dir));
@@ -363,9 +379,28 @@ export default function SalesPlansPage() {
             주 뷰만 7일을 나란히 놓아야 해서 가로 스크롤을 유지한다. */}
         <div className={view === 'week' ? 'touch-scroll-x' : ''}>
           <div className={view === 'week' ? 'min-w-[720px]' : ''}>
-            {view === 'month' && <MonthGrid from={from} monthOf={monthOf} today={today} byDay={byDay} />}
-            {view === 'week' && <WeekGrid from={from} today={today} byDay={byDay} />}
-            {view === 'day' && <DayView day={startOfDay(anchor)} byDay={byDay} />}
+            {view === 'month' && (
+              <MonthGrid
+                from={from}
+                monthOf={monthOf}
+                today={today}
+                byDay={byDay}
+                onOpenDay={setOpenDay}
+                onOpenEvent={setOpenEvent}
+              />
+            )}
+            {view === 'week' && (
+              <WeekGrid
+                from={from}
+                today={today}
+                byDay={byDay}
+                onOpenDay={setOpenDay}
+                onOpenEvent={setOpenEvent}
+              />
+            )}
+            {view === 'day' && (
+              <DayView day={startOfDay(anchor)} byDay={byDay} onOpenEvent={setOpenEvent} />
+            )}
           </div>
         </div>
       </Card>
@@ -373,7 +408,7 @@ export default function SalesPlansPage() {
       {/* 하단 리스트 */}
       {view === 'month' && (
         <p className="sm:hidden text-[11.5px] text-[var(--text-4)] mb-2 -mt-3">
-          달력의 점은 일정 유형입니다. 자세한 내용은 아래 목록에서 확인하세요.
+          달력의 점은 일정 유형입니다. 날짜를 누르면 그날 일정 전체가 열립니다.
         </p>
       )}
       <div className="mb-2 text-[12.5px] text-[var(--text-3)]">
@@ -416,7 +451,12 @@ export default function SalesPlansPage() {
                 const meta = EVENT_META[ev.type];
                 const planId = ev.type === 'plan' ? ev.id.replace(/^plan-/, '') : null;
                 return (
-                  <TR key={ev.id}>
+                  <TR
+                    key={ev.id}
+                    className="cursor-pointer"
+                    onClick={() => setOpenEvent(ev)}
+                    title="클릭하면 요약을 봅니다"
+                  >
                     <TD numeric muted>{fmtDate(ev.date)}</TD>
                     <TD>
                       <Badge tone={meta.tone} size="xs">
@@ -424,14 +464,13 @@ export default function SalesPlansPage() {
                       </Badge>
                     </TD>
                     <TD emphasis>
-                      <Link href={ev.url} className="text-[var(--brand-400)] hover:text-[var(--brand-200)] transition-colors">
-                        {ev.title}
-                      </Link>
+                      <span className="text-[var(--brand-400)]">{ev.title}</span>
                     </TD>
                     <TD className="hidden sm:table-cell" muted>
                       {ev.clientName || '—'}
                     </TD>
-                    <TD align="right">
+                    {/* 행 전체가 요약 팝업을 여므로, 행 안의 버튼은 클릭이 위로 새지 않게 막는다 */}
+                    <TD align="right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap items-center justify-end gap-1">
                         <EventExportActions ev={ev} />
                         {planId && <DeletePlanButton planId={planId} onDeleted={load} />}
@@ -443,22 +482,210 @@ export default function SalesPlansPage() {
           </TBody>
         </Table>
       )}
+
+      {openDay && (
+        <DayDetailModal
+          dayKey={openDay}
+          events={byDay[openDay] || []}
+          onPick={setOpenEvent}
+          onClose={() => setOpenDay(null)}
+        />
+      )}
+      {openEvent && (
+        <EventDetailModal
+          ev={openEvent}
+          onClose={() => setOpenEvent(null)}
+          onDeleted={() => {
+            setOpenEvent(null);
+            setOpenDay(null);
+            load();
+          }}
+        />
+      )}
     </AppLayout>
   );
 }
 
-function EventChip({ ev }: { ev: CalendarEvent }) {
+// 하루치 일정 전체 — 달력 칸이 '+N건 더'로 접어 감춘 나머지를 여기서 본다
+function DayDetailModal({
+  dayKey,
+  events,
+  onPick,
+  onClose,
+}: {
+  dayKey: string;
+  events: CalendarEvent[];
+  onPick: (ev: CalendarEvent) => void;
+  onClose: () => void;
+}) {
+  const d = new Date(`${dayKey}T00:00:00`);
+  const label = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`;
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div className="text-[15px] font-semibold text-[var(--text-1)]">{label}</div>
+          <div className="text-[12px] text-[var(--text-3)] mt-0.5">일정 {events.length}건</div>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="닫기"
+          className="text-[var(--text-4)] hover:text-[var(--text-1)] transition-colors text-[16px] leading-none"
+        >
+          ✕
+        </button>
+      </div>
+      {events.length === 0 ? (
+        <div className="py-8 text-center text-[13px] text-[var(--text-3)]">이 날 표시할 일정이 없습니다.</div>
+      ) : (
+        <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto">
+          {events.map((ev) => {
+            const meta = EVENT_META[ev.type];
+            return (
+              <button
+                key={ev.id}
+                type="button"
+                onClick={() => onPick(ev)}
+                className="flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)] transition-colors"
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: meta.color }}
+                />
+                <Badge tone={meta.tone} size="xs">
+                  {meta.label}
+                </Badge>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12.5px] text-[var(--text-1)] truncate">{ev.title}</span>
+                  {ev.clientName ? (
+                    <span className="block text-[11px] text-[var(--text-4)] truncate">{ev.clientName}</span>
+                  ) : null}
+                </span>
+                <span className="text-[var(--text-4)] text-[12px] flex-shrink-0">›</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+// 일정 하나의 요약 — 페이지로 넘어가지 않고 내용을 확인한다
+function EventDetailModal({
+  ev,
+  onClose,
+  onDeleted,
+}: {
+  ev: CalendarEvent;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const meta = EVENT_META[ev.type];
+  const planId = ev.type === 'plan' ? ev.id.replace(/^plan-/, '') : null;
+  const rows: [string, string][] = [];
+  if (ev.clientName) rows.push(['거래처', ev.clientName]);
+  if (ev.stage) rows.push(['영업 단계', STAGE_LABEL[ev.stage] || ev.stage]);
+  if (ev.purpose) rows.push(['미팅 목적', ev.purpose]);
+  if (ev.location) rows.push(['장소', ev.location]);
+  if (ev.parentTitle) rows.push(['소속 일지', ev.parentTitle]);
+  if (ev.author) rows.push(['작성자', ev.author]);
+  if (ev.status) rows.push(['상태', ev.status]);
+
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Badge tone={meta.tone} size="xs">
+              {meta.label}
+            </Badge>
+            {ev.type === 'todo' ? (
+              <Badge tone={ev.done ? 'success' : 'warning'} size="xs">
+                {ev.done ? '완료' : '진행 중'}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="text-[15px] font-semibold text-[var(--text-1)] break-words">{ev.title}</div>
+          <div className="text-[12px] text-[var(--text-3)] mt-1 tabular">{fmtDate(ev.date)}</div>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="닫기"
+          className="text-[var(--text-4)] hover:text-[var(--text-1)] transition-colors text-[16px] leading-none flex-shrink-0"
+        >
+          ✕
+        </button>
+      </div>
+
+      {rows.length > 0 && (
+        <dl className="mt-3 grid grid-cols-[86px_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
+          {rows.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-[var(--text-4)]">{k}</dt>
+              <dd className="text-[var(--text-2)] break-words">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {ev.detail ? (
+        <div className="mt-3">
+          <div className="text-[11.5px] text-[var(--text-4)] mb-1">내용</div>
+          <div className="text-[12.5px] text-[var(--text-2)] whitespace-pre-wrap break-words max-h-[30vh] overflow-y-auto rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] p-2.5">
+            {ev.detail}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {/* 영업계획은 캘린더 자체가 상세라 이동할 페이지가 따로 없다 */}
+        {ev.type !== 'plan' && (
+          <Link href={ev.url}>
+            <Button variant="primary" size="sm">
+              자세히 보기
+            </Button>
+          </Link>
+        )}
+        <EventExportActions ev={ev} />
+        {planId && <DeletePlanButton planId={planId} onDeleted={onDeleted} />}
+      </div>
+    </ModalShell>
+  );
+}
+
+function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto flex items-start justify-center p-3 sm:p-8 bg-[var(--bg-overlay)] backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div className="w-full max-w-md mt-6 sm:mt-16 mb-6" onClick={(e) => e.stopPropagation()}>
+        <Card padding="lg" tone="elevated">
+          {children}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// 칩 클릭은 요약 팝업 — 칸 클릭(그날 전체 보기)과 겹치지 않게 전파를 끊는다
+function EventChip({ ev, onOpen }: { ev: CalendarEvent; onOpen: (ev: CalendarEvent) => void }) {
   const meta = EVENT_META[ev.type];
   return (
-    <Link
-      href={ev.url}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(ev);
+      }}
       title={`[${meta.label}] ${ev.title}`}
-      className="flex items-center gap-1 truncate text-[11px] leading-tight rounded-sm pl-1 pr-1 py-[2px] hover:bg-[var(--bg-3)] transition-colors"
+      className="flex items-center gap-1 w-full text-left truncate text-[11px] leading-tight rounded-sm pl-1 pr-1 py-[2px] hover:bg-[var(--bg-3)] transition-colors"
       style={{ borderLeft: `2px solid ${meta.color}` }}
     >
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: meta.color }} />
       <span className="truncate text-[var(--text-2)]">{ev.title}</span>
-    </Link>
+    </button>
   );
 }
 
@@ -467,11 +694,15 @@ function MonthGrid({
   monthOf,
   today,
   byDay,
+  onOpenDay,
+  onOpenEvent,
 }: {
   from: Date;
   monthOf: Date;
   today: Date;
   byDay: Record<string, CalendarEvent[]>;
+  onOpenDay: (key: string) => void;
+  onOpenEvent: (ev: CalendarEvent) => void;
 }) {
   const cells = Array.from({ length: 42 }, (_, i) => addDays(from, i));
   return (
@@ -498,7 +729,17 @@ function MonthGrid({
           return (
             <div
               key={key}
-              className="min-h-[56px] sm:min-h-[94px] border-b border-r border-[var(--border-1)] p-1 flex flex-col gap-0.5"
+              role="button"
+              tabIndex={0}
+              aria-label={`${d.getMonth() + 1}월 ${d.getDate()}일 일정 ${list.length}건`}
+              onClick={() => onOpenDay(key)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onOpenDay(key);
+                }
+              }}
+              className="min-h-[56px] sm:min-h-[94px] border-b border-r border-[var(--border-1)] p-1 flex flex-col gap-0.5 cursor-pointer hover:bg-[var(--bg-2)] transition-colors"
             >
               <div className="flex items-center justify-between px-0.5">
                 <span
@@ -535,10 +776,12 @@ function MonthGrid({
               {/* 데스크톱: 제목까지 보여주는 기존 칩 */}
               <div className="hidden sm:flex flex-col gap-0.5 overflow-hidden">
                 {list.slice(0, 3).map((ev) => (
-                  <EventChip key={ev.id} ev={ev} />
+                  <EventChip key={ev.id} ev={ev} onOpen={onOpenEvent} />
                 ))}
                 {list.length > 3 && (
-                  <span className="text-[10.5px] text-[var(--text-4)] pl-1">+{list.length - 3}건 더</span>
+                  <span className="text-[10.5px] text-[var(--brand-400)] pl-1">
+                    +{list.length - 3}건 더 보기
+                  </span>
                 )}
               </div>
             </div>
@@ -553,10 +796,14 @@ function WeekGrid({
   from,
   today,
   byDay,
+  onOpenDay,
+  onOpenEvent,
 }: {
   from: Date;
   today: Date;
   byDay: Record<string, CalendarEvent[]>;
+  onOpenDay: (key: string) => void;
+  onOpenEvent: (ev: CalendarEvent) => void;
 }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   return (
@@ -567,9 +814,12 @@ function WeekGrid({
         const isToday = sameDay(d, today);
         return (
           <div key={key} className="min-h-[280px] border-r border-[var(--border-1)] flex flex-col">
-            <div
+            <button
+              type="button"
+              onClick={() => onOpenDay(key)}
+              title="이 날 일정 전체 보기"
               className={
-                'text-center py-2 border-b border-[var(--border-1)] ' +
+                'w-full text-center py-2 border-b border-[var(--border-1)] hover:bg-[var(--bg-2)] transition-colors ' +
                 (isToday ? 'bg-[var(--bg-2)]' : '')
               }
             >
@@ -584,12 +834,12 @@ function WeekGrid({
               <div className={'text-[15px] font-semibold tabular ' + (isToday ? 'text-[var(--brand-400)]' : 'text-[var(--text-1)]')}>
                 {d.getDate()}
               </div>
-            </div>
+            </button>
             <div className="flex flex-col gap-1 p-1.5">
               {list.length === 0 ? (
                 <span className="text-[10.5px] text-[var(--text-4)] text-center pt-2">—</span>
               ) : (
-                list.map((ev) => <EventChip key={ev.id} ev={ev} />)
+                list.map((ev) => <EventChip key={ev.id} ev={ev} onOpen={onOpenEvent} />)
               )}
             </div>
           </div>
@@ -599,7 +849,15 @@ function WeekGrid({
   );
 }
 
-function DayView({ day, byDay }: { day: Date; byDay: Record<string, CalendarEvent[]> }) {
+function DayView({
+  day,
+  byDay,
+  onOpenEvent,
+}: {
+  day: Date;
+  byDay: Record<string, CalendarEvent[]>;
+  onOpenEvent: (ev: CalendarEvent) => void;
+}) {
   const list = byDay[ymd(day)] || [];
   return (
     <div className="p-4">
@@ -612,20 +870,20 @@ function DayView({ day, byDay }: { day: Date; byDay: Record<string, CalendarEven
             return (
               <div
                 key={ev.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)]"
+                onClick={() => onOpenEvent(ev)}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 rounded-md border border-[var(--border-1)] bg-[var(--bg-1)] cursor-pointer hover:bg-[var(--bg-2)] transition-colors"
               >
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: meta.color }} />
                 <Badge tone={meta.tone} size="xs">
                   {meta.label}
                 </Badge>
-                <Link
-                  href={ev.url}
-                  className="text-[13px] text-[var(--text-1)] hover:text-[var(--brand-400)] transition-colors truncate flex-1 min-w-[140px]"
-                >
+                <span className="text-[13px] text-[var(--text-1)] truncate flex-1 min-w-[140px]">
                   {ev.title}
-                </Link>
+                </span>
                 {ev.clientName && <span className="text-[12px] text-[var(--text-3)]">{ev.clientName}</span>}
-                <EventExportActions ev={ev} />
+                <span onClick={(e) => e.stopPropagation()}>
+                  <EventExportActions ev={ev} />
+                </span>
               </div>
             );
           })}

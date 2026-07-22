@@ -369,6 +369,12 @@ export interface CalendarEvent {
   clientId?: string | null; // 출시·단종은 거래처가 없어 null
   clientName?: string | null;
   location?: string | null; // 미팅 장소 — 구글 캘린더/.ics 내보내기에 사용
+  // 아래는 요약 팝업용 — 페이지를 열지 않고 내용을 확인하기 위한 부가 정보
+  stage?: string | null;
+  purpose?: string | null; // 미팅 목적
+  detail?: string | null; // 미팅 개요 / 계획 내용 / 할일 계획
+  author?: string | null;
+  parentTitle?: string | null; // 할일이 속한 일지 제목
   url: string;
 }
 

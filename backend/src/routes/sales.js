@@ -1340,7 +1340,10 @@ router.get('/calendar', authenticate, async (req, res) => {
     // 출시/단종 프로젝트 (targetLaunchDate)
     const projects = await prisma.launchProject.findMany({
       where: inRange('targetLaunchDate'),
-      select: { id: true, kind: true, productName: true, targetLaunchDate: true, status: true },
+      select: {
+        id: true, kind: true, productName: true, targetLaunchDate: true,
+        status: true, description: true,
+      },
     });
     for (const p of projects) {
       events.push({
@@ -1349,6 +1352,8 @@ router.get('/calendar', authenticate, async (req, res) => {
         title: p.productName,
         date: p.targetLaunchDate,
         status: p.status,
+        // 달력에서 바로 요약을 열어볼 수 있도록 프로젝트 개요를 함께 내려준다
+        detail: p.description || null,
         url: `/launches/${p.id}`,
       });
     }
@@ -1373,6 +1378,11 @@ router.get('/calendar', authenticate, async (req, res) => {
           clientId: j.client?.id || null, // 화면의 거래처 필터가 이름이 아닌 id로 매칭한다
           clientName: j.client?.name || null,
           location: j.meetingLocation || null, // 구글 캘린더/.ics 내보내기용
+          // 달력에서 클릭하면 페이지 이동 없이 요약을 띄운다
+          stage: j.stage || null,
+          purpose: j.meetingPurpose || null,
+          detail: j.meetingSummary || null,
+          author: j.author?.name || null,
           url: `/sales/${j.id}`,
         });
       }
@@ -1386,6 +1396,10 @@ router.get('/calendar', authenticate, async (req, res) => {
             done: t.isDone,
             clientId: j.client?.id || null,
             clientName: j.client?.name || null,
+            detail: t.plan || null,
+            author: j.author?.name || null,
+            // 어느 일지에서 나온 할일인지 — 요약 팝업에서 맥락을 잡아준다
+            parentTitle: j.title || null,
             url: `/sales/${j.id}`,
           });
         }
@@ -1395,7 +1409,10 @@ router.get('/calendar', authenticate, async (req, res) => {
     // 영업계획 (planDate)
     const plans = await prisma.salesPlan.findMany({
       where: inRange('planDate'),
-      include: { client: { select: { id: true, name: true } } },
+      include: {
+        client: { select: { id: true, name: true } },
+        author: { select: USER_SELECT },
+      },
     });
     for (const pl of plans) {
       events.push({
@@ -1406,6 +1423,9 @@ router.get('/calendar', authenticate, async (req, res) => {
         clientId: pl.client?.id || null,
         clientName: pl.client?.name || null,
         location: pl.location || null, // 구글 캘린더/.ics 내보내기용
+        stage: pl.stage || null,
+        detail: pl.content || null,
+        author: pl.author?.name || null,
         url: `/sales/calendar`,
       });
     }
