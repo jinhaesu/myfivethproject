@@ -18,6 +18,10 @@ const {
   canViewJournal,
   isJournalOwner,
   normalizeStage,
+  normalizeDealStatus,
+  DEAL_STATUSES,
+  LOST_REASONS,
+  MEETING_PURPOSES,
 } = require('../lib/sales');
 
 const router = express.Router();
@@ -213,6 +217,11 @@ const CLIENT_INCLUDE = {
   _count: { select: { journals: true, plans: true } },
 };
 
+// 화면 드롭다운이 백엔드와 어긋나지 않도록 선택지를 한 곳에서 내려준다
+router.get('/meta/options', authenticate, (req, res) => {
+  res.json({ dealStatuses: DEAL_STATUSES, lostReasons: LOST_REASONS, meetingPurposes: MEETING_PURPOSES });
+});
+
 router.get('/clients', authenticate, async (req, res) => {
   try {
     const clients = await prisma.salesClient.findMany({
@@ -231,11 +240,23 @@ router.post('/clients', authenticate, async (req, res) => {
     const {
       name, bizNumber, stage, ownerOrg, buyerComposition, annualRevenue,
       existingVendors, managedItems, storageCondition, logisticsCondition, note,
-      expectedRevenue, winProbability,
+      expectedRevenue, winProbability, expectedCloseDate,
+      contactName, contactPhone, contactEmail,
     } = req.body;
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: '거래처명을 입력해주세요.' });
     }
+    // 등록 화면에서 함께 받은 실무 담당자를 첫 명함으로 만들어 둔다 (인수인계 시 연락처 유실 방지)
+    const primaryContact = String(contactName || '').trim()
+      ? {
+          create: [{
+            name: String(contactName).trim(),
+            phone: String(contactPhone || '').trim() || null,
+            email: String(contactEmail || '').trim() || null,
+            sortOrder: 0,
+          }],
+        }
+      : undefined;
     const client = await prisma.salesClient.create({
       data: {
         name: String(name).trim(),
@@ -243,6 +264,8 @@ router.post('/clients', authenticate, async (req, res) => {
         stage: normalizeStage(stage),
         expectedRevenue: parseRevenue(expectedRevenue),
         winProbability: parseProb(winProbability),
+        expectedCloseDate: parseDate(expectedCloseDate),
+        ...(primaryContact ? { contacts: primaryContact } : {}),
         ownerOrg: ownerOrg || null,
         buyerComposition: buyerComposition || null,
         annualRevenue: annualRevenue || null,
@@ -318,6 +341,28 @@ router.put('/clients/:id', authenticate, async (req, res) => {
     if (b.stage !== undefined) data.stage = normalizeStage(b.stage);
     if (b.expectedRevenue !== undefined) data.expectedRevenue = parseRevenue(b.expectedRevenue);
     if (b.winProbability !== undefined) data.winProbability = parseProb(b.winProbability);
+    if (b.expectedCloseDate !== undefined) data.expectedCloseDate = parseDate(b.expectedCloseDate);
+    if (b.lostReason !== undefined) data.lostReason = b.lostReason || null;
+    if (b.lostNote !== undefined) data.lostNote = b.lostNote || null;
+    if (b.status !== undefined) {
+      const next = normalizeDealStatus(b.status);
+      data.status = next;
+      // 실패 처리는 사유가 있어야 나중에 집계·회고가 가능하다
+      if (next === 'lost') {
+        const reason = b.lostReason !== undefined ? b.lostReason : existing.lostReason;
+        if (!reason || !String(reason).trim()) {
+          return res.status(400).json({ error: '실패 사유를 선택해주세요.' });
+        }
+      }
+      // open으로 되돌리면 종료 기록을 지운다
+      if (next === 'open') {
+        data.closedAt = null;
+        data.lostReason = null;
+        data.lostNote = null;
+      } else if (existing.status !== next) {
+        data.closedAt = new Date();
+      }
+    }
     const client = await prisma.salesClient.update({
       where: { id: req.params.id },
       data,
@@ -1313,6 +1358,114 @@ router.get('/calendar', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Calendar aggregate error:', error);
     res.status(500).json({ error: '일정 집계에 실패했습니다.' });
+  }
+});
+
+// ============================================================
+// 파이프라인 분석 — 단계별 병목·실패 사유·예상 계약일 기준 매출 타임라인
+// ============================================================
+router.get('/pipeline/analytics', authenticate, async (req, res) => {
+  try {
+    const clients = await prisma.salesClient.findMany({
+      include: { journals: { select: { createdAt: true, meetingDate: true, meetingPurpose: true } } },
+    });
+    const now = Date.now();
+    const DAY = 86400000;
+
+    // 1) 단계별 병목 — 건수·금액과 함께 '마지막 활동 이후 경과일' 중앙값을 본다.
+    //    평균은 오래 방치된 1건에 끌려가므로 중앙값이 실제 체감에 가깝다.
+    const median = (arr) => {
+      if (!arr.length) return 0;
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+    };
+    const open = clients.filter((c) => (c.status || 'open') === 'open');
+    const stageSummary = SALES_STAGES.map((s) => {
+      const list = open.filter((c) => c.stage === s.key);
+      const idleDays = list.map((c) => {
+        const last = c.journals.reduce(
+          (mx, j) => Math.max(mx, +new Date(j.meetingDate || j.createdAt)),
+          +new Date(c.updatedAt),
+        );
+        return Math.floor((now - last) / DAY);
+      });
+      const expected = list.reduce((sum, c) => sum + (c.expectedRevenue || 0), 0);
+      const weighted = list.reduce((sum, c) => {
+        const prob = c.winProbability != null ? c.winProbability : (STAGE_DEFAULT_PROB[c.stage] ?? 0);
+        return sum + (c.expectedRevenue || 0) * (prob / 100);
+      }, 0);
+      return {
+        stage: s.key, label: s.label, count: list.length, expected, weighted,
+        medianIdleDays: median(idleDays),
+        stalled: list.filter((_, i) => idleDays[i] >= 30).length, // 30일 이상 무활동
+      };
+    });
+
+    // 2) 승패 집계 — 왜 지는지 알아야 개선할 수 있다
+    const won = clients.filter((c) => c.status === 'won');
+    const lost = clients.filter((c) => c.status === 'lost');
+    const decided = won.length + lost.length;
+    const lostByReason = {};
+    for (const c of lost) {
+      const key = c.lostReason || '사유 미기재';
+      lostByReason[key] = (lostByReason[key] || 0) + 1;
+    }
+
+    // 3) 예상 계약일 기준 월별 매출 타임라인 (향후 12개월)
+    const timeline = [];
+    const base = new Date();
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+      timeline.push({
+        month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        expected: 0, weighted: 0, count: 0,
+      });
+    }
+    const idxOf = (date) => {
+      const d = new Date(date);
+      return (d.getFullYear() - base.getFullYear()) * 12 + (d.getMonth() - base.getMonth());
+    };
+    let undated = 0;
+    for (const c of open) {
+      if (!c.expectedCloseDate) { undated += 1; continue; }
+      const i = idxOf(c.expectedCloseDate);
+      if (i < 0 || i >= 12) continue; // 과거이거나 1년 밖이면 타임라인에서 제외
+      const prob = c.winProbability != null ? c.winProbability : (STAGE_DEFAULT_PROB[c.stage] ?? 0);
+      timeline[i].expected += c.expectedRevenue || 0;
+      timeline[i].weighted += (c.expectedRevenue || 0) * (prob / 100);
+      timeline[i].count += 1;
+    }
+
+    // 4) 미팅 목적별 분포 — 선택형 전환의 목적(활동 통계)
+    const purposeCount = {};
+    for (const c of clients) {
+      for (const j of c.journals) {
+        if (!j.meetingPurpose) continue;
+        purposeCount[j.meetingPurpose] = (purposeCount[j.meetingPurpose] || 0) + 1;
+      }
+    }
+
+    res.json({
+      stageSummary,
+      winLoss: {
+        won: won.length,
+        lost: lost.length,
+        open: open.length,
+        winRate: decided ? Math.round((won.length / decided) * 100) : null,
+        lostByReason: Object.entries(lostByReason)
+          .map(([reason, count]) => ({ reason, count }))
+          .sort((a, b) => b.count - a.count),
+      },
+      timeline,
+      undatedOpenDeals: undated, // 예상 계약일이 없어 타임라인에 못 들어간 건수
+      meetingPurposes: Object.entries(purposeCount)
+        .map(([purpose, count]) => ({ purpose, count }))
+        .sort((a, b) => b.count - a.count),
+    });
+  } catch (error) {
+    console.error('파이프라인 분석 오류:', error);
+    res.status(500).json({ error: '파이프라인 분석에 실패했습니다.' });
   }
 });
 

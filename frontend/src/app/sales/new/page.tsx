@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
+import MeetingPurposeField from '@/components/MeetingPurposeField';
 import { api, getFileUrl } from '@/lib/api';
 import { SalesClient, SalesContact, SALES_STAGES, todoSuggestionsForStage } from '@/lib/sales';
 import {
@@ -473,9 +474,7 @@ export default function NewSalesJournalPage() {
               <Field label="미팅 일자" required>
                 <Input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} />
               </Field>
-              <Field label="미팅 목적" required>
-                <Input value={meetingPurpose} onChange={(e) => setMeetingPurpose(e.target.value)} placeholder="예: 신제품 입점 제안" />
-              </Field>
+              <MeetingPurposeField value={meetingPurpose} onChange={setMeetingPurpose} />
               <Field label="장소" required hint="과거에 입력한 장소를 자동완성으로 고를 수 있습니다.">
                 <Input
                   value={meetingLocation}
