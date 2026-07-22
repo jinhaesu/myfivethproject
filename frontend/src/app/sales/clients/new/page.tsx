@@ -28,6 +28,7 @@ export default function NewSalesClientPage() {
   const [stage, setStage] = useState('lead');
   const [expectedRevenue, setExpectedRevenue] = useState('');
   const [winProbability, setWinProbability] = useState('');
+  const [expectedCloseDate, setExpectedCloseDate] = useState('');
   // 실무 담당자 — 저장 시 거래처의 첫 명함(SalesContact)으로 만들어진다
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -46,6 +47,10 @@ export default function NewSalesClientPage() {
       setError('거래처명을 입력해주세요.');
       return;
     }
+    if (!expectedCloseDate) {
+      setError('예상 계약일을 입력해주세요. 매출 타임라인 예측에 필요합니다.');
+      return;
+    }
     setError('');
     setSaving(true);
     try {
@@ -55,6 +60,7 @@ export default function NewSalesClientPage() {
         stage,
         expectedRevenue: expectedRevenue.trim() ? Number(expectedRevenue.replace(/[,\s]/g, '')) : undefined,
         winProbability: winProbability.trim() ? Number(winProbability) : undefined,
+        expectedCloseDate,
         contactName: contactName.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         contactEmail: contactEmail.trim() || undefined,
@@ -123,6 +129,18 @@ export default function NewSalesClientPage() {
                   </option>
                 ))}
               </Select>
+            </Field>
+            <Field
+              label="예상 계약일"
+              required
+              className="sm:col-span-2"
+              hint="월별 매출 타임라인의 기준입니다. 정확하지 않아도 되니 현재 판단으로 입력하고, 진행되면서 조정하세요."
+            >
+              <Input
+                type="date"
+                value={expectedCloseDate}
+                onChange={(e) => setExpectedCloseDate(e.target.value)}
+              />
             </Field>
 
             <div className="sm:col-span-2 pt-1 border-t border-[var(--border-1)]" />
