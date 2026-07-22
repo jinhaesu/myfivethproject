@@ -16,6 +16,7 @@ import {
   weightedRevenue,
   dealStatusOf,
   isOpenDeal,
+  storageLabel,
 } from '@/lib/sales';
 import {
   PageHeader,
@@ -107,6 +108,8 @@ export default function SalesClientsPage() {
   const openDeals = clients.filter(isOpenDeal);
   const closedDeals = clients.filter((c) => !isOpenDeal(c));
   const byStage = (stageKey: string) => openDeals.filter((c) => c.stage === stageKey);
+  // 담당자를 모르는 거래처는 일지도 못 쓰고 인수인계도 안 된다 — 남은 건수를 목록 위에 드러낸다
+  const missingContacts = clients.filter((c) => !(c.contacts || []).length);
 
   return (
     <AppLayout>
@@ -127,6 +130,26 @@ export default function SalesClientsPage() {
       {error ? (
         <div className="mb-3 rounded-md border border-[var(--danger-fg)] bg-[var(--bg-2)] px-3 py-2 text-[12.5px] text-[var(--danger-fg)]">
           {error}
+        </div>
+      ) : null}
+
+      {!loading && missingContacts.length > 0 ? (
+        <div className="mb-3 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2.5">
+          <div className="text-[12.5px] font-medium text-[var(--text-1)]">
+            담당자 명함이 없는 거래처 {missingContacts.length}건
+          </div>
+          <p className="text-[11.5px] text-[var(--text-2)] mt-0.5">
+            명함이 없으면 이 거래처로 영업일지를 저장할 수 없습니다. 각 거래처를 열어 담당자를 등록해주세요.
+          </p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {missingContacts.map((c) => (
+              <Link key={c.id} href={`/sales/clients/${c.id}`}>
+                <span className="inline-flex items-center h-6 px-2 rounded-full border border-[var(--border-2)] bg-[var(--bg-1)] text-[11.5px] text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] transition-colors">
+                  {c.name}
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -213,11 +236,24 @@ export default function SalesClientsPage() {
                                 {primary ? (
                                   <div className="text-[11.5px] text-[var(--text-3)] mt-1.5 truncate">
                                     {primary.name}
+                                    {primary.storageCondition ? (
+                                      <span className="text-[var(--text-4)]">
+                                        {' '}
+                                        · {storageLabel(primary.storageCondition)}
+                                      </span>
+                                    ) : null}
                                     {primary.title ? (
                                       <span className="text-[var(--text-4)]"> · {primary.title}</span>
                                     ) : null}
                                   </div>
-                                ) : null}
+                                ) : (
+                                  /* 명함이 없으면 이 거래처로는 일지를 못 쓴다 — 카드에서 바로 보이게 한다 */
+                                  <div className="mt-1.5">
+                                    <Badge tone="danger" size="xs">
+                                      명함 미등록
+                                    </Badge>
+                                  </div>
+                                )}
                                 {c.expectedRevenue ? (
                                   <div className="mt-1.5 text-[11.5px] text-[var(--text-2)] tabular">
                                     {fmtKRW(c.expectedRevenue)}

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
-import { SALES_STAGES, WIN_PROBABILITY_OPTIONS } from '@/lib/sales';
+import { SALES_STAGES, STORAGE_CONDITIONS, WIN_PROBABILITY_OPTIONS } from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -31,8 +31,10 @@ export default function NewSalesClientPage() {
   const [expectedCloseDate, setExpectedCloseDate] = useState('');
   // 실무 담당자 — 저장 시 거래처의 첫 명함(SalesContact)으로 만들어진다
   const [contactName, setContactName] = useState('');
+  const [contactPosition, setContactPosition] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [contactStorageCondition, setContactStorageCondition] = useState('');
   const [ownerOrg, setOwnerOrg] = useState('');
   const [buyerComposition, setBuyerComposition] = useState('');
   const [annualRevenue, setAnnualRevenue] = useState('');
@@ -51,6 +53,15 @@ export default function NewSalesClientPage() {
       setError('예상 계약일을 입력해주세요. 매출 타임라인 예측에 필요합니다.');
       return;
     }
+    // 담당자를 모른 채 거래처만 늘어나는 걸 막는다 — 첫 명함은 등록 시점에 받는다
+    if (!contactName.trim()) {
+      setError('담당자명을 입력해주세요. 거래처는 담당자 명함 1건 이상이 있어야 등록됩니다.');
+      return;
+    }
+    if (!contactStorageCondition) {
+      setError('담당자의 보관 조건을 선택해주세요. (냉동/냉장/상온/전체)');
+      return;
+    }
     setError('');
     setSaving(true);
     try {
@@ -61,9 +72,11 @@ export default function NewSalesClientPage() {
         expectedRevenue: expectedRevenue.trim() ? Number(expectedRevenue.replace(/[,\s]/g, '')) : undefined,
         winProbability: winProbability.trim() ? Number(winProbability) : undefined,
         expectedCloseDate,
-        contactName: contactName.trim() || undefined,
+        contactName: contactName.trim(),
+        contactPosition: contactPosition.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         contactEmail: contactEmail.trim() || undefined,
+        contactStorageCondition,
         ownerOrg: ownerOrg.trim() || undefined,
         buyerComposition: buyerComposition.trim() || undefined,
         annualRevenue: annualRevenue.trim() || undefined,
@@ -144,15 +157,41 @@ export default function NewSalesClientPage() {
             </Field>
 
             <div className="sm:col-span-2 pt-1 border-t border-[var(--border-1)]" />
-            <Field
-              label="담당자명"
-              className="sm:col-span-2"
-              hint="실무 연락처입니다. 담당자명을 비워두면 연락처·이메일도 저장되지 않습니다."
-            >
+            <div className="sm:col-span-2">
+              <div className="text-[13px] font-medium text-[var(--text-1)]">첫 담당자 명함</div>
+              <p className="text-[11.5px] text-[var(--text-3)] mt-0.5">
+                거래처는 담당자 명함 1건 이상이 있어야 등록됩니다. 명함 이미지는 등록 후 거래처 상세에서 첨부할 수 있습니다.
+              </p>
+            </div>
+            <Field label="담당자명" required>
               <Input
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
-                placeholder="예: 김철수 (구매팀 MD)"
+                placeholder="예: 김철수"
+              />
+            </Field>
+            <Field
+              label="보관 조건"
+              required
+              hint="이 담당자가 맡는 구분입니다. 같은 거래처라도 냉동·냉장·상온 바이어가 다릅니다."
+            >
+              <Select
+                value={contactStorageCondition}
+                onChange={(e) => setContactStorageCondition(e.target.value)}
+              >
+                <option value="">보관 조건 선택</option>
+                {STORAGE_CONDITIONS.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="직급·직함">
+              <Input
+                value={contactPosition}
+                onChange={(e) => setContactPosition(e.target.value)}
+                placeholder="예: 구매팀 MD"
               />
             </Field>
             <Field label="담당자 연락처">
@@ -162,7 +201,7 @@ export default function NewSalesClientPage() {
                 placeholder="010-0000-0000"
               />
             </Field>
-            <Field label="담당자 이메일">
+            <Field label="담당자 이메일" className="sm:col-span-2">
               <Input
                 type="email"
                 value={contactEmail}

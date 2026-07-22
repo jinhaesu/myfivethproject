@@ -50,6 +50,25 @@ const MEETING_PURPOSES = [
   '기타',
 ];
 
+// 명함(담당자) 보관 조건 — 같은 거래처라도 냉동·냉장·상온 바이어가 갈리므로,
+// 실무에서는 이 값이 사실상 명함을 구분하는 축이 된다. (예: GS25_냉장 / GS25_상온)
+const STORAGE_CONDITIONS = [
+  { key: 'frozen', label: '냉동' },
+  { key: 'chilled', label: '냉장' },
+  { key: 'ambient', label: '상온' },
+  { key: 'all', label: '전체' },
+];
+const STORAGE_CONDITION_KEYS = STORAGE_CONDITIONS.map((s) => s.key);
+
+// key도 라벨('냉장')도 받는다 — 화면·AI·기존 자유입력이 섞여 들어오기 때문
+function normalizeStorageCondition(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (STORAGE_CONDITION_KEYS.includes(s)) return s;
+  const byLabel = STORAGE_CONDITIONS.find((x) => x.label === s);
+  return byLabel ? byLabel.key : null;
+}
+
 // 모든 영업일지를 열람 가능한 최고 관리자
 const SUPER_ADMIN_EMAIL = 'lion9080@joinandjoin.com';
 
@@ -95,6 +114,9 @@ module.exports = {
   DEAL_STATUS_KEYS,
   LOST_REASONS,
   MEETING_PURPOSES,
+  STORAGE_CONDITIONS,
+  STORAGE_CONDITION_KEYS,
+  normalizeStorageCondition,
   normalizeDealStatus,
   SUPER_ADMIN_EMAIL,
   isSuperAdmin,

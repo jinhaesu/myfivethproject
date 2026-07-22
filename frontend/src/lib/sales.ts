@@ -183,8 +183,30 @@ export interface SalesContact {
   email: string | null;
   cardImageUrl: string | null;
   cardImageName: string | null;
+  storageCondition: string | null;
   sortOrder: number;
   createdAt: string;
+}
+
+// 명함 보관 조건 — 같은 거래처라도 냉동·냉장·상온 바이어가 다르다 (예: GS25_냉장 / GS25_상온)
+export const STORAGE_CONDITIONS: { key: string; label: string }[] = [
+  { key: 'frozen', label: '냉동' },
+  { key: 'chilled', label: '냉장' },
+  { key: 'ambient', label: '상온' },
+  { key: 'all', label: '전체' },
+];
+
+export const STORAGE_CONDITION_TONE: Record<string, BadgeTone> = {
+  frozen: 'info',
+  chilled: 'brand',
+  ambient: 'warning',
+  all: 'neutral',
+};
+
+// 마이그레이션 이전 명함은 값이 비어 있을 수 있다 — 숨기지 말고 '미지정'으로 드러낸다
+export function storageLabel(key?: string | null): string {
+  if (!key) return '미지정';
+  return STORAGE_CONDITIONS.find((s) => s.key === key)?.label || key;
 }
 
 export interface UserRef {
