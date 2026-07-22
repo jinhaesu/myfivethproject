@@ -20,6 +20,36 @@ const STAGE_DEFAULT_PROB = {
   expansion: 90,
 };
 
+// 딜 진행 상태 — Pipedrive의 open/won/lost 모델
+const DEAL_STATUSES = [
+  { key: 'open', label: '진행 중' },
+  { key: 'won', label: '성사' },
+  { key: 'lost', label: '실패' },
+];
+const DEAL_STATUS_KEYS = DEAL_STATUSES.map((s) => s.key);
+
+// 영업 실패(Lost) 사유 — 왜 지는지 집계해 개선점을 찾기 위해 고정 목록으로 관리
+const LOST_REASONS = [
+  '가격 경쟁력 부족',
+  '타사 계약',
+  '제품 스펙 미달',
+  '납기·물류 조건 불가',
+  '거래처 내부 사정(예산·조직 변경)',
+  '연락 두절·무응답',
+  '기타',
+];
+
+// 미팅 목적 — 자유 입력이면 집계가 불가능해 선택형으로 고정.
+// '기타'를 고르면 화면에서 직접 입력받고, 그 값이 그대로 저장된다.
+const MEETING_PURPOSES = [
+  '신규 제안',
+  '견적 및 조건 협의',
+  '샘플 전달',
+  '정기 점검',
+  '클레임 대응',
+  '기타',
+];
+
 // 모든 영업일지를 열람 가능한 최고 관리자
 const SUPER_ADMIN_EMAIL = 'lion9080@joinandjoin.com';
 
@@ -52,11 +82,20 @@ function normalizeStage(stage) {
   return SALES_STAGE_KEYS.includes(stage) ? stage : 'lead';
 }
 
+function normalizeDealStatus(status) {
+  return DEAL_STATUS_KEYS.includes(status) ? status : 'open';
+}
+
 module.exports = {
   SALES_STAGES,
   SALES_STAGE_KEYS,
   STAGE_LABEL,
   STAGE_DEFAULT_PROB,
+  DEAL_STATUSES,
+  DEAL_STATUS_KEYS,
+  LOST_REASONS,
+  MEETING_PURPOSES,
+  normalizeDealStatus,
   SUPER_ADMIN_EMAIL,
   isSuperAdmin,
   canViewJournal,

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
-import { SALES_STAGES } from '@/lib/sales';
+import { SALES_STAGES, WIN_PROBABILITY_OPTIONS } from '@/lib/sales';
 import {
   PageHeader,
   Card,
@@ -28,6 +28,10 @@ export default function NewSalesClientPage() {
   const [stage, setStage] = useState('lead');
   const [expectedRevenue, setExpectedRevenue] = useState('');
   const [winProbability, setWinProbability] = useState('');
+  // 실무 담당자 — 저장 시 거래처의 첫 명함(SalesContact)으로 만들어진다
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
   const [ownerOrg, setOwnerOrg] = useState('');
   const [buyerComposition, setBuyerComposition] = useState('');
   const [annualRevenue, setAnnualRevenue] = useState('');
@@ -51,6 +55,9 @@ export default function NewSalesClientPage() {
         stage,
         expectedRevenue: expectedRevenue.trim() ? Number(expectedRevenue.replace(/[,\s]/g, '')) : undefined,
         winProbability: winProbability.trim() ? Number(winProbability) : undefined,
+        contactName: contactName.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
+        contactEmail: contactEmail.trim() || undefined,
         ownerOrg: ownerOrg.trim() || undefined,
         buyerComposition: buyerComposition.trim() || undefined,
         annualRevenue: annualRevenue.trim() || undefined,
@@ -110,12 +117,40 @@ export default function NewSalesClientPage() {
             <Field label="성사 확률(%)" hint="미입력 시 단계 기본값 적용">
               <Select value={winProbability} onChange={(e) => setWinProbability(e.target.value)}>
                 <option value="">단계 기본값</option>
-                {[10, 25, 50, 75, 90].map((p) => (
-                  <option key={p} value={p}>
-                    {p}%
+                {WIN_PROBABILITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
               </Select>
+            </Field>
+
+            <div className="sm:col-span-2 pt-1 border-t border-[var(--border-1)]" />
+            <Field
+              label="담당자명"
+              className="sm:col-span-2"
+              hint="실무 연락처입니다. 담당자명을 비워두면 연락처·이메일도 저장되지 않습니다."
+            >
+              <Input
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="예: 김철수 (구매팀 MD)"
+              />
+            </Field>
+            <Field label="담당자 연락처">
+              <Input
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="010-0000-0000"
+              />
+            </Field>
+            <Field label="담당자 이메일">
+              <Input
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                placeholder="buyer@example.com"
+              />
             </Field>
           </div>
         </Card>

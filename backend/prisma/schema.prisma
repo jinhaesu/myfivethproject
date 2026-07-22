@@ -253,12 +253,17 @@ model ReviewItem {
 
 // 거래처 — 영업 파이프라인의 딜(deal) 단위. stage로 단계 이동.
 model SalesClient {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   name               String // 거래처명
   bizNumber          String? // 사업자번호
-  stage              String   @default("lead") // lead(영업시작), contact(관계형성), proposal(제안·미팅), revenue(매출기여), expansion(제품확대)
+  stage              String    @default("lead") // lead(영업시작), contact(관계형성), proposal(제안·미팅), revenue(매출기여), expansion(제품확대)
   expectedRevenue    Float? // 예상 매출(월, KRW) — 파이프라인 가중 예상매출 산출
-  winProbability     Int? // 성사 확률(%) 0~100
+  winProbability     Int? // 성사 확률(%) 0~100 (100 = 기존 거래중)
+  expectedCloseDate  DateTime? // 예상 계약(성사 예정)일 — 파이프라인 자금흐름 타임라인용
+  status             String    @default("open") // open(진행중) | won(성사) | lost(실패)
+  lostReason         String? // 실패 사유 (status=lost일 때)
+  lostNote           String? // 실패 사유 상세
+  closedAt           DateTime? // 성사/실패 확정 시각
   // 최초 미팅 시 입력하는 거래처 프로필
   ownerOrg           String? // 담당 조직
   buyerComposition   String? // 바이어 구성
@@ -268,8 +273,8 @@ model SalesClient {
   storageCondition   String? // 보관 조건
   logisticsCondition String? // 물류 조건
   note               String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   createdBy   User   @relation(fields: [createdById], references: [id])
   createdById String
@@ -423,20 +428,20 @@ model SalesPlan {
 // 영업일지·출시·단종·검수 등 주요 자료의 생성/수정/삭제 내역을 남긴다.
 // User FK를 걸지 않고 이름·이메일을 비정규화 저장 — 담당자 계정이 삭제돼도 이력은 보존.
 model ChangeLog {
-  id         String   @id @default(uuid())
-  entityType String // journal | client | plan | launch | discontinuation | review | reviewItem | launchTask
-  entityId   String
+  id          String   @id @default(uuid())
+  entityType  String // journal | client | plan | launch | discontinuation | review | reviewItem | launchTask
+  entityId    String
   entityLabel String? // 집계 뷰에서 어느 항목의 변경인지 식별용 (검수 항목명·단계명 등)
-  action     String // create | update | delete
-  field      String? // 변경된 필드 키 (action=update)
-  fieldLabel String? // 화면 표기용 한글 라벨
-  oldValue   String? // 변경 전 값 (요약·절삭됨)
-  newValue   String? // 변경 후 값 (요약·절삭됨)
-  summary    String? // 필드 단위가 아닌 변경 요약 (create/delete 등)
-  actorId    String?
-  actorName  String?
-  actorEmail String?
-  createdAt  DateTime @default(now())
+  action      String // create | update | delete
+  field       String? // 변경된 필드 키 (action=update)
+  fieldLabel  String? // 화면 표기용 한글 라벨
+  oldValue    String? // 변경 전 값 (요약·절삭됨)
+  newValue    String? // 변경 후 값 (요약·절삭됨)
+  summary     String? // 필드 단위가 아닌 변경 요약 (create/delete 등)
+  actorId     String?
+  actorName   String?
+  actorEmail  String?
+  createdAt   DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])
 }

@@ -13,6 +13,12 @@ import {
   STAGE_LABEL,
   STAGE_TONE,
   STAGE_DEFAULT_PROB,
+  WIN_PROBABILITY_OPTIONS,
+  DEAL_STATUSES,
+  DEAL_STATUS_LABEL,
+  DEAL_STATUS_TONE,
+  LOST_REASONS,
+  dealStatusOf,
   fmtDate,
   fmtKRW,
   weightedRevenue,
@@ -54,6 +60,7 @@ export default function SalesClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   // 담당자 추가 폼
   const [newContact, setNewContact] = useState({ name: '', position: '', title: '', phone: '', email: '' });
@@ -87,6 +94,11 @@ export default function SalesClientDetailPage() {
       stage: client.stage || 'lead',
       expectedRevenue: client.expectedRevenue != null ? String(client.expectedRevenue) : '',
       winProbability: client.winProbability != null ? String(client.winProbability) : '',
+      // input[type=date]는 YYYY-MM-DD만 받으므로 ISO 문자열을 잘라 쓴다
+      expectedCloseDate: client.expectedCloseDate ? String(client.expectedCloseDate).slice(0, 10) : '',
+      status: dealStatusOf(client),
+      lostReason: client.lostReason || '',
+      lostNote: client.lostNote || '',
       bizNumber: client.bizNumber || '',
       ownerOrg: client.ownerOrg || '',
       annualRevenue: client.annualRevenue || '',
@@ -97,18 +109,29 @@ export default function SalesClientDetailPage() {
       logisticsCondition: client.logisticsCondition || '',
       note: client.note || '',
     });
+    setEditError('');
     setEditing(true);
   };
 
   const saveEdit = async () => {
-    if (!form.name?.trim()) return;
+    if (!form.name?.trim()) {
+      setEditError('거래처명을 입력해주세요.');
+      return;
+    }
+    // 백엔드도 막고 있지만, 저장 실패로 되돌아오기 전에 화면에서 먼저 알린다
+    if (form.status === 'lost' && !form.lostReason?.trim()) {
+      setEditError('실패로 처리하려면 실패 사유를 선택해주세요.');
+      return;
+    }
     setSaving(true);
+    setEditError('');
     try {
       await api.sales.updateClient(id, form);
       await load();
       setEditing(false);
     } catch (error) {
       console.error('Failed to save client:', error);
+      setEditError((error as Error)?.message || '저장에 실패했습니다.');
     } finally {
       setSaving(false);
     }
@@ -218,6 +241,12 @@ export default function SalesClientDetailPage() {
             <Badge tone={STAGE_TONE[client.stage] || 'neutral'} size="md">
               {STAGE_LABEL[client.stage] || client.stage}
             </Badge>
+            {/* 종료된 딜은 한눈에 구분되어야 한다 */}
+            {dealStatusOf(client) !== 'open' ? (
+              <Badge tone={DEAL_STATUS_TONE[dealStatusOf(client)] || 'neutral'} size="md">
+                {DEAL_STATUS_LABEL[dealStatusOf(client)]}
+              </Badge>
+            ) : null}
           </span>
         }
         actions={
@@ -243,6 +272,11 @@ export default function SalesClientDetailPage() {
           <CardHeader title="거래처 프로필" />
           {editing ? (
             <div className="grid sm:grid-cols-2 gap-3">
+              {editError ? (
+                <div className="sm:col-span-2 rounded-md border border-[var(--danger-fg)] bg-[var(--bg-2)] px-3 py-2 text-[12.5px] text-[var(--danger-fg)]">
+                  {editError}
+                </div>
+              ) : null}
               <Field label="거래처명" required className="sm:col-span-2">
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </Field>
@@ -264,11 +298,52 @@ export default function SalesClientDetailPage() {
               <Field label="성사 확률(%)" hint="미입력 시 단계 기본값 적용">
                 <Select value={form.winProbability || ''} onChange={(e) => setForm({ ...form, winProbability: e.target.value })}>
                   <option value="">단계 기본값</option>
-                  {[10, 25, 50, 75, 90].map((p) => (
-                    <option key={p} value={p}>{p}%</option>
+                  {WIN_PROBABILITY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </Select>
               </Field>
+              <Field label="예상 계약일" hint="언제 체결될 것으로 보는지 — 월별 매출 타임라인에 쓰입니다">
+                <Input
+                  type="date"
+                  value={form.expectedCloseDate || ''}
+                  onChange={(e) => setForm({ ...form, expectedCloseDate: e.target.value })}
+                />
+              </Field>
+              <Field label="딜 상태" hint="성사·실패로 종료하면 파이프라인 합계에서 빠집니다">
+                <Select
+                  value={form.status || 'open'}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  {DEAL_STATUSES.map((s) => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </Select>
+              </Field>
+              {/* 실패로 끝난 건은 사유를 남겨야 나중에 왜 졌는지 집계할 수 있다 */}
+              {form.status === 'lost' ? (
+                <>
+                  <Field label="실패 사유" required>
+                    <Select
+                      value={form.lostReason || ''}
+                      onChange={(e) => setForm({ ...form, lostReason: e.target.value })}
+                    >
+                      <option value="">선택하세요</option>
+                      {LOST_REASONS.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="실패 상세" hint="선택" className="sm:col-span-2">
+                    <Textarea
+                      value={form.lostNote || ''}
+                      onChange={(e) => setForm({ ...form, lostNote: e.target.value })}
+                      placeholder="경쟁사 단가, 요구 스펙 등 회고에 도움이 될 내용"
+                      rows={2}
+                    />
+                  </Field>
+                </>
+              ) : null}
               {PROFILE_FIELDS.map((f) => (
                 <Field key={f.key as string} label={f.label} className={f.long ? 'sm:col-span-2' : ''}>
                   {f.long ? (
@@ -311,6 +386,40 @@ export default function SalesClientDetailPage() {
                   {fmtKRW(weightedRevenue(client))}
                 </dd>
               </div>
+              <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">예상 계약일</dt>
+                <dd className="text-[12.5px] text-[var(--text-1)] tabular">
+                  {client.expectedCloseDate ? fmtDate(client.expectedCloseDate) : '—'}
+                </dd>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">딜 상태</dt>
+                <dd className="text-[12.5px] text-[var(--text-1)]">
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <Badge tone={DEAL_STATUS_TONE[dealStatusOf(client)] || 'neutral'} size="xs">
+                      {DEAL_STATUS_LABEL[dealStatusOf(client)]}
+                    </Badge>
+                    {client.closedAt ? (
+                      <span className="text-[11px] text-[var(--text-4)] tabular">
+                        {fmtDate(client.closedAt)} 종료
+                      </span>
+                    ) : null}
+                  </span>
+                </dd>
+              </div>
+              {dealStatusOf(client) === 'lost' ? (
+                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-3 py-2">
+                  <dt className="sm:w-32 flex-shrink-0 text-[12px] text-[var(--text-3)]">실패 사유</dt>
+                  <dd className="text-[12.5px] text-[var(--danger-fg)] whitespace-pre-wrap break-words">
+                    {client.lostReason || '—'}
+                    {client.lostNote ? (
+                      <span className="block text-[12px] text-[var(--text-3)] mt-0.5">
+                        {client.lostNote}
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+              ) : null}
               {PROFILE_FIELDS.map((f) => {
                 const v = client[f.key] as string | null;
                 return (

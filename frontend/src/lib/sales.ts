@@ -88,6 +88,73 @@ export const STAGE_DEFAULT_PROB: Record<string, number> = {
   expansion: 90,
 };
 
+// 딜 진행 상태 — Pipedrive의 open/won/lost 모델 (백엔드 lib/sales.js와 동일)
+export const DEAL_STATUSES = [
+  { key: 'open', label: '진행 중' },
+  { key: 'won', label: '성사' },
+  { key: 'lost', label: '실패' },
+] as const;
+
+export type DealStatus = (typeof DEAL_STATUSES)[number]['key'];
+
+export const DEAL_STATUS_LABEL: Record<string, string> = Object.fromEntries(
+  DEAL_STATUSES.map((s) => [s.key, s.label]),
+);
+
+export const DEAL_STATUS_TONE: Record<string, BadgeTone> = {
+  open: 'neutral',
+  won: 'success',
+  lost: 'danger',
+};
+
+// 영업 실패(Lost) 사유 — 집계를 위해 백엔드와 같은 고정 목록을 쓴다
+export const LOST_REASONS: string[] = [
+  '가격 경쟁력 부족',
+  '타사 계약',
+  '제품 스펙 미달',
+  '납기·물류 조건 불가',
+  '거래처 내부 사정(예산·조직 변경)',
+  '연락 두절·무응답',
+  '기타',
+];
+
+// status가 비어 있는 기존 데이터는 진행 중으로 본다
+export function dealStatusOf(c: { status?: string | null }): string {
+  return c.status || 'open';
+}
+
+export function isOpenDeal(c: { status?: string | null }): boolean {
+  return dealStatusOf(c) === 'open';
+}
+
+// 성사 확률 드롭다운 선택지 — 신규 가망뿐 아니라 이미 거래 중인 업체도 표현할 수 있어야 한다
+export const WIN_PROBABILITY_OPTIONS: { value: number; label: string }[] = [
+  { value: 10, label: '10%' },
+  { value: 25, label: '25%' },
+  { value: 50, label: '50%' },
+  { value: 75, label: '75%' },
+  { value: 90, label: '90%' },
+  { value: 100, label: '기존 거래중 (100%)' },
+];
+
+// 미팅 목적 — 자유 입력이면 목적별 통계를 낼 수 없어 선택형으로 고정. 백엔드 MEETING_PURPOSES와 동일.
+// '기타'를 고르면 화면에서 직접 입력받고, 그 텍스트가 그대로 meetingPurpose에 저장된다.
+export const MEETING_PURPOSES: string[] = [
+  '신규 제안',
+  '견적 및 조건 협의',
+  '샘플 전달',
+  '정기 점검',
+  '클레임 대응',
+  '기타',
+];
+
+export const MEETING_PURPOSE_ETC = '기타';
+
+// '기타'를 뺀 고정 선택지 — 저장된 값이 여기 없으면 자유 입력(과거 데이터 포함)으로 본다
+export const MEETING_PURPOSE_FIXED: string[] = MEETING_PURPOSES.filter(
+  (p) => p !== MEETING_PURPOSE_ETC,
+);
+
 // 원화 축약 표기 (1.2억, 3,400만, 12만 등)
 export function fmtKRW(n: number | null | undefined): string {
   if (n === null || n === undefined || isNaN(Number(n))) return '—';
@@ -147,6 +214,12 @@ export interface SalesClient {
   stage: string;
   expectedRevenue: number | null;
   winProbability: number | null;
+  // 파이프라인 딜 관리 (예상 계약일 · 성사/실패)
+  expectedCloseDate: string | null;
+  status: string; // open | won | lost
+  lostReason: string | null;
+  lostNote: string | null;
+  closedAt: string | null;
   ownerOrg: string | null;
   buyerComposition: string | null;
   annualRevenue: string | null;

@@ -412,6 +412,10 @@ export const api = {
     receivables: (year: number) => request(`/sales/receivables?year=${year}`),
     upsertReceivable: (data: { clientId: string; year: number; month: number; amount: number }) =>
       request('/sales/receivables', { method: 'POST', body: JSON.stringify(data) }),
+    // 파이프라인 분석 — 단계별 병목·승패·예상 계약일 기준 매출 타임라인
+    pipelineAnalytics: () => request('/sales/pipeline/analytics'),
+    // 드롭다운 선택지(딜 상태·실패 사유·미팅 목적) — 백엔드와 어긋나지 않게 서버에서 받는다
+    options: () => request('/sales/meta/options'),
     // 통합 캘린더
     calendar: (from?: string, to?: string) => {
       const q = new URLSearchParams();
