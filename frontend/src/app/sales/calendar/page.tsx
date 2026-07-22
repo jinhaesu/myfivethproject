@@ -323,7 +323,7 @@ export default function SalesPlansPage() {
               필터 해제
             </button>
             <span className="text-[11.5px] text-[var(--text-4)]">
-              출시·단종 일정은 거래처가 연결되어 있지 않아 표시되지 않습니다.
+              브랜드 공식 출시 일정은 특정 거래처에 속하지 않아 표시되지 않습니다. (거래처 전용 출시는 표시됨)
             </span>
           </>
         )}
@@ -584,6 +584,9 @@ function EventDetailModal({
   const meta = EVENT_META[ev.type];
   const planId = ev.type === 'plan' ? ev.id.replace(/^plan-/, '') : null;
   const rows: [string, string][] = [];
+  if (ev.launchScope) {
+    rows.push(['출시 대상', ev.launchScope === 'client' ? '거래처 전용' : '브랜드 공식 출시']);
+  }
   if (ev.clientName) rows.push(['거래처', ev.clientName]);
   if (ev.stage) rows.push(['영업 단계', STAGE_LABEL[ev.stage] || ev.stage]);
   if (ev.purpose) rows.push(['미팅 목적', ev.purpose]);

@@ -328,6 +328,22 @@ router.get('/clients/:id', authenticate, async (req, res) => {
           orderBy: { planDate: 'asc' },
           include: { author: { select: USER_SELECT } },
         },
+        // 이 거래처 전용 출시·단종 프로젝트
+        launchProjects: {
+          orderBy: { targetLaunchDate: 'asc' },
+          select: {
+            id: true, kind: true, productName: true, targetLaunchDate: true,
+            status: true, storageCondition: true, brandType: true,
+          },
+        },
+        // 브랜드 공식 출시 제품 중 이 거래처에 제안한 샘플 (전용 제품 샘플도 함께 잡힌다)
+        sampleRequests: {
+          orderBy: { dueDate: 'desc' },
+          select: {
+            id: true, dueDate: true, status: true, quantity: true, salesChannel: true,
+            project: { select: { id: true, productName: true, launchScope: true, storageCondition: true } },
+          },
+        },
       },
     });
     if (!client) return res.status(404).json({ error: '거래처를 찾을 수 없습니다.' });
@@ -614,7 +630,7 @@ router.post('/journals', authenticate, async (req, res) => {
     const {
       clientId, title, password, isFirstMeeting, stage, meetingDate, meetingPurpose,
       meetingLocation, attendees, meetingSummary, keyRequests, productRequests,
-      referrers, todos, sampleProvided, hasQuote, quoteItems,
+      referrers, todos, sampleProvided, hasQuote, quoteItems, voiceTranscript,
     } = req.body;
     if (!clientId) return res.status(400).json({ error: '거래처를 지정해주세요.' });
     const client = await prisma.salesClient.findUnique({ where: { id: clientId } });
@@ -660,6 +676,8 @@ router.post('/journals', authenticate, async (req, res) => {
         meetingSummary: meetingSummary || null,
         keyRequests: keyRequests || null,
         productRequests: productRequests || null,
+        // AI 정리본이 원문을 왜곡했는지 나중에 대조할 수 있어야 한다
+        voiceTranscript: String(voiceTranscript || '').trim() || null,
         sampleProvided: !!sampleProvided,
         hasQuote: !!hasQuote || quoteData.length > 0,
         referrers: { create: referrerEmails.map((email) => ({ email })) },
@@ -1342,7 +1360,8 @@ router.get('/calendar', authenticate, async (req, res) => {
       where: inRange('targetLaunchDate'),
       select: {
         id: true, kind: true, productName: true, targetLaunchDate: true,
-        status: true, description: true,
+        status: true, description: true, launchScope: true,
+        client: { select: { id: true, name: true } },
       },
     });
     for (const p of projects) {
@@ -1352,6 +1371,11 @@ router.get('/calendar', authenticate, async (req, res) => {
         title: p.productName,
         date: p.targetLaunchDate,
         status: p.status,
+        // 거래처 전용 출시만 그 거래처 필터에 걸린다.
+        // 브랜드 공식 출시는 특정 거래처 것이 아니므로 clientId 없이 둔다.
+        clientId: p.client?.id || null,
+        clientName: p.client?.name || null,
+        launchScope: p.launchScope || 'brand',
         // 달력에서 바로 요약을 열어볼 수 있도록 프로젝트 개요를 함께 내려준다
         detail: p.description || null,
         url: `/launches/${p.id}`,

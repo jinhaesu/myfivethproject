@@ -44,7 +44,33 @@ export interface SampleRequest {
   message: string | null;
   status: string;
   createdAt: string;
+  clientId: string | null;
+  client?: ClientBrief | null;
   requestedBy: { id: string; name: string | null; email: string; department: string | null };
+}
+
+export interface ClientBrief {
+  id: string;
+  name: string;
+  stage?: string;
+}
+
+// 출시 대상 구분 — 브랜드 공식 출시는 채널 무관, 거래처 전용은 특정 거래처에 묶인다
+export const LAUNCH_SCOPES: { key: string; label: string; hint: string }[] = [
+  {
+    key: 'brand',
+    label: '브랜드 공식 출시',
+    hint: '자사 정식 라인업. 특정 거래처에 종속되지 않고 여러 채널에 제안합니다.',
+  },
+  {
+    key: 'client',
+    label: '거래처 전용',
+    hint: 'PB·전용 규격처럼 특정 거래처를 위해 만드는 제품입니다.',
+  },
+];
+
+export function launchScopeLabel(scope?: string | null): string {
+  return LAUNCH_SCOPES.find((s) => s.key === scope)?.label || '브랜드 공식 출시';
 }
 
 export interface LaunchProject {
@@ -59,6 +85,9 @@ export interface LaunchProject {
   editProtected: boolean;
   discontinueReason: string | null;
   brandType: string | null;
+  launchScope: string; // brand | client
+  clientId: string | null;
+  client?: ClientBrief | null;
   salesChannels: string | null;
   storageCondition: string | null;
   usp: string[] | null;
@@ -124,6 +153,16 @@ export const BRAND_TYPES = [
 ];
 
 export const STORAGE_CONDITIONS = ['실온', '냉장', '냉동'];
+
+// 제품의 보관 조건(실온/냉장/냉동)을 명함의 보관 조건 키로 옮긴다.
+// 같은 거래처라도 구분별로 바이어가 갈리므로, 샘플을 누구에게 보낼지 고르는 데 쓴다.
+export function contactStorageKeyOf(productStorage?: string | null): string | null {
+  if (!productStorage) return null;
+  if (productStorage.includes('냉동')) return 'frozen';
+  if (productStorage.includes('냉장')) return 'chilled';
+  if (productStorage.includes('실온') || productStorage.includes('상온')) return 'ambient';
+  return null;
+}
 
 export const USP_OPTIONS = [
   '고단백',
