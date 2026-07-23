@@ -1417,12 +1417,36 @@ const SALES_JOURNAL_DRAFT_SYSTEM = `당신은 식품 제조기업(제과·제빵
   "meetingSummary": "미팅 개요 3~6문장",
   "keyRequests": "거래처의 핵심 요청사항(줄바꿈 \\n 허용)",
   "productRequests": "제품에 대한 구체적 요청 및 기획사항",
+  "decisions": "이번 미팅에서 확정된 것",
+  "risks": "이 건을 깨뜨릴 수 있는 리스크·장애 요인과 대응 방향",
+  "competitorNote": "경쟁사·시장 동향 (근거 없으면 빈 문자열)",
+  "nextContactDate": "YYYY-MM-DD (다음 접촉 예정일)",
+  "nextContactPlan": "다음 접촉까지 우리가 무엇을 해서 무엇을 얻어낼 것인지",
   "todos": [ { "dueDate": "YYYY-MM-DD", "content": "해야 할 일", "plan": "대략적 계획" } ],
   "clientProfile": { "ownerOrg": "", "buyerComposition": "", "annualRevenue": "", "existingVendors": "", "managedItems": "", "storageCondition": "", "logisticsCondition": "" }
 }
-- todos: 미팅 후속 실행 항목 2~5개 제안. dueDate는 반드시 제공된 기준일 이후의 구체적 날짜(YYYY-MM-DD).
 - clientProfile: 최초 미팅일 때만 제공된 단서로 추정해 채우고, 최초 미팅이 아니면 빈 객체 {} 로 두세요.
 - 모든 JSON 문자열 내부의 줄바꿈은 \\n 으로 escape 하세요.
+
+# 분량·구체성 기준 (이 기준을 못 넘으면 저장 자체가 거부됩니다)
+- meetingSummary: 공백 제외 80자 이상. 제목을 바꿔 쓴 문장은 안 됩니다. 무엇을 왜 논의했고 어떤 반응이었는지 적습니다.
+- keyRequests / productRequests: 각 40자 이상. 중량·단가·수량·일정 같은 숫자는 원문 그대로 남깁니다.
+- decisions: 30자 이상. 확정된 게 없으면 "확정 없음 — (무엇 때문에 미뤄졌는지)"까지 씁니다.
+- risks: 20자 이상. 없으면 "현재 식별된 리스크 없음 — (그렇게 판단한 근거)"로 씁니다.
+- nextContactPlan: 20자 이상.
+- "없음", "추후 협의", "미정", "해당 없음" 처럼 그 한마디로 끝나는 답은 전부 거부됩니다. 이유를 붙이세요.
+
+# todos (향후 스케쥴) — 가장 자주 부실해지는 항목입니다
+- 2~5건. dueDate는 반드시 미팅일 이후의 구체적 날짜(YYYY-MM-DD)이며, 최소 1건은 미팅일보다 뒤여야 합니다.
+- 모든 항목에 plan(대략적 계획)을 10자 이상 채웁니다. content가 '무엇을', plan이 '누가·어떻게·무엇을 준비해서'입니다.
+- 항목끼리 같은 내용을 반복하지 마세요.
+- "제품 스펙·중량·가격대 확정 협의" 같은 어느 미팅에나 붙는 일반론은 쓰지 마세요.
+  이 미팅에서 실제로 나온 약속·요청을 실행 항목으로 바꿔 적습니다.
+  (나쁨: "샘플 관련 협의" / 좋음: "도넛케익 40g 개선 샘플 5종 발송 — 개발팀 배합 확정 후 택배 발송, 바이어 시식 일정 요청")
+
+# 항목 사이 복붙 금지
+- meetingSummary / keyRequests / productRequests / decisions / risks / nextContactPlan 은 서로 다른 내용이어야 합니다.
+  같은 문단을 여러 칸에 넣으면 저장이 거부됩니다.
 
 # 음성 받아쓰기 원문이 함께 제공된 경우
 - 원문은 브라우저 음성인식 결과라 문장부호가 없고, 구어체이며, 오인식이 섞여 있습니다.
@@ -1471,6 +1495,11 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
         meetingSummary: partial.meetingSummary || '',
         keyRequests: partial.keyRequests || '',
         productRequests: partial.productRequests || '',
+        decisions: partial.decisions || '',
+        risks: partial.risks || '',
+        competitorNote: partial.competitorNote || '',
+        nextContactDate: partial.nextContactDate || '',
+        nextContactPlan: partial.nextContactPlan || '',
       },
       ...(voiceText ? { 음성_받아쓰기_원문: voiceText } : {}),
     };
