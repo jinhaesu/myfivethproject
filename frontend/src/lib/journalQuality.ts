@@ -37,8 +37,9 @@ export function normalizeText(v: unknown): string {
 }
 
 export const JOURNAL_TEXT_FIELDS: JournalFieldRule[] = [
-  { key: 'title', label: '제목', min: 6 },
-  { key: 'meetingPurpose', label: '미팅 목적', min: 6 },
+  { key: 'title', label: '제목', min: 4 },
+  // 미팅 목적은 드롭다운 선택값('신규 제안' 4자, '기타' 2자) — 글자수를 걸면 앱의 선택지가 거부된다
+  { key: 'meetingPurpose', label: '미팅 목적', min: 2 },
   { key: 'meetingLocation', label: '장소', min: 2 },
   { key: 'attendees', label: '참석자 정보', min: 10, hint: '우리측/거래처측을 구분하고 직함까지 적습니다.' },
   {
