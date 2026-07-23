@@ -25,8 +25,10 @@ function normalizeText(v) {
 
 // 서술형 필수 항목 — min은 공백 제외 글자수
 const JOURNAL_TEXT_FIELDS = [
-  { key: 'title', label: '제목', min: 6 },
-  { key: 'meetingPurpose', label: '미팅 목적', min: 6 },
+  { key: 'title', label: '제목', min: 4 },
+  // 미팅 목적은 MEETING_PURPOSES 드롭다운에서 고른다('신규 제안' 4자, '기타' 2자).
+  // 여기에 글자수를 걸면 앱이 제공하는 선택지 자체가 거부되므로 존재 여부만 본다.
+  { key: 'meetingPurpose', label: '미팅 목적', min: 2 },
   { key: 'meetingLocation', label: '장소', min: 2 },
   {
     key: 'attendees',
