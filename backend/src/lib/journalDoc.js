@@ -172,7 +172,16 @@ async function buildJournalDocx(journal) {
       ['제품 요청/기획', journal.productRequests],
     ]),
 
-    heading('4. 견적 · 샘플'),
+    heading('4. 결정 · 리스크 · 다음 계획'),
+    infoTable([
+      ['결정 사항', journal.decisions],
+      ['리스크·장애 요인', journal.risks],
+      ['경쟁사·시장 동향', journal.competitorNote],
+      ['다음 접촉 예정일', journal.nextContactDate ? fmtDate(journal.nextContactDate) : ''],
+      ['다음 접촉까지의 계획', journal.nextContactPlan],
+    ]),
+
+    heading('5. 견적 · 샘플'),
     infoTable([['샘플 제공', journal.sampleProvided ? '제공함' : '미제공']]),
     new Paragraph({ spacing: { after: 100 }, children: [] }),
   ];
@@ -186,7 +195,7 @@ async function buildJournalDocx(journal) {
   if (journal.isFirstMeeting && journal.client) {
     const c = journal.client;
     children.push(
-      heading('5. 거래처 정보 (최초 미팅)'),
+      heading('6. 거래처 정보 (최초 미팅)'),
       infoTable([
         ['담당 조직', c.ownerOrg],
         ['바이어 구성', c.buyerComposition],
@@ -199,7 +208,7 @@ async function buildJournalDocx(journal) {
     );
   }
 
-  const todoNo = journal.isFirstMeeting && journal.client ? '6' : '5';
+  const todoNo = journal.isFirstMeeting && journal.client ? '7' : '6';
   children.push(heading(`${todoNo}. 향후 스케쥴`));
   if (journal.todos && journal.todos.length) {
     children.push(todoTable(journal.todos));

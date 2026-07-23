@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import MeetingPurposeField from '@/components/MeetingPurposeField';
 import VoiceJournalRecorder from '@/components/VoiceJournalRecorder';
+import { CountedTextarea, JournalChecklist } from '@/components/JournalQuality';
+import { inspectJournal, TODO_PLAN_MIN, contentLength } from '@/lib/journalQuality';
 import { api, getFileUrl } from '@/lib/api';
 import {
   SalesClient,
@@ -24,7 +26,6 @@ import {
   Button,
   Input,
   Select,
-  Textarea,
   Field,
   Badge,
   CenterSpinner,
@@ -74,6 +75,13 @@ export default function NewSalesJournalPage() {
   const [meetingSummary, setMeetingSummary] = useState('');
   const [keyRequests, setKeyRequests] = useState('');
   const [productRequests, setProductRequests] = useState('');
+
+  // 결정·리스크·다음 계획 — 일지에 향후 계획이 남지 않는 문제를 구조로 막는 칸들
+  const [decisions, setDecisions] = useState('');
+  const [risks, setRisks] = useState('');
+  const [competitorNote, setCompetitorNote] = useState('');
+  const [nextContactDate, setNextContactDate] = useState('');
+  const [nextContactPlan, setNextContactPlan] = useState('');
 
   const [referrers, setReferrers] = useState<string[]>(['']);
   const [todos, setTodos] = useState<TodoRow[]>([{ dueDate: '', content: '', plan: '' }]);
@@ -160,7 +168,10 @@ export default function NewSalesJournalPage() {
         clientStage: stage || undefined,
         isFirstMeeting,
         meetingDate: meetingDate || undefined,
-        partial: { title, meetingPurpose, meetingLocation, attendees, meetingSummary, keyRequests, productRequests },
+        partial: {
+          title, meetingPurpose, meetingLocation, attendees, meetingSummary, keyRequests, productRequests,
+          decisions, risks, competitorNote, nextContactDate, nextContactPlan,
+        },
         clientProfile: isFirstMeeting
           ? { ownerOrg, buyerComposition, annualRevenue, existingVendors, managedItems, storageCondition, logisticsCondition }
           : {},
@@ -177,6 +188,13 @@ export default function NewSalesJournalPage() {
       fillIfEmpty(meetingSummary, setMeetingSummary, draft.meetingSummary);
       fillIfEmpty(keyRequests, setKeyRequests, draft.keyRequests);
       fillIfEmpty(productRequests, setProductRequests, draft.productRequests);
+      fillIfEmpty(decisions, setDecisions, draft.decisions);
+      fillIfEmpty(risks, setRisks, draft.risks);
+      fillIfEmpty(competitorNote, setCompetitorNote, draft.competitorNote);
+      fillIfEmpty(nextContactPlan, setNextContactPlan, draft.nextContactPlan);
+      if (!nextContactDate && draft.nextContactDate) {
+        setNextContactDate(String(draft.nextContactDate).slice(0, 10));
+      }
       if (isFirstMeeting && draft.clientProfile) {
         const p = draft.clientProfile;
         fillIfEmpty(ownerOrg, setOwnerOrg, p.ownerOrg);
@@ -273,44 +291,55 @@ export default function NewSalesJournalPage() {
   const addTodo = () => setTodos((t) => [...t, { dueDate: '', content: '', plan: '' }]);
   const removeTodo = (i: number) => setTodos((t) => t.filter((_, idx) => idx !== i));
 
-  // 필수 항목 검사 — 체크박스(최초미팅·샘플·견적)와 참고자, 열람 비밀번호는 제외
-  const validate = (): string => {
-    const required: [string, string][] = [
-      [clientId, '거래처'],
-      [title, '제목'],
-      [stage, '영업 단계'],
-      [meetingDate, '미팅 일자'],
-      [meetingPurpose, '미팅 목적'],
-      [meetingLocation, '장소'],
-      [attendees, '참석자 정보'],
-      [meetingSummary, '미팅 개요'],
-      [keyRequests, '핵심 요청사항'],
-      [productRequests, '제품의 구체적 요청 및 기획사항'],
+  // 서버(lib/journalQuality)와 같은 규칙으로 실시간 검사한다.
+  // 다 쓰고 저장 버튼에서 튕기는 게 제일 나쁘므로 입력 중에 계속 보여준다.
+  const { issues, checks } = useMemo(
+    () =>
+      inspectJournal({
+        title, stage, meetingDate, meetingPurpose, meetingLocation, attendees,
+        meetingSummary, keyRequests, productRequests,
+        decisions, risks, nextContactDate, nextContactPlan,
+        todos, hasQuote, quoteItems,
+      }),
+    [
+      title, stage, meetingDate, meetingPurpose, meetingLocation, attendees,
+      meetingSummary, keyRequests, productRequests,
+      decisions, risks, nextContactDate, nextContactPlan, todos, hasQuote, quoteItems,
+    ],
+  );
+
+  // 최초 미팅 거래처 프로필은 일지 본문 규칙과 별개 — 체크박스를 켰을 때만 요구한다
+  const profileMissing = useMemo(() => {
+    if (!isFirstMeeting) return [];
+    const profile: [string, string][] = [
+      [ownerOrg, '담당 조직'],
+      [buyerComposition, '바이어 구성'],
+      [annualRevenue, '바이어·거래처 연매출'],
+      [existingVendors, '기존 거래처'],
+      [managedItems, '관리 품목'],
+      [storageCondition, '보관 조건'],
+      [logisticsCondition, '물류 조건'],
     ];
-    const missing = required.filter(([v]) => !v.trim()).map(([, label]) => label);
-    if (isFirstMeeting) {
-      const profile: [string, string][] = [
-        [ownerOrg, '담당 조직'],
-        [buyerComposition, '바이어 구성'],
-        [annualRevenue, '바이어·거래처 연매출'],
-        [existingVendors, '기존 거래처'],
-        [managedItems, '관리 품목'],
-        [storageCondition, '보관 조건'],
-        [logisticsCondition, '물류 조건'],
-      ];
-      missing.push(...profile.filter(([v]) => !v.trim()).map(([, label]) => label));
-    }
-    if (!todos.some((t) => t.dueDate && t.content.trim())) {
-      missing.push('향후 스케쥴 (일자 + 해야 할 일 1건 이상)');
-    }
-    if (hasQuote && !quoteItems.some((q) => q.productName.trim())) {
-      missing.push('견적 항목 (제품명 1건 이상)');
-    }
-    if (missing.length) return `필수 항목을 입력해주세요: ${missing.join(', ')}`;
-    // 서버도 같은 규칙으로 막지만, 다 쓰고 저장 버튼에서 튕기는 것보다 먼저 알려준다
+    return profile.filter(([v]) => !v.trim()).map(([, label]) => label);
+  }, [
+    isFirstMeeting, ownerOrg, buyerComposition, annualRevenue,
+    existingVendors, managedItems, storageCondition, logisticsCondition,
+  ]);
+
+  const canSubmit = !!clientId && !needsContact && issues.length === 0 && profileMissing.length === 0;
+
+  const validate = (): string => {
+    if (!clientId) return '거래처를 선택해주세요.';
+    // 서버도 같은 규칙으로 막지만, 여기서 먼저 알려준다
     if (needsContact) {
       const clientName = clients.find((c) => c.id === clientId)?.name || '이 거래처';
       return `${clientName}에 등록된 담당자 명함이 없습니다. 기본 정보의 담당자 등록을 먼저 완료해주세요.`;
+    }
+    if (profileMissing.length) {
+      return `최초 미팅 거래처 정보를 입력해주세요: ${profileMissing.join(', ')}`;
+    }
+    if (issues.length) {
+      return `영업일지 구성이 부족합니다.\n· ${issues.map((i) => i.message).join('\n· ')}`;
     }
     return '';
   };
@@ -337,6 +366,11 @@ export default function NewSalesJournalPage() {
         meetingSummary: meetingSummary.trim() || undefined,
         keyRequests: keyRequests.trim() || undefined,
         productRequests: productRequests.trim() || undefined,
+        decisions: decisions.trim() || undefined,
+        risks: risks.trim() || undefined,
+        competitorNote: competitorNote.trim() || undefined,
+        nextContactDate: nextContactDate || undefined,
+        nextContactPlan: nextContactPlan.trim() || undefined,
         referrers: referrers.map((e) => e.trim()).filter(Boolean),
         todos: todos
           .filter((t) => t.dueDate && t.content.trim())
@@ -629,9 +663,14 @@ export default function NewSalesJournalPage() {
               <Field label="참석자 정보" required>
                 <Input value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="예: (당사) 홍길동 / (거래처) MD 김철수" />
               </Field>
-              <Field label="미팅 개요" required className="sm:col-span-2">
-                <Textarea value={meetingSummary} onChange={(e) => setMeetingSummary(e.target.value)} placeholder="미팅에서 논의된 내용을 요약합니다." />
-              </Field>
+              <CountedTextarea
+                fieldKey="meetingSummary"
+                value={meetingSummary}
+                onChange={setMeetingSummary}
+                placeholder="누가 무엇을 왜 논의했고, 상대 반응은 어땠는지 3문장 이상 적습니다."
+                rows={5}
+                className="sm:col-span-2"
+              />
             </div>
           </Card>
 
@@ -639,12 +678,66 @@ export default function NewSalesJournalPage() {
           <Card padding="lg">
             <CardHeader title="요청 · 기획 사항" />
             <div className="grid grid-cols-1 gap-4">
-              <Field label="핵심 요청사항" required>
-                <Textarea value={keyRequests} onChange={(e) => setKeyRequests(e.target.value)} placeholder="거래처가 요구한 핵심 사항" />
-              </Field>
-              <Field label="제품의 구체적 요청 및 기획사항" required>
-                <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} placeholder="스펙·중량·가격대·시즈널 구성 등 제품 요청/기획" />
-              </Field>
+              <CountedTextarea
+                fieldKey="keyRequests"
+                value={keyRequests}
+                onChange={setKeyRequests}
+                placeholder="거래처가 요구한 핵심 사항 (요구한 사람·부서까지)"
+              />
+              <CountedTextarea
+                fieldKey="productRequests"
+                value={productRequests}
+                onChange={setProductRequests}
+                placeholder="스펙·중량·가격대·시즈널 구성 등 제품 요청/기획. 숫자는 들은 그대로."
+              />
+            </div>
+          </Card>
+
+          {/* 결정 · 리스크 · 다음 계획 */}
+          <Card padding="lg">
+            <CardHeader
+              title="결정 · 리스크 · 다음 계획"
+              subtitle="미팅 후 남아야 하는 건 '무엇이 정해졌고, 무엇이 걸리고, 다음에 뭘 하는가' 세 가지입니다."
+            />
+            <div className="grid grid-cols-1 gap-4">
+              <CountedTextarea
+                fieldKey="decisions"
+                value={decisions}
+                onChange={setDecisions}
+                placeholder="예: 도넛케익 40g·판매가 2,000원 확정 / 카스테라는 8월 2차 미팅에서 재검토"
+              />
+              <CountedTextarea
+                fieldKey="risks"
+                value={risks}
+                onChange={setRisks}
+                placeholder="예: 하절기 충전재 변질 이슈로 런칭 지연 가능 — 소비기한 테스트 결과에 따라 8월 재협의"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
+                  label="다음 접촉 예정일"
+                  required
+                  hint="다음 일정이 없는 건이 가장 먼저 죽습니다. 미팅 일자보다 뒤여야 합니다."
+                >
+                  <Input
+                    type="date"
+                    value={nextContactDate}
+                    onChange={(e) => setNextContactDate(e.target.value)}
+                  />
+                </Field>
+                <Field label="경쟁사·시장 동향 (선택)">
+                  <Input
+                    value={competitorNote}
+                    onChange={(e) => setCompetitorNote(e.target.value)}
+                    placeholder="예: 동일 컨셉 타사 제품 품질이슈로 발주 중단 상태"
+                  />
+                </Field>
+              </div>
+              <CountedTextarea
+                fieldKey="nextContactPlan"
+                value={nextContactPlan}
+                onChange={setNextContactPlan}
+                placeholder="예: 개선 샘플 5종을 8/5까지 발송하고, 시식 일정 확정 + 초도 발주 수량 회신을 받는다"
+              />
             </div>
           </Card>
 
@@ -898,7 +991,7 @@ export default function NewSalesJournalPage() {
           <Card padding="lg">
             <CardHeader
               title="향후 스케쥴 (해야 할 일) *"
-              subtitle={`최소 1건은 필수입니다. 해야 할 일은 ${stage ? `'${SALES_STAGES.find((s) => s.key === stage)?.label}' 단계` : '영업 단계'} 추천 목록에서 고르거나 '기타'로 직접 입력합니다.`}
+              subtitle={`최소 2건 · 각 항목마다 '대략적 계획'까지 필수이며, 1건 이상은 미팅 일자 이후여야 합니다. 해야 할 일은 ${stage ? `'${SALES_STAGES.find((s) => s.key === stage)?.label}' 단계` : '영업 단계'} 추천 목록에서 고르거나 '기타'로 직접 입력합니다.`}
               actions={
                 <Button variant="secondary" size="sm" onClick={addTodo}>
                   + 항목 추가
@@ -953,8 +1046,22 @@ export default function NewSalesJournalPage() {
                         <option value={TODO_OTHER}>기타 (직접 입력)</option>
                       </Select>
                     )}
-                    <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">대략적 계획 (선택)</span>
-                    <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
+                    <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">
+                      대략적 계획 <span className="text-[var(--danger-fg)]">*</span>
+                    </span>
+                    <div className="flex flex-col gap-1">
+                      <Input
+                        value={t.plan}
+                        onChange={(e) => updateTodo(i, 'plan', e.target.value)}
+                        placeholder="어떻게 할 것인지 (필수)"
+                        invalid={!!t.content.trim() && contentLength(t.plan) < TODO_PLAN_MIN}
+                      />
+                      {t.content.trim() && contentLength(t.plan) < TODO_PLAN_MIN ? (
+                        <span className="text-[11px] text-[var(--warning-fg)]">
+                          {contentLength(t.plan)}/{TODO_PLAN_MIN}자 — 누가·어떻게·무엇을 준비해서
+                        </span>
+                      ) : null}
+                    </div>
                     {todos.length > 1 && (
                       <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
                         삭제
@@ -976,10 +1083,27 @@ export default function NewSalesJournalPage() {
             </div>
           </Card>
 
-          {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
+          <JournalChecklist checks={checks} issues={issues} />
+
+          {profileMissing.length ? (
+            <div className="text-[12px] text-[var(--warning-fg)]">
+              최초 미팅 거래처 정보가 비어 있습니다: {profileMissing.join(', ')}
+            </div>
+          ) : null}
+
+          {error && (
+            <div className="text-[13px] text-[var(--danger-fg)] whitespace-pre-line">{error}</div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" size="md" onClick={submit} loading={submitting}>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={submit}
+              loading={submitting}
+              disabled={!canSubmit}
+              title={canSubmit ? undefined : '위 체크리스트의 항목을 모두 채워야 저장됩니다.'}
+            >
               영업일지 저장
             </Button>
             <Link href="/sales">

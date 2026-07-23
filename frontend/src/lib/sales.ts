@@ -1,5 +1,7 @@
 // 영업 관리 공용 타입·상수·헬퍼
 
+import type { Completeness } from './journalQuality';
+
 export const SALES_STAGES = [
   { key: 'lead', label: '영업 시작', order: 1 },
   { key: 'contact', label: '관계 형성', order: 2 },
@@ -351,6 +353,13 @@ export interface SalesJournal {
   voiceTranscript?: string | null; // 음성으로 작성한 경우 받아쓰기 원문
   keyRequests: string | null;
   productRequests: string | null;
+  // 향후 계획이 비는 걸 막기 위한 필수 구성요소
+  decisions?: string | null;
+  risks?: string | null;
+  nextContactDate?: string | null;
+  nextContactPlan?: string | null;
+  competitorNote?: string | null;
+  completeness?: Completeness;
   createdAt: string;
   updatedAt: string;
   clientId: string;

@@ -311,6 +311,11 @@ function JournalTable({
                   {client?.name && (
                     <span className="text-[11.5px] text-[var(--text-3)] break-words">{client.name}</span>
                   )}
+                  {j.completeness && j.completeness.score < 100 ? (
+                    <Badge tone={j.completeness.score >= 60 ? 'warning' : 'danger'} size="xs">
+                      보완 {j.completeness.score}%
+                    </Badge>
+                  ) : null}
                 </div>
                 <p className="mt-2 text-[11.5px] text-[var(--text-4)] break-words">
                   작성 {userShort(j.author || null)} · 미팅 {fmtDate(j.meetingDate)}
@@ -353,6 +358,16 @@ function JournalTable({
                         🔒
                       </span>
                     )}
+                    {j.completeness && j.completeness.score < 100 ? (
+                      <span
+                        className="ml-1.5 align-middle"
+                        title={`보완 필요: ${j.completeness.missing.join(', ')}`}
+                      >
+                        <Badge tone={j.completeness.score >= 60 ? 'warning' : 'danger'} size="xs">
+                          보완 {j.completeness.score}%
+                        </Badge>
+                      </span>
+                    ) : null}
                   </TD>
                   <TD muted>
                     <span className="block max-w-[180px] truncate">{client?.name || '—'}</span>

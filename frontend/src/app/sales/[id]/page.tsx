@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import ChangeLogSection from '@/components/ChangeLogSection';
 import SalesTabs from '@/components/SalesTabs';
 import MeetingPurposeField from '@/components/MeetingPurposeField';
+import { CountedTextarea, JournalChecklist, CompletenessBadge } from '@/components/JournalQuality';
+import { inspectJournal, TODO_PLAN_MIN, contentLength } from '@/lib/journalQuality';
 import { api, getFileUrl } from '@/lib/api';
 import {
   SalesJournal,
@@ -27,7 +29,6 @@ import {
   Button,
   Input,
   Select,
-  Textarea,
   Field,
   Badge,
   CenterSpinner,
@@ -306,6 +307,30 @@ export default function SalesJournalDetailPage() {
           <CardHeader title="요청 · 기획 사항" />
           <Row label="핵심 요청사항" value={journal.keyRequests} />
           <Row label="제품 요청/기획" value={journal.productRequests} />
+        </Card>
+
+        <Card padding="lg">
+          <CardHeader
+            title="결정 · 리스크 · 다음 계획"
+            actions={
+              journal.completeness ? (
+                <CompletenessBadge
+                  score={journal.completeness.score}
+                  missing={journal.completeness.missing}
+                />
+              ) : null
+            }
+          />
+          <Row label="결정 사항" value={journal.decisions} />
+          <Row label="리스크·장애 요인" value={journal.risks} />
+          <Row label="경쟁사·시장 동향" value={journal.competitorNote} />
+          <Row label="다음 접촉 예정일" value={journal.nextContactDate ? fmtDate(journal.nextContactDate) : null} />
+          <Row label="다음 접촉까지의 계획" value={journal.nextContactPlan} />
+          {journal.completeness && journal.completeness.score < 100 ? (
+            <p className="mt-3 text-[12px] text-[var(--warning-fg)]">
+              보완 필요: {journal.completeness.missing.join(', ')} — 수정 화면에서 채워주세요.
+            </p>
+          ) : null}
         </Card>
 
         <Card padding="lg">
@@ -818,6 +843,13 @@ function EditForm({
   const [meetingSummary, setMeetingSummary] = useState(journal.meetingSummary || '');
   const [keyRequests, setKeyRequests] = useState(journal.keyRequests || '');
   const [productRequests, setProductRequests] = useState(journal.productRequests || '');
+  const [decisions, setDecisions] = useState(journal.decisions || '');
+  const [risks, setRisks] = useState(journal.risks || '');
+  const [competitorNote, setCompetitorNote] = useState(journal.competitorNote || '');
+  const [nextContactDate, setNextContactDate] = useState(
+    journal.nextContactDate ? toDateInput(new Date(journal.nextContactDate)) : '',
+  );
+  const [nextContactPlan, setNextContactPlan] = useState(journal.nextContactPlan || '');
   const [referrers, setReferrers] = useState<string[]>(
     journal.referrers && journal.referrers.length ? journal.referrers.map((r) => r.email) : [''],
   );
@@ -860,28 +892,25 @@ function EditForm({
     })();
   }, []);
 
-  // 필수 항목 — 체크박스·참고자·열람 비밀번호는 제외
-  const validate = (): string => {
-    const required: [string, string][] = [
-      [title, '제목'],
-      [stage, '영업 단계'],
-      [meetingDate, '미팅 일자'],
-      [meetingPurpose, '미팅 목적'],
-      [meetingLocation, '장소'],
-      [attendees, '참석자 정보'],
-      [meetingSummary, '미팅 개요'],
-      [keyRequests, '핵심 요청사항'],
-      [productRequests, '제품의 구체적 요청 및 기획사항'],
-    ];
-    const missing = required.filter(([v]) => !v.trim()).map(([, label]) => label);
-    if (!todos.some((t) => t.dueDate && t.content.trim())) {
-      missing.push('향후 스케쥴 (일자 + 해야 할 일 1건 이상)');
-    }
-    if (hasQuote && !quoteItems.some((q) => q.productName.trim())) {
-      missing.push('견적 항목 (제품명 1건 이상)');
-    }
-    return missing.length ? `필수 항목을 입력해주세요: ${missing.join(', ')}` : '';
-  };
+  // 서버(lib/journalQuality)와 같은 규칙. 기존 일지는 결정사항·리스크·다음 계획이
+  // 비어 있으므로 수정 화면에 들어오면 여기서 보완을 요구하게 된다 — 의도된 동작.
+  const { issues, checks } = useMemo(
+    () =>
+      inspectJournal({
+        title, stage, meetingDate, meetingPurpose, meetingLocation, attendees,
+        meetingSummary, keyRequests, productRequests,
+        decisions, risks, nextContactDate, nextContactPlan,
+        todos, hasQuote, quoteItems,
+      }),
+    [
+      title, stage, meetingDate, meetingPurpose, meetingLocation, attendees,
+      meetingSummary, keyRequests, productRequests,
+      decisions, risks, nextContactDate, nextContactPlan, todos, hasQuote, quoteItems,
+    ],
+  );
+
+  const validate = (): string =>
+    issues.length ? `영업일지 구성이 부족합니다.\n· ${issues.map((i) => i.message).join('\n· ')}` : '';
 
   const updateQuote = (i: number, key: keyof QuoteEditRow, v: string) =>
     setQuoteItems((q) => q.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
@@ -909,17 +938,25 @@ function EditForm({
     setSaving(true);
     setError('');
     try {
+      // 필수 항목은 비어 있어도 키를 빼지 않는다.
+      // 서버의 partial 검사는 '전달되지 않은 키'를 건너뛰므로, undefined로 보내면
+      // 빈 칸이 검사를 우회한다. 빈 문자열로 보내야 서버가 같은 규칙으로 막는다.
       const payload: Record<string, unknown> = {
-        title: title.trim() || undefined,
-        stage: stage || undefined,
+        title: title.trim(),
+        stage,
         isFirstMeeting,
-        meetingDate: meetingDate || undefined,
-        meetingPurpose: meetingPurpose.trim() || undefined,
-        meetingLocation: meetingLocation.trim() || undefined,
-        attendees: attendees.trim() || undefined,
-        meetingSummary: meetingSummary.trim() || undefined,
-        keyRequests: keyRequests.trim() || undefined,
-        productRequests: productRequests.trim() || undefined,
+        meetingDate: meetingDate || null,
+        meetingPurpose: meetingPurpose.trim(),
+        meetingLocation: meetingLocation.trim(),
+        attendees: attendees.trim(),
+        meetingSummary: meetingSummary.trim(),
+        keyRequests: keyRequests.trim(),
+        productRequests: productRequests.trim(),
+        decisions: decisions.trim(),
+        risks: risks.trim(),
+        competitorNote: competitorNote.trim() || undefined,
+        nextContactDate: nextContactDate || null,
+        nextContactPlan: nextContactPlan.trim(),
         referrers: referrers.map((e) => e.trim()).filter(Boolean),
         todos: todos
           .filter((t) => t.dueDate && t.content.trim())
@@ -1002,21 +1039,41 @@ function EditForm({
           <Field label="참석자 정보" required>
             <Input value={attendees} onChange={(e) => setAttendees(e.target.value)} />
           </Field>
-          <Field label="미팅 개요" required className="sm:col-span-2">
-            <Textarea value={meetingSummary} onChange={(e) => setMeetingSummary(e.target.value)} />
-          </Field>
+          <CountedTextarea
+            fieldKey="meetingSummary"
+            value={meetingSummary}
+            onChange={setMeetingSummary}
+            rows={5}
+            className="sm:col-span-2"
+          />
         </div>
       </Card>
 
       <Card padding="lg">
         <CardHeader title="요청 · 기획 사항" />
         <div className="grid grid-cols-1 gap-4">
-          <Field label="핵심 요청사항" required>
-            <Textarea value={keyRequests} onChange={(e) => setKeyRequests(e.target.value)} />
-          </Field>
-          <Field label="제품의 구체적 요청 및 기획사항" required>
-            <Textarea value={productRequests} onChange={(e) => setProductRequests(e.target.value)} />
-          </Field>
+          <CountedTextarea fieldKey="keyRequests" value={keyRequests} onChange={setKeyRequests} />
+          <CountedTextarea fieldKey="productRequests" value={productRequests} onChange={setProductRequests} />
+        </div>
+      </Card>
+
+      <Card padding="lg">
+        <CardHeader
+          title="결정 · 리스크 · 다음 계획"
+          subtitle="미팅 후 남아야 하는 건 '무엇이 정해졌고, 무엇이 걸리고, 다음에 뭘 하는가' 세 가지입니다."
+        />
+        <div className="grid grid-cols-1 gap-4">
+          <CountedTextarea fieldKey="decisions" value={decisions} onChange={setDecisions} />
+          <CountedTextarea fieldKey="risks" value={risks} onChange={setRisks} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="다음 접촉 예정일" required hint="미팅 일자보다 뒤여야 합니다.">
+              <Input type="date" value={nextContactDate} onChange={(e) => setNextContactDate(e.target.value)} />
+            </Field>
+            <Field label="경쟁사·시장 동향 (선택)">
+              <Input value={competitorNote} onChange={(e) => setCompetitorNote(e.target.value)} />
+            </Field>
+          </div>
+          <CountedTextarea fieldKey="nextContactPlan" value={nextContactPlan} onChange={setNextContactPlan} />
         </div>
       </Card>
 
@@ -1092,7 +1149,7 @@ function EditForm({
       <Card padding="lg">
         <CardHeader
           title="향후 스케쥴 (해야 할 일) *"
-          subtitle="일자 + 해야 할 일 최소 1건은 필수입니다."
+          subtitle="최소 2건 · 각 항목마다 '대략적 계획'까지 필수이며, 1건 이상은 미팅 일자 이후여야 합니다."
           actions={
             <Button variant="secondary" size="sm" onClick={addTodo}>
               + 항목 추가
@@ -1109,8 +1166,22 @@ function EditForm({
               <Input type="date" value={t.dueDate} onChange={(e) => updateTodo(i, 'dueDate', e.target.value)} />
               <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">해야 할 일</span>
               <Input value={t.content} onChange={(e) => updateTodo(i, 'content', e.target.value)} placeholder="해야 할 일" />
-              <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">대략적 계획 (선택)</span>
-              <Input value={t.plan} onChange={(e) => updateTodo(i, 'plan', e.target.value)} placeholder="대략적 계획 (선택)" />
+              <span className="sm:hidden text-[11px] text-[var(--text-3)] -mb-1">
+                대략적 계획 <span className="text-[var(--danger-fg)]">*</span>
+              </span>
+              <div className="flex flex-col gap-1">
+                <Input
+                  value={t.plan}
+                  onChange={(e) => updateTodo(i, 'plan', e.target.value)}
+                  placeholder="어떻게 할 것인지 (필수)"
+                  invalid={!!t.content.trim() && contentLength(t.plan) < TODO_PLAN_MIN}
+                />
+                {t.content.trim() && contentLength(t.plan) < TODO_PLAN_MIN ? (
+                  <span className="text-[11px] text-[var(--warning-fg)]">
+                    {contentLength(t.plan)}/{TODO_PLAN_MIN}자
+                  </span>
+                ) : null}
+              </div>
               {todos.length > 1 && (
                 <Button variant="ghost" size="sm" onClick={() => removeTodo(i)}>
                   삭제
@@ -1145,10 +1216,19 @@ function EditForm({
         </div>
       </Card>
 
-      {error && <div className="text-[13px] text-[var(--danger-fg)]">{error}</div>}
+      <JournalChecklist checks={checks} issues={issues} />
+
+      {error && <div className="text-[13px] text-[var(--danger-fg)] whitespace-pre-line">{error}</div>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" size="md" onClick={save} loading={saving}>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={save}
+          loading={saving}
+          disabled={issues.length > 0}
+          title={issues.length ? '위 체크리스트의 항목을 모두 채워야 저장됩니다.' : undefined}
+        >
           저장
         </Button>
         <Button variant="ghost" size="md" onClick={onCancel}>

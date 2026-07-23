@@ -25,6 +25,7 @@ const {
   STORAGE_CONDITIONS,
   normalizeStorageCondition,
 } = require('../lib/sales');
+const { journalIssues, journalCompleteness } = require('../lib/journalQuality');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -118,18 +119,8 @@ function buildQuoteData(quoteItems) {
 }
 
 // ── 영업일지 필수 항목 ───────────────────────────────────────
-// 체크박스(최초미팅·샘플·견적)와 참고자, 열람 비밀번호(선택 기능)는 제외
-const JOURNAL_REQUIRED = [
-  ['title', '제목'],
-  ['stage', '영업 단계'],
-  ['meetingDate', '미팅 일자'],
-  ['meetingPurpose', '미팅 목적'],
-  ['meetingLocation', '장소'],
-  ['attendees', '참석자 정보'],
-  ['meetingSummary', '미팅 개요'],
-  ['keyRequests', '핵심 요청사항'],
-  ['productRequests', '제품의 구체적 요청 및 기획사항'],
-];
+// 항목 목록·최소 분량·복붙 검사는 lib/journalQuality.js 한 곳에서 관리한다.
+// (프론트도 같은 규칙을 미러링하므로 여기서만 고치면 안 된다)
 
 const FIRST_MEETING_REQUIRED = [
   ['ownerOrg', '담당 조직'],
@@ -144,23 +135,9 @@ const FIRST_MEETING_REQUIRED = [
 const blank = (v) => v === undefined || v === null || !String(v).trim();
 
 // 생성 시: 모든 필수 항목 확인. 수정 시(partial=true): 전달된 키만 확인.
+// 반환값은 사용자에게 그대로 보여줄 문장 배열 — 무엇이 왜 부족한지까지 담는다.
 function validateJournalBody(b, { partial = false } = {}) {
-  const missing = [];
-  for (const [key, label] of JOURNAL_REQUIRED) {
-    if (partial && b[key] === undefined) continue;
-    if (blank(b[key])) missing.push(label);
-  }
-  const todosGiven = !partial || b.todos !== undefined;
-  if (todosGiven) {
-    const valid = Array.isArray(b.todos)
-      ? b.todos.filter((t) => t && t.dueDate && String(t.content || '').trim())
-      : [];
-    if (!valid.length) missing.push('향후 스케쥴 (일자 + 해야 할 일 1건 이상)');
-  }
-  if (b.hasQuote && (!Array.isArray(b.quoteItems) || !buildQuoteData(b.quoteItems).length)) {
-    missing.push('견적 항목 (제품명 1건 이상)');
-  }
-  return missing;
+  return journalIssues(b, { partial }).map((i) => i.message);
 }
 
 // ============================================================
@@ -595,6 +572,8 @@ function sanitizeJournalListItem(user, j) {
     productRequests: locked ? null : rest.productRequests,
     attachments: locked ? [] : (rest.attachments || []),
     attachmentCount: (rest.attachments || []).length,
+    // 잠금 여부와 무관하게 노출 — 어떤 일지가 부실한지는 관리자가 본문 없이도 알아야 한다
+    completeness: journalCompleteness(j),
   };
 }
 
@@ -623,6 +602,8 @@ router.get('/journals', authenticate, async (req, res) => {
         referrers: true,
         todos: { orderBy: { dueDate: 'asc' } },
         attachments: { orderBy: { sortOrder: 'asc' } },
+        // 완성도 계산에 견적 항목이 필요하다 (견적 체크만 하고 내용이 빈 건을 잡기 위해)
+        quoteItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
     const visible = all
@@ -641,6 +622,7 @@ router.post('/journals', authenticate, async (req, res) => {
     const {
       clientId, title, password, isFirstMeeting, stage, meetingDate, meetingPurpose,
       meetingLocation, attendees, meetingSummary, keyRequests, productRequests,
+      decisions, risks, nextContactDate, nextContactPlan, competitorNote,
       referrers, todos, sampleProvided, hasQuote, quoteItems, voiceTranscript,
     } = req.body;
     if (!clientId) return res.status(400).json({ error: '거래처를 지정해주세요.' });
@@ -656,7 +638,7 @@ router.post('/journals', authenticate, async (req, res) => {
 
     const missing = validateJournalBody(req.body);
     if (missing.length) {
-      return res.status(400).json({ error: `필수 항목을 입력해주세요: ${missing.join(', ')}` });
+      return res.status(400).json({ error: `영업일지 구성이 부족합니다.\n· ${missing.join('\n· ')}`, issues: missing });
     }
 
     const passwordHash =
@@ -687,6 +669,11 @@ router.post('/journals', authenticate, async (req, res) => {
         meetingSummary: meetingSummary || null,
         keyRequests: keyRequests || null,
         productRequests: productRequests || null,
+        decisions: decisions || null,
+        risks: risks || null,
+        nextContactDate: parseDate(nextContactDate),
+        nextContactPlan: nextContactPlan || null,
+        competitorNote: competitorNote || null,
         // AI 정리본이 원문을 왜곡했는지 나중에 대조할 수 있어야 한다
         voiceTranscript: String(voiceTranscript || '').trim() || null,
         sampleProvided: !!sampleProvided,
@@ -748,6 +735,7 @@ router.get('/journals/:id', authenticate, async (req, res) => {
         passwordProtected: !!passwordHash,
         canEdit: owner,
         locked: false,
+        completeness: journalCompleteness(journal),
       },
     });
   } catch (error) {
@@ -827,14 +815,19 @@ router.put('/journals/:id', authenticate, async (req, res) => {
     const b = req.body;
     const missing = validateJournalBody(b, { partial: true });
     if (missing.length) {
-      return res.status(400).json({ error: `필수 항목을 입력해주세요: ${missing.join(', ')}` });
+      return res.status(400).json({ error: `영업일지 구성이 부족합니다.\n· ${missing.join('\n· ')}`, issues: missing });
     }
     const data = {};
-    for (const f of ['title', 'meetingPurpose', 'meetingLocation', 'attendees', 'meetingSummary', 'keyRequests', 'productRequests', 'stage']) {
+    for (const f of [
+      'title', 'meetingPurpose', 'meetingLocation', 'attendees', 'meetingSummary',
+      'keyRequests', 'productRequests', 'decisions', 'risks', 'nextContactPlan',
+      'competitorNote', 'stage',
+    ]) {
       if (b[f] !== undefined) data[f] = b[f] || null;
     }
     if (b.isFirstMeeting !== undefined) data.isFirstMeeting = !!b.isFirstMeeting;
     if (b.meetingDate !== undefined) data.meetingDate = parseDate(b.meetingDate);
+    if (b.nextContactDate !== undefined) data.nextContactDate = parseDate(b.nextContactDate);
     if (b.sampleProvided !== undefined) data.sampleProvided = !!b.sampleProvided;
     if (b.hasQuote !== undefined) data.hasQuote = !!b.hasQuote;
     // 비밀번호: 문자열이면 재설정, 빈문자열 명시면 해제, undefined면 유지
@@ -903,7 +896,16 @@ router.put('/journals/:id', authenticate, async (req, res) => {
       include: { author: { select: USER_SELECT }, client: true, referrers: true, todos: { orderBy: { dueDate: 'asc' } }, attachments: { orderBy: { sortOrder: 'asc' } }, quoteItems: { orderBy: { sortOrder: 'asc' } } },
     });
     const { passwordHash, ...rest } = updated;
-    res.json({ journal: { ...rest, shared: !!rest.shareToken, passwordProtected: !!passwordHash, canEdit: true, locked: false } });
+    res.json({
+      journal: {
+        ...rest,
+        shared: !!rest.shareToken,
+        passwordProtected: !!passwordHash,
+        canEdit: true,
+        locked: false,
+        completeness: journalCompleteness(updated),
+      },
+    });
   } catch (error) {
     console.error('Update journal error:', error);
     res.status(500).json({ error: '영업일지 수정에 실패했습니다.' });
