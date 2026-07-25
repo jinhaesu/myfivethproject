@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
+import SalesHeatmap from '@/components/SalesHeatmap';
 import { api } from '@/lib/api';
 import { DashboardData, fmtKRW, fmtDate, STAGE_LABEL, STAGE_TONE } from '@/lib/sales';
 import { userShort } from '@/lib/user';
@@ -155,6 +156,32 @@ export default function SalesDashboardPage() {
               })}
             </div>
           </Card>
+
+          {/* 미팅 빈도 히트맵 — 담당자 / 거래처 */}
+          {data.heatmap ? (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <Card padding="lg">
+                <SalesHeatmap
+                  title="담당자별 영업 빈도"
+                  subtitle="최근 12주 · 주당 미팅 건수"
+                  rowLabel="담당자"
+                  weeks={data.heatmap.weeks}
+                  grid={data.heatmap.byAuthor}
+                  emptyText="최근 12주간 기록된 미팅이 없습니다."
+                />
+              </Card>
+              <Card padding="lg">
+                <SalesHeatmap
+                  title="거래처별 미팅 빈도"
+                  subtitle="최근 12주 · 주당 미팅 건수"
+                  rowLabel="거래처"
+                  weeks={data.heatmap.weeks}
+                  grid={data.heatmap.byClient}
+                  emptyText="최근 12주간 기록된 미팅이 없습니다."
+                />
+              </Card>
+            </div>
+          ) : null}
 
           {/* 할일 + 정체 거래처 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

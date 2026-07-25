@@ -1671,6 +1671,60 @@ router.get('/dashboard', authenticate, async (req, res) => {
     }
     upcomingTodos.sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate));
 
+    // ── 히트맵: 최근 12주 × (담당자 / 거래처) 미팅 빈도 ──
+    // 미팅일(meetingDate) 기준. 아직 미팅일이 없는 옛 데이터는 createdAt로 보정한다.
+    // 주 시작은 월요일 — 위의 weekFrom과 같은 규칙.
+    const HEAT_WEEKS = 12;
+    const HEAT_ROWS = 12; // 그리드 가독성 상한 — 초과분은 별도로 알려준다
+    const thisMonday = new Date();
+    thisMonday.setHours(0, 0, 0, 0);
+    thisMonday.setDate(thisMonday.getDate() - ((thisMonday.getDay() + 6) % 7));
+    const heatStart = new Date(+thisMonday - (HEAT_WEEKS - 1) * 7 * 86400000);
+    const weekBuckets = [];
+    for (let i = 0; i < HEAT_WEEKS; i += 1) {
+      const start = new Date(+heatStart + i * 7 * 86400000);
+      weekBuckets.push({
+        key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`,
+        label: `${start.getMonth() + 1}/${start.getDate()}`,
+        start: start.toISOString(),
+      });
+    }
+    const weekIndexOf = (dateVal) => {
+      const t = +new Date(dateVal);
+      if (!t || Number.isNaN(t)) return -1;
+      if (t < +heatStart) return -1;
+      const idx = Math.floor((t - +heatStart) / (7 * 86400000));
+      return idx >= 0 && idx < HEAT_WEEKS ? idx : -1;
+    };
+
+    // acc[rowKey] = { id, name, email, cells: number[HEAT_WEEKS], total }
+    const buildGrid = (rowKeyOf) => {
+      const acc = new Map();
+      for (const j of viewable) {
+        const when = j.meetingDate || j.createdAt;
+        const wi = weekIndexOf(when);
+        if (wi < 0) continue;
+        const row = rowKeyOf(j);
+        if (!row) continue;
+        let entry = acc.get(row.id);
+        if (!entry) {
+          entry = { id: row.id, name: row.name, email: row.email || null, cells: new Array(HEAT_WEEKS).fill(0), total: 0 };
+          acc.set(row.id, entry);
+        }
+        entry.cells[wi] += 1;
+        entry.total += 1;
+      }
+      const all = [...acc.values()].sort((a, b) => b.total - a.total);
+      const rows = all.slice(0, HEAT_ROWS);
+      const maxCell = rows.reduce((m, r) => Math.max(m, ...r.cells), 0);
+      return { rows, maxCell, hiddenRows: Math.max(0, all.length - rows.length) };
+    };
+
+    const byAuthor = buildGrid((j) =>
+      j.author ? { id: j.author.id, name: j.author.name || j.author.email || '이름없음', email: j.author.email } : null,
+    );
+    const byClient = buildGrid((j) => (j.client ? { id: j.client.id, name: j.client.name } : null));
+
     const recentJournals = viewable.slice(0, 8).map((j) => ({
       id: j.id, title: j.title, clientName: j.client?.name || null, stage: j.stage,
       // 이름·이메일을 따로 내려 화면에서 '이름 (이메일)'로 조합할 수 있게 한다
@@ -1686,6 +1740,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
       staleClients: staleClients.slice(0, 8),
       upcomingTodos: upcomingTodos.slice(0, 12),
       recentJournals,
+      heatmap: { weeks: weekBuckets, byAuthor, byClient },
       isSuperAdmin: isSuperAdmin(req.user),
     });
   } catch (error) {

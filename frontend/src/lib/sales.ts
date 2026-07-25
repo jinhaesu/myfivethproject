@@ -457,7 +457,35 @@ export interface DashboardData {
     authorName: string | null; authorEmail: string | null;
     createdAt: string; meetingDate: string | null;
   }[];
+  heatmap?: SalesHeatmap;
   isSuperAdmin: boolean;
+}
+
+// 미팅 빈도 히트맵 — 주(週) × (담당자 또는 거래처)
+export interface HeatmapWeek {
+  key: string;
+  label: string; // 주 시작일 M/D
+  start: string;
+}
+
+export interface HeatmapRow {
+  id: string;
+  name: string;
+  email: string | null;
+  cells: number[]; // weeks 순서와 1:1
+  total: number;
+}
+
+export interface HeatmapGrid {
+  rows: HeatmapRow[];
+  maxCell: number;
+  hiddenRows: number; // 상한 초과로 표에서 빠진 행 수
+}
+
+export interface SalesHeatmap {
+  weeks: HeatmapWeek[];
+  byAuthor: HeatmapGrid;
+  byClient: HeatmapGrid;
 }
 
 export function fmtDate(d: string | null | undefined): string {
