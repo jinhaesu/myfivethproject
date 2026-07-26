@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { userLabel, userShort } from '@/lib/user';
 import { CenterSpinner, Button } from '@/components/ui';
+import NuldamSystemBar from '@/components/NuldamSystemBar';
 import { cn } from '@/lib/cn';
 
 const NAV = [
@@ -73,6 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
+      <NuldamSystemBar current="pmanage" />
       <nav className="sticky top-0 z-30 bg-[rgba(11,12,13,0.85)] backdrop-blur-md border-b border-[var(--border-1)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-12 items-center gap-2">
