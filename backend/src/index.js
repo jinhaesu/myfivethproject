@@ -17,9 +17,14 @@ const { startLaunchScheduler } = require('./lib/launchScheduler');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-const allowedOrigins = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL.split(',').map(u => u.trim().replace(/\/+$/, ''))
-  : ['http://localhost:3000'];
+const allowedOrigins = [
+  ...(process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map(u => u.trim().replace(/\/+$/, ''))
+    : ['http://localhost:3000']),
+  // SSO: 앱 프론트 도메인 + 허브는 항상 허용(env 누락 대비).
+  'https://pmanage.nuldam.com',
+  'https://auth.nuldam.com',
+];
 
 if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
   console.warn('[CORS] FRONTEND_URL 환경변수가 비어 있습니다. 프로덕션 도메인이 차단될 수 있습니다.');
