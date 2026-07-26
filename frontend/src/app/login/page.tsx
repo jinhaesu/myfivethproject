@@ -136,6 +136,22 @@ function LoginForm() {
               </div>
             </form>
           )}
+
+          {/* 회사 계정(중앙 SSO) 로그인 — 기존 이메일 인증과 별개의 추가 진입점 */}
+          <div className="mt-5 pt-5 border-t border-[var(--border-1)]">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                window.location.href =
+                  'https://auth.nuldam.com/authorize?app=pmanage&return=' +
+                  encodeURIComponent('https://pmanage.nuldam.com/sso');
+              }}
+            >
+              회사 계정으로 로그인
+            </Button>
+          </div>
         </Card>
 
         <p className="text-center text-[11px] text-[var(--text-4)] mt-6">

@@ -2,10 +2,18 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const { PrismaClient } = require('@prisma/client');
+const { createRemoteJWKSet, jwtVerify } = require('jose');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// 중앙 SSO 허브(auth.nuldam.com) 발급 토큰 검증용 JWKS — 모듈 로드 시 1회 생성(내부 캐시/회전 처리).
+const SSO_ISSUER = 'https://auth.nuldam.com';
+const SSO_AUDIENCE = 'pmanage';
+const ssoJwks = createRemoteJWKSet(
+  new URL('https://auth-api.nuldam.com/.well-known/jwks.json')
+);
 
 let _resend = null;
 function getResend() {
@@ -136,6 +144,61 @@ router.post('/verify-code', async (req, res) => {
   } catch (error) {
     console.error('Verify code error:', error);
     res.status(500).json({ error: '인증에 실패했습니다.' });
+  }
+});
+
+// 회사 계정 SSO — 중앙 허브(auth.nuldam.com)가 발급한 RS256 JWT를 검증하고 앱 세션 토큰으로 교환.
+// 기존 OTP 로그인 경로를 건드리지 않는 추가 진입점이다.
+router.post('/sso', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string') {
+      return res.status(401).json({ error: '유효하지 않은 SSO 토큰입니다.' });
+    }
+
+    let payload;
+    try {
+      ({ payload } = await jwtVerify(token, ssoJwks, {
+        issuer: SSO_ISSUER,
+        audience: SSO_AUDIENCE,
+      }));
+    } catch (verifyErr) {
+      console.error('[SSO] 토큰 검증 실패:', verifyErr?.message || verifyErr);
+      return res.status(401).json({ error: 'SSO 인증에 실패했습니다.' });
+    }
+
+    const email = payload.email;
+    if (!email) {
+      return res.status(401).json({ error: 'SSO 토큰에 이메일 정보가 없습니다.' });
+    }
+
+    // OTP 검증 경로와 동일하게 이메일 기준 find-or-create → 실제 user.id 확보
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email },
+      });
+    }
+
+    const appToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token: appToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('SSO login error:', error);
+    res.status(500).json({ error: 'SSO 로그인에 실패했습니다.' });
   }
 });
 
