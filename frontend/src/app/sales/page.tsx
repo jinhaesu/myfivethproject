@@ -63,6 +63,9 @@ export default function SalesJournalListPage() {
   // 담당자·거래처 필터 (id 기준 — 동명이인·이름변경에도 안 깨진다)
   const [filterAuthor, setFilterAuthor] = useState('');
   const [filterClient, setFilterClient] = useState('');
+  // 기간(미팅일 기준)·영업 단계 필터
+  const [filterPeriod, setFilterPeriod] = useState('');
+  const [filterStage, setFilterStage] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('salesJournalView');
@@ -115,6 +118,22 @@ export default function SalesJournalListPage() {
     return Array.from(map.entries()).map(([id, label]) => ({ id, label })).sort((x, y) => x.label.localeCompare(y.label, 'ko'));
   }, [journals]);
 
+  // 기간 필터 경계 — 미팅일 기준. 렌더 시점의 '오늘'로 계산한다.
+  const periodFrom = useMemo(() => {
+    if (!filterPeriod) return null;
+    const now = new Date();
+    if (filterPeriod === 'thisMonth') return new Date(now.getFullYear(), now.getMonth(), 1);
+    if (filterPeriod === 'thisYear') return new Date(now.getFullYear(), 0, 1);
+    const days = filterPeriod === '3m' ? 90 : filterPeriod === '6m' ? 180 : 0;
+    if (days) {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - days);
+      return d;
+    }
+    return null;
+  }, [filterPeriod]);
+
   const filtered = useMemo(
     () =>
       journals.filter((j) => {
@@ -123,15 +142,23 @@ export default function SalesJournalListPage() {
           const cid = (j.client as { id?: string } | undefined)?.id;
           if (cid !== filterClient) return false;
         }
+        if (filterStage && journalStage(j) !== filterStage) return false;
+        if (periodFrom) {
+          // 미팅일이 없으면 작성일로 보정
+          const when = j.meetingDate || j.createdAt;
+          if (!when || new Date(when) < periodFrom) return false;
+        }
         return true;
       }),
-    [journals, filterAuthor, filterClient],
+    [journals, filterAuthor, filterClient, filterStage, periodFrom],
   );
 
-  const hasFilter = !!filterAuthor || !!filterClient;
+  const hasFilter = !!filterAuthor || !!filterClient || !!filterStage || !!filterPeriod;
   const resetFilter = () => {
     setFilterAuthor('');
     setFilterClient('');
+    setFilterStage('');
+    setFilterPeriod('');
   };
 
   const byStage = (stageKey: string) => filtered.filter((j) => journalStage(j) === stageKey);
@@ -215,6 +242,33 @@ export default function SalesJournalListPage() {
               ))}
             </Select>
           </div>
+          <div className="w-[130px]">
+            <Select
+              value={filterStage}
+              onChange={(e) => setFilterStage(e.target.value)}
+              aria-label="영업 단계 필터"
+            >
+              <option value="">단계 전체</option>
+              {SALES_STAGES.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="w-[130px]">
+            <Select
+              value={filterPeriod}
+              onChange={(e) => setFilterPeriod(e.target.value)}
+              aria-label="기간 필터 (미팅일 기준)"
+            >
+              <option value="">기간 전체</option>
+              <option value="thisMonth">이번 달</option>
+              <option value="3m">최근 3개월</option>
+              <option value="6m">최근 6개월</option>
+              <option value="thisYear">올해</option>
+            </Select>
+          </div>
           {hasFilter && (
             <>
               <span className="text-[12px] text-[var(--text-3)] tabular">
@@ -249,7 +303,7 @@ export default function SalesJournalListPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           title="조건에 맞는 영업일지가 없습니다"
-          description="담당자·거래처 필터를 바꾸거나 해제해보세요."
+          description="담당자·거래처·단계·기간 필터를 바꾸거나 해제해보세요."
           action={
             <Button variant="secondary" size="md" onClick={resetFilter}>
               필터 해제
