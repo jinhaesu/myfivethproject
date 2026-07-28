@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import SalesTabs from '@/components/SalesTabs';
 import { api } from '@/lib/api';
 import { SalesJournal, SALES_STAGES, STAGE_LABEL, STAGE_TONE, fmtDate } from '@/lib/sales';
-import { userShort, userLabelOrEmpty } from '@/lib/user';
+import { userShort, userLabelOrEmpty, userLabel } from '@/lib/user';
 import {
   PageHeader,
   Button,
@@ -14,6 +14,7 @@ import {
   EmptyState,
   CenterSpinner,
   Card,
+  Select,
   Table,
   THead,
   TBody,
@@ -59,6 +60,9 @@ export default function SalesJournalListPage() {
   const [view, setView] = useState<'board' | 'table'>('board');
   const [sortKey, setSortKey] = useState<SortKey>('meetingDate');
   const [sortAsc, setSortAsc] = useState(false);
+  // 담당자·거래처 필터 (id 기준 — 동명이인·이름변경에도 안 깨진다)
+  const [filterAuthor, setFilterAuthor] = useState('');
+  const [filterClient, setFilterClient] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('salesJournalView');
@@ -92,7 +96,45 @@ export default function SalesJournalListPage() {
     })();
   }, []);
 
-  const byStage = (stageKey: string) => journals.filter((j) => journalStage(j) === stageKey);
+  // 필터 드롭다운 목록 — 현재 불러온 일지에 실제로 등장하는 담당자/거래처만 노출
+  const authorOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const j of journals) {
+      const a = j.author;
+      if (a?.id) map.set(a.id, userLabel(a));
+    }
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label })).sort((x, y) => x.label.localeCompare(y.label, 'ko'));
+  }, [journals]);
+
+  const clientOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const j of journals) {
+      const c = j.client as { id?: string; name?: string } | undefined;
+      if (c?.id) map.set(c.id, c.name || '(이름없음)');
+    }
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label })).sort((x, y) => x.label.localeCompare(y.label, 'ko'));
+  }, [journals]);
+
+  const filtered = useMemo(
+    () =>
+      journals.filter((j) => {
+        if (filterAuthor && j.author?.id !== filterAuthor) return false;
+        if (filterClient) {
+          const cid = (j.client as { id?: string } | undefined)?.id;
+          if (cid !== filterClient) return false;
+        }
+        return true;
+      }),
+    [journals, filterAuthor, filterClient],
+  );
+
+  const hasFilter = !!filterAuthor || !!filterClient;
+  const resetFilter = () => {
+    setFilterAuthor('');
+    setFilterClient('');
+  };
+
+  const byStage = (stageKey: string) => filtered.filter((j) => journalStage(j) === stageKey);
 
   return (
     <AppLayout>
@@ -142,6 +184,54 @@ export default function SalesJournalListPage() {
         </div>
       )}
 
+      {!loading && journals.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)] mr-0.5">필터</span>
+          <div className="w-[150px]">
+            <Select
+              value={filterAuthor}
+              onChange={(e) => setFilterAuthor(e.target.value)}
+              aria-label="담당자 필터"
+            >
+              <option value="">담당자 전체</option>
+              {authorOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="w-[170px]">
+            <Select
+              value={filterClient}
+              onChange={(e) => setFilterClient(e.target.value)}
+              aria-label="거래처 필터"
+            >
+              <option value="">거래처 전체</option>
+              {clientOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {hasFilter && (
+            <>
+              <span className="text-[12px] text-[var(--text-3)] tabular">
+                {filtered.length}건
+              </span>
+              <button
+                type="button"
+                onClick={resetFilter}
+                className="text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] underline underline-offset-2 transition-colors"
+              >
+                필터 해제
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <CenterSpinner label="영업일지 불러오는 중" />
       ) : journals.length === 0 ? (
@@ -156,9 +246,19 @@ export default function SalesJournalListPage() {
             </Link>
           }
         />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="조건에 맞는 영업일지가 없습니다"
+          description="담당자·거래처 필터를 바꾸거나 해제해보세요."
+          action={
+            <Button variant="secondary" size="md" onClick={resetFilter}>
+              필터 해제
+            </Button>
+          }
+        />
       ) : view === 'table' ? (
         <JournalTable
-          journals={sortJournals(journals, sortKey, sortAsc)}
+          journals={sortJournals(filtered, sortKey, sortAsc)}
           sortKey={sortKey}
           sortAsc={sortAsc}
           onSort={toggleSort}
