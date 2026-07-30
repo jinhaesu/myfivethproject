@@ -14,6 +14,8 @@
   --bg-2:      #16181B;
   --bg-3:      #1C1F23;
   --bg-overlay: rgba(8, 9, 10, 0.72);
+  /* 상단 sticky nav의 반투명 배경 — bg-0 계열에 알파를 얹은 값이라 테마별로 별도 관리 */
+  --bg-nav: rgba(11, 12, 13, 0.85);
 
   /* Text */
   --text-1: #F7F8F8;
@@ -52,6 +54,13 @@
   --info-bg: rgba(96, 165, 250, 0.10);
   --info-border: rgba(96, 165, 250, 0.28);
 
+  /* Chart accents (기본 시맨틱 토큰 밖의 데이터 시각화 전용 색) */
+  --chart-violet: #C084FC;
+
+  /* 히트맵처럼 "채도 높은 브랜드 셀 위 텍스트" 색 — 다크에서는 흰색이 최선이지만
+     라이트에서는 셀 배경이 충분히 어두워지지 않아 흰 글씨가 저대비가 되므로 테마별로 분리 */
+  --heatmap-hi-text: #fff;
+
   /* Type */
   --fs-micro:   0.6875rem;
   --fs-caption: 0.75rem;
@@ -85,10 +94,74 @@
   --d-slow:    320ms;
 }
 
+/* ============================================================
+ * 라이트 테마 — 위 :root(다크)의 시맨틱 토큰을 전부 오버라이드.
+ * <html data-theme="light">일 때만 적용되며, 브랜드 색(--brand-*)과
+ * 포커스 링(--border-focus)은 두 테마 모두에서 그대로 재사용한다.
+ * (인쇄용 라벨 .kr-label / .us-label / .printable-label /
+ *  .nutrition-label / .japan-label / .light-surface 블록은
+ *  파일 하단에서 항상 라이트로 고정되어 있으므로 여기서 손대지 않는다.)
+ * ============================================================ */
+:root[data-theme='light'] {
+  /* Surfaces (low → high) */
+  --bg-canvas: #FFFFFF;
+  --bg-0:      #FFFFFF;
+  --bg-1:      #F6F7F8;
+  --bg-2:      #EEF0F2;
+  --bg-3:      #E4E7EA;
+  --bg-overlay: rgba(255, 255, 255, 0.72);
+  --bg-nav: rgba(255, 255, 255, 0.82);
+
+  /* Text */
+  --text-1: #0B0C0D;
+  --text-2: #3B4046;
+  --text-3: #6A7078;
+  --text-4: #9AA1A9;
+
+  /* Borders (--border-focus는 브랜드색 그대로 유지) */
+  --border-1: #E6E8EB;
+  --border-2: #D7DADF;
+  --border-3: #C6CAD1;
+
+  /* Semantic intents */
+  --success-fg: #15803D;
+  --success-bg: rgba(21, 128, 61, 0.09);
+  --success-border: rgba(21, 128, 61, 0.24);
+
+  --warning-fg: #B45309;
+  --warning-bg: rgba(180, 83, 9, 0.09);
+  --warning-border: rgba(180, 83, 9, 0.24);
+
+  --danger-fg: #DC2626;
+  --danger-bg: rgba(220, 38, 38, 0.08);
+  --danger-border: rgba(220, 38, 38, 0.24);
+
+  --info-fg: #2563EB;
+  --info-bg: rgba(37, 99, 235, 0.08);
+  --info-border: rgba(37, 99, 235, 0.24);
+
+  /* Chart accents */
+  --chart-violet: #9333EA;
+
+  /* 채도 높은 브랜드 셀 위 텍스트 — 라이트에서는 셀 배경이 흰 글씨를 지탱할 만큼
+     짙어지지 않으므로 본문 텍스트 톤으로 대체 */
+  --heatmap-hi-text: var(--text-1);
+
+  /* Elevation — 라이트에서는 어두운 그림자 위주로, 상단 하이라이트는 제거 */
+  --elev-1: 0 1px 2px rgba(16, 24, 32, 0.06);
+  --elev-2: 0 4px 8px -2px rgba(16, 24, 32, 0.08), 0 2px 4px rgba(16, 24, 32, 0.05);
+  --elev-3: 0 12px 24px -6px rgba(16, 24, 32, 0.10), 0 4px 8px rgba(16, 24, 32, 0.06);
+  --elev-pop: 0 24px 48px -12px rgba(16, 24, 32, 0.16), 0 8px 16px -4px rgba(16, 24, 32, 0.10);
+}
+
 @layer base {
   html {
     color-scheme: dark;
     text-rendering: optimizeLegibility;
+  }
+
+  html[data-theme='light'] {
+    color-scheme: light;
   }
 
   body {

@@ -15,10 +15,14 @@ function cellStyle(count: number, maxCell: number): React.CSSProperties {
   return { background: `rgba(94, 106, 210, ${alpha.toFixed(3)})` };
 }
 
+// 셀이 채도 높은 브랜드색으로 짙어질 때의 텍스트 색.
+// 다크 테마에서는 짙은 셀 위에 흰 글씨가 최선이지만, 라이트 테마에서는 같은 알파값이라도
+// 셀 배경이 충분히 어두워지지 않아 흰 글씨가 저대비가 된다 — 테마별 값은
+// globals.css의 --heatmap-hi-text 토큰(다크: #fff / 라이트: var(--text-1))이 담당한다.
 function textColor(count: number, maxCell: number): string {
   if (count <= 0) return 'transparent';
   const ratio = maxCell > 0 ? count / maxCell : 0;
-  return ratio > 0.5 ? '#fff' : 'var(--text-1)';
+  return ratio > 0.5 ? 'var(--heatmap-hi-text)' : 'var(--text-1)';
 }
 
 export default function SalesHeatmap({

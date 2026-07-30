@@ -56,7 +56,7 @@ export default function SharedJournalPage() {
   return (
     <div className="min-h-screen bg-[var(--bg-0)]">
       {/* 외부 공유용 헤더 (로그인 없이 열람) */}
-      <header className="sticky top-0 z-30 bg-[rgba(11,12,13,0.85)] backdrop-blur-md border-b border-[var(--border-1)]">
+      <header className="sticky top-0 z-30 bg-[var(--bg-nav)] backdrop-blur-md border-b border-[var(--border-1)]">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-12 gap-3">
             <div className="flex items-center gap-2 min-w-0">

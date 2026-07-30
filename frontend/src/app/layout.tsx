@@ -27,13 +27,20 @@ export const viewport: Viewport = {
   viewportFit: 'cover', // 노치 있는 기기에서 safe-area 사용 가능하게
 };
 
+// 페인트 전에 <html data-theme>를 세팅해 다크→라이트(또는 그 반대) 깜빡임을 막는다.
+// 기본값은 항상 'dark' — 시스템 설정(prefers-color-scheme)은 참고하지 않는다.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');document.documentElement.dataset.theme=(t==='light'?'light':'dark');}catch(e){document.documentElement.dataset.theme='dark';}})();`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="ko" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="antialiased">
         <AuthProvider>{children}</AuthProvider>
       </body>

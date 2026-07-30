@@ -16,7 +16,7 @@ const TONE_COLOR: Record<string, string> = {
   info: 'var(--info-fg)',
   brand: 'var(--brand-400)',
   success: 'var(--success-fg)',
-  violet: '#C084FC',
+  violet: 'var(--chart-violet)',
   warning: 'var(--warning-fg)',
   danger: 'var(--danger-fg)',
 };
