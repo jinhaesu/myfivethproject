@@ -320,7 +320,7 @@ export default function PdfViewer({
             : !diag.hasRatioKeyword
             ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
             : diag.maskedCount === 0
-            ? 'bg-orange-50 border-orange-200 text-orange-800'
+            ? 'bg-orange-50 border-[rgba(251,146,60,0.35)] text-orange-800'
             : 'bg-green-50 border-green-200 text-green-700'
         }`}>
           <div className="flex items-center gap-2 flex-wrap">

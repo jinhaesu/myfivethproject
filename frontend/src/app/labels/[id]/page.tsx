@@ -1017,7 +1017,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
 
           {/* AI가 추출한 정보 (멀티 패스 1·2단계 결과) */}
           {label.designFileUrl && label.manufacturingReportUrl && (label.aiReportExtraction || label.aiDesignExtraction) && (
-            <div className="card border-l-4 border-cyan-500">
+            <div className="card border-l-4 border-[var(--info-fg)]">
               <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
                 <span>{'\u{1F4D1}'}</span> AI 추출 정보 (멀티 패스 1·2단계)
               </h3>
@@ -1027,7 +1027,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {label.aiReportExtraction && (
                   <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                    <h4 className="text-sm font-bold mb-2 text-cyan-800">{'\u{1F4C4}'} 품목제조보고서 추출</h4>
+                    <h4 className="text-sm font-bold mb-2 text-[var(--text-1)]">{'\u{1F4C4}'} 품목제조보고서 추출</h4>
                     <pre className="text-xs whitespace-pre-wrap break-words text-gray-700 max-h-[400px] overflow-auto bg-white p-2 rounded">
 {JSON.stringify(label.aiReportExtraction, null, 2)}
                     </pre>
@@ -1035,7 +1035,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                 )}
                 {label.aiDesignExtraction && (
                   <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                    <h4 className="text-sm font-bold mb-2 text-purple-800">{'\u{1F3A8}'} 디자인 작업물 추출</h4>
+                    <h4 className="text-sm font-bold mb-2 text-[var(--text-1)]">{'\u{1F3A8}'} 디자인 작업물 추출</h4>
                     <pre className="text-xs whitespace-pre-wrap break-words text-gray-700 max-h-[400px] overflow-auto bg-white p-2 rounded">
 {JSON.stringify(label.aiDesignExtraction, null, 2)}
                     </pre>
@@ -1047,7 +1047,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
 
           {/* AI 자동 검토 결과 */}
           {label.designFileUrl && label.manufacturingReportUrl && (
-            <div className="card border-l-4 border-indigo-500">
+            <div className="card border-l-4 border-[var(--brand-500)]">
               <div className="flex items-start justify-between mb-4 gap-3">
                 <div>
                   <h3 className="text-lg font-bold flex items-center gap-2">
@@ -1082,9 +1082,9 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                 <div className="space-y-4">
                   {/* 요약 */}
                   <div className={`p-4 rounded-lg border-2 ${
-                    label.aiDesignReview.overallStatus === 'critical' ? 'bg-red-50 border-red-300' :
-                    label.aiDesignReview.overallStatus === 'needs_review' ? 'bg-yellow-50 border-yellow-300' :
-                    'bg-green-50 border-green-300'
+                    label.aiDesignReview.overallStatus === 'critical' ? 'bg-[var(--danger-bg)] border-[var(--danger-border)]' :
+                    label.aiDesignReview.overallStatus === 'needs_review' ? 'bg-[var(--warning-bg)] border-[var(--warning-border)]' :
+                    'bg-[var(--success-bg)] border-[var(--success-border)]'
                   }`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`px-2 py-0.5 rounded text-xs font-bold ${
@@ -1320,7 +1320,7 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                   <h3 className="text-lg font-bold mb-3">규칙 적용 내역</h3>
                   <div className="space-y-2">
                     {(aiNotes.ruleApplicationReport as any[]).map((r: any, i: number) => (
-                      <div key={i} className={`p-3 rounded-lg border ${r.applied ? 'bg-blue-50/50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+                      <div key={i} className={`p-3 rounded-lg border ${r.applied ? 'bg-[var(--info-bg)] border-[var(--info-border)]' : 'bg-gray-50 border-gray-200'}`}>
                         <div className="flex items-start gap-2">
                           <span className={`text-xs font-bold px-2 py-0.5 rounded ${
                             r.applied ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'

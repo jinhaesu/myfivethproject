@@ -713,8 +713,8 @@ export default function NewLabelPage() {
                                   <div className="flex flex-wrap gap-1 mt-1">
                                     {ext.ingredients.slice(0, 8).map((ing: any, j: number) => (
                                       <span key={j} className={`px-1.5 py-0.5 rounded text-xs ${
-                                        ing.ingredientType === 'compound' ? 'bg-purple-100 text-purple-700' :
-                                        ing.ingredientType === 'additive' ? 'bg-orange-100 text-orange-700' :
+                                        ing.ingredientType === 'compound' ? 'bg-[var(--info-bg)] text-[var(--info-fg)]' :
+                                        ing.ingredientType === 'additive' ? 'bg-[var(--warning-bg)] text-[var(--warning-fg)]' :
                                         'bg-gray-100 text-gray-600'
                                       }`}>{ing.name}</span>
                                     ))}
@@ -766,8 +766,8 @@ export default function NewLabelPage() {
               <div className="space-y-3">
                 {ingredients.map((ing, idx) => (
                   <div key={idx} className={`border rounded-lg p-3 ${
-                    ing.ingredientType === 'compound' ? 'border-purple-300 bg-purple-50/30' :
-                    ing.ingredientType === 'additive' ? 'border-orange-300 bg-orange-50/30' :
+                    ing.ingredientType === 'compound' ? 'border-[var(--info-border)] bg-[var(--info-bg)]' :
+                    ing.ingredientType === 'additive' ? 'border-[var(--warning-border)] bg-[var(--warning-bg)]' :
                     'border-gray-200'
                   }`}>
                     {/* 메인 입력 행 */}
@@ -830,14 +830,14 @@ export default function NewLabelPage() {
 
                     {/* 복합원재료: 구성성분 입력 */}
                     {ing.ingredientType === 'compound' && (
-                      <div className="mt-2 ml-4 p-2 bg-purple-50 rounded border border-purple-200">
+                      <div className="mt-2 ml-4 p-2 bg-[var(--info-bg)] rounded border border-[var(--info-border)]">
                         <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1">
-                          <span className="text-xs font-bold text-purple-700">구성성분 (5% 이상 시 상위 5개 이상 필요)</span>
+                          <span className="text-xs font-bold text-[var(--info-fg)]">구성성분 (5% 이상 시 상위 5개 이상 필요)</span>
                           <button type="button" onClick={() => {
                             const updated = [...ingredients];
                             updated[idx] = { ...updated[idx], subIngredients: [...updated[idx].subIngredients, { name: '' }] };
                             setIngredients(updated);
-                          }} className="text-xs text-purple-600 hover:underline">+ 추가</button>
+                          }} className="text-xs text-[var(--info-fg)] hover:underline">+ 추가</button>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {ing.subIngredients.map((sub, subIdx) => (
@@ -870,9 +870,9 @@ export default function NewLabelPage() {
 
                     {/* 식품첨가물: 용도 선택 */}
                     {ing.ingredientType === 'additive' && (
-                      <div className="mt-2 ml-4 p-2 bg-orange-50 rounded border border-orange-200">
+                      <div className="mt-2 ml-4 p-2 bg-[var(--warning-bg)] rounded border border-[var(--warning-border)]">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-orange-700">첨가물 용도:</span>
+                          <span className="text-xs font-bold text-[var(--warning-fg)]">첨가물 용도:</span>
                           <select value={ing.additivePurpose}
                             onChange={e => updateIngredient(idx, 'additivePurpose', e.target.value)}
                             className="input-field text-xs py-1 w-40">
@@ -1142,7 +1142,7 @@ export default function NewLabelPage() {
               <p className="text-xs text-gray-500 mb-3">각 표시 규칙이 이 제품에 어떻게 적용되었는지 확인하세요.</p>
               <div className="space-y-2">
                 {aiResult.ruleApplicationReport.map((r: any, i: number) => (
-                  <div key={i} className={`p-3 rounded-lg border ${r.applied ? 'bg-blue-50/50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div key={i} className={`p-3 rounded-lg border ${r.applied ? 'bg-[var(--info-bg)] border-[var(--info-border)]' : 'bg-gray-50 border-gray-200'}`}>
                     <div className="flex items-start gap-2">
                       <span className={`text-xs font-bold px-2 py-0.5 rounded ${
                         r.applied ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'

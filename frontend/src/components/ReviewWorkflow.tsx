@@ -283,7 +283,7 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
       {/* 카테고리별 검토 */}
       <div className="space-y-4">
         {reviewCategories.map((category) => {
-          const catColor = CATEGORY_COLORS[category.name] || 'border-gray-500 bg-gray-50';
+          const catColor = CATEGORY_COLORS[category.name] || 'border-[var(--border-3)] bg-gray-50';
           const catCompleted = category.items.filter((i) => i.isCompleted).length;
           const catTotal = category.items.length;
 
@@ -309,7 +309,7 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
                   const showWarning = reviewerWarning === item.id;
 
                   return (
-                    <div key={item.id} className={`p-3 ${item.isCompleted ? 'bg-green-50/50' : ''}`}>
+                    <div key={item.id} className={`p-3 ${item.isCompleted ? 'bg-[var(--success-bg)]' : ''}`}>
                       <div className="flex items-start gap-2.5">
                         <button
                           onClick={() => handleToggleItem(item.id, item.isCompleted, item.reviewerName)}
@@ -502,7 +502,7 @@ export default function ReviewWorkflow({ labelId, productName, reviewCategories,
                         <tr
                           key={item.id}
                           className={`${
-                            item.isCompleted ? 'bg-green-50/50' : ''
+                            item.isCompleted ? 'bg-[var(--success-bg)]' : ''
                           } hover:bg-gray-50`}
                         >
                           {/* 체크박스 */}
