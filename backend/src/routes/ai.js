@@ -122,9 +122,9 @@ function getClient() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
-// 모델: 검토(추출/비교) 작업은 Opus 4.8 (최고 정확도), 일반 보조는 Sonnet
-const REVIEW_MODEL = 'claude-opus-4-8';
-const ASSIST_MODEL = 'claude-sonnet-4-5-20250929';
+// 모델: 검토(추출/비교) 작업 및 일반 보조 모두 Fable 5 사용
+const REVIEW_MODEL = 'claude-fable-5';
+const ASSIST_MODEL = 'claude-fable-5';
 
 const KOREAN_ALLERGENS = [
   '난류(가금류)', '우유', '메밀', '땅콩', '대두', '밀', '고등어', '게',
@@ -428,7 +428,7 @@ router.post('/generate-label', authenticate, async (req, res) => {
 혼입 가능 알레르기 유발물질이 있으면 allergens 정보에 반영하고, 라벨 표기 문구에 "이 제품은 OO을(를) 사용한 제품과 같은 제조시설에서 제조하고 있습니다" 형태의 혼입 주의문구를 포함해주세요.`;
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-fable-5',
       max_tokens: 8192,
       system: GENERATE_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -473,7 +473,7 @@ router.post('/check-compliance', authenticate, async (req, res) => {
 대상 시장: ${(targetMarkets || ['korea', 'us', 'japan']).join(', ')}`;
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-fable-5',
       max_tokens: 4096,
       system: COMPLIANCE_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -669,7 +669,7 @@ ${linkDescriptions}
 4. 정보 부족이나 불확실한 부분은 warnings에 기록하세요`;
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-fable-5',
       max_tokens: 8192,
       system: EXTRACT_FROM_LINKS_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -1398,7 +1398,7 @@ detectedCompanies 필드에 발견된 모든 회사명을 나열하세요.`;
   }
 });
 
-// ── 영업일지 AI 자동 작성 (Opus 4.8) ─────────────────────────
+// ── 영업일지 AI 자동 작성 (Fable 5) ─────────────────────────
 // 영업담당자가 일부만 입력한 일지를, 비어 있는 항목 위주로 전문적으로 채워줍니다.
 const SALES_JOURNAL_DRAFT_SYSTEM = `당신은 식품 제조기업(제과·제빵)의 노련한 영업 담당자이자 영업 코치입니다.
 영업담당자가 남긴 단편적인 미팅 메모를 바탕으로 정식 영업일지를 빠짐없이 작성·보완합니다.
@@ -1505,7 +1505,7 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
     };
 
     const response = await client.messages.create({
-      model: REVIEW_MODEL, // Opus 4.8
+      model: REVIEW_MODEL, // Fable 5
       max_tokens: 4096,
       system: [
         { type: 'text', text: SALES_JOURNAL_DRAFT_SYSTEM, cache_control: { type: 'ephemeral' } },
@@ -1545,7 +1545,7 @@ router.post('/draft-sales-journal', authenticate, async (req, res) => {
   }
 });
 
-// ── 명함 OCR 자동 입력 (Opus 4.8 비전) ────────────────────
+// ── 명함 OCR 자동 입력 (Fable 5 비전) ────────────────────
 const BUSINESS_CARD_SYSTEM = `당신은 명함 이미지에서 담당자 정보를 정확히 추출하는 OCR 어시스턴트입니다.
 반드시 순수 JSON만 출력하세요 (마크다운/설명 금지).
 {
@@ -1570,7 +1570,7 @@ router.post('/parse-business-card', authenticate, async (req, res) => {
     const data = String(imageBase64).replace(/^data:[^;]+;base64,/, '');
 
     const response = await client.messages.create({
-      model: REVIEW_MODEL, // Opus 4.8
+      model: REVIEW_MODEL, // Fable 5
       max_tokens: 1024,
       system: [{ type: 'text', text: BUSINESS_CARD_SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [
