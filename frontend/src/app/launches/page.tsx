@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import { api } from '@/lib/api';
@@ -11,6 +11,7 @@ import {
   Card,
   CardHeader,
   Button,
+  Input,
   Select,
   Table,
   THead,
@@ -219,10 +220,14 @@ function DdayBadge({ targetLaunchDate }: { targetLaunchDate: string | null }) {
   );
 }
 
+type LaunchSort = 'created' | 'launchAsc' | 'launchDesc';
+
 export default function LaunchesPage() {
   const [projects, setProjects] = useState<LaunchProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [suggestions, setSuggestions] = useState<ClientSuggestion[]>([]);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<LaunchSort>('created');
 
   const load = useCallback(async () => {
     try {
@@ -264,6 +269,32 @@ export default function LaunchesPage() {
     return d !== null && d >= 0 && d <= 7 && p.status !== 'completed';
   }).length;
 
+  // 검색(제품명·거래처명) + 정렬. 출시일 미정(null)은 방향과 무관하게 항상 뒤로 보낸다.
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const matched = q
+      ? projects.filter((p) => {
+          const names = [
+            p.productName,
+            p.client?.name,
+            ...(p.targetClients || []).map((tc) => tc.client?.name),
+          ];
+          return names.some((n) => n && n.toLowerCase().includes(q));
+        })
+      : projects;
+
+    if (sort === 'created') return matched;
+
+    const withDate = matched.filter((p) => p.targetLaunchDate);
+    const noDate = matched.filter((p) => !p.targetLaunchDate);
+    withDate.sort((a, b) => {
+      const ta = +new Date(a.targetLaunchDate as string);
+      const tb = +new Date(b.targetLaunchDate as string);
+      return sort === 'launchAsc' ? ta - tb : tb - ta;
+    });
+    return [...withDate, ...noDate];
+  }, [projects, search, sort]);
+
   return (
     <AppLayout>
       <PageHeader
@@ -302,6 +333,35 @@ export default function LaunchesPage() {
         <ClientMappingCard items={suggestions} onApplied={load} />
       )}
 
+      {/* 검색·정렬 — 리스트 상단 */}
+      {!loading && projects.length > 0 && (
+        <Card padding="md" className="mb-5">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <Input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="제품명·거래처명으로 검색…"
+                inputSize="md"
+              />
+            </div>
+            <div className="sm:w-52">
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as LaunchSort)}
+                inputSize="md"
+                aria-label="정렬 기준"
+              >
+                <option value="created">등록일순 (기본)</option>
+                <option value="launchAsc">출시일 가까운순</option>
+                <option value="launchDesc">출시일 먼순</option>
+              </Select>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {loading ? (
         <CenterSpinner label="출시 프로젝트 불러오는 중" />
       ) : projects.length === 0 ? (
@@ -316,11 +376,21 @@ export default function LaunchesPage() {
             </Link>
           }
         />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          title="검색 결과가 없습니다"
+          description={`"${search}"에 해당하는 출시 프로젝트가 없습니다.`}
+          action={
+            <Button variant="secondary" size="md" onClick={() => setSearch('')}>
+              검색 초기화
+            </Button>
+          }
+        />
       ) : (
         <>
         {/* 모바일: 표 대신 카드 목록 — 좁은 화면에서 숨겨지던 현재 단계·진행률까지 함께 보여준다 */}
         <div className="sm:hidden space-y-2">
-          {projects.map((p) => {
+          {visible.map((p) => {
             const progress = getProgress(p);
             return (
               <Link key={p.id} href={`/launches/${p.id}`} className="block">
@@ -404,7 +474,7 @@ export default function LaunchesPage() {
             </TR>
           </THead>
           <TBody>
-            {projects.map((p) => {
+            {visible.map((p) => {
               const progress = getProgress(p);
               return (
                 <TR key={p.id}>
