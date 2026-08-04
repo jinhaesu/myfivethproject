@@ -80,18 +80,36 @@ const LABEL_INCLUDE = {
 // 라벨 목록 조회
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { page = 1, limit = 20, search, status } = req.query;
+    const { page = 1, limit = 20, search, status, completion } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const where = {};
+    // 검토 완성도 필터와 무관한 공통 조건(검색·상태)만 담는다 — 완성도 건수 집계에 재사용
+    const baseWhere = {};
     if (search) {
-      where.productName = { contains: search, mode: 'insensitive' };
+      baseWhere.productName = { contains: search, mode: 'insensitive' };
     }
     if (status) {
-      where.status = status;
+      baseWhere.status = status;
     }
 
-    const [labels, total] = await Promise.all([
+    // 검토 체크리스트 완성도로 구분 — status(초안/검토중/승인)와는 별개 축이다.
+    // done: 미완료 항목이 하나도 없고 항목이 최소 1개 있는 것(빈 체크리스트를 완료로 세지 않음)
+    // in_progress: 미완료 항목이 하나라도 있는 것
+    const DONE_WHERE = {
+      AND: [
+        { reviewCategories: { some: { items: { some: {} } } } },
+        { NOT: { reviewCategories: { some: { items: { some: { isCompleted: false } } } } } },
+      ],
+    };
+    const IN_PROGRESS_WHERE = {
+      reviewCategories: { some: { items: { some: { isCompleted: false } } } },
+    };
+
+    const where = { ...baseWhere };
+    if (completion === 'done') Object.assign(where, DONE_WHERE);
+    else if (completion === 'in_progress') Object.assign(where, IN_PROGRESS_WHERE);
+
+    const [labels, total, doneCount, inProgressCount] = await Promise.all([
       prisma.label.findMany({
         where,
         include: LABEL_INCLUDE,
@@ -100,10 +118,13 @@ router.get('/', authenticate, async (req, res) => {
         take: parseInt(limit),
       }),
       prisma.label.count({ where }),
+      prisma.label.count({ where: { AND: [baseWhere, DONE_WHERE] } }),
+      prisma.label.count({ where: { AND: [baseWhere, IN_PROGRESS_WHERE] } }),
     ]);
 
     res.json({
       labels,
+      completionCounts: { done: doneCount, in_progress: inProgressCount },
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),

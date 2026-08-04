@@ -56,6 +56,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // 검토 완성도 구분: '' 전체 / 'in_progress' 진행 중 / 'done' 100% 완료
+  const [completion, setCompletion] = useState('');
+  const [completionCounts, setCompletionCounts] = useState({ done: 0, in_progress: 0 });
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
 
   const fetchLabels = async (page = 1) => {
@@ -65,9 +68,11 @@ export default function DashboardPage() {
         page,
         search: search || undefined,
         status: statusFilter || undefined,
+        completion: completion || undefined,
       });
       setLabels(data.labels);
       setPagination(data.pagination);
+      if (data.completionCounts) setCompletionCounts(data.completionCounts);
     } catch (error) {
       console.error('Failed to fetch labels:', error);
     } finally {
@@ -78,7 +83,7 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, completion]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,6 +135,40 @@ export default function DashboardPage() {
           <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--success-fg)]">승인</div>
           <div className="mt-1 text-[22px] font-semibold tabular text-[var(--text-1)]">{approvedCount}</div>
         </Card>
+      </div>
+
+      {/* 검토 완성도 구분 — 100% 완료된 것과 진행 중인 것을 나눠 본다 */}
+      <div className="mb-3 inline-flex rounded-md border border-[var(--border-1)] overflow-hidden">
+        {([
+          ['', '전체', pagination.total],
+          ['in_progress', '진행 중', completionCounts.in_progress],
+          ['done', '완료 (100%)', completionCounts.done],
+        ] as const).map(([key, label, count]) => (
+          <button
+            key={key || 'all'}
+            type="button"
+            onClick={() => setCompletion(key)}
+            aria-pressed={completion === key}
+            className={
+              'px-3.5 py-1.5 min-h-[36px] text-[12.5px] transition-colors border-l first:border-l-0 border-[var(--border-1)] ' +
+              (completion === key
+                ? 'bg-[var(--brand-500)] text-white'
+                : 'text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)]')
+            }
+          >
+            {label}
+            {key !== '' && (
+              <span
+                className={
+                  'ml-1.5 tabular ' +
+                  (completion === key ? 'text-white/80' : 'text-[var(--text-4)]')
+                }
+              >
+                {count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* 검색·필터 */}
