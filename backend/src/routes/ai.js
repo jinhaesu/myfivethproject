@@ -434,7 +434,7 @@ router.post('/generate-label', authenticate, async (req, res) => {
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const text = response.content[0].text;
+    const text = extractTextBlock(response);
     const result = safeParseJson(text);
     if (!result) {
       console.error(`[generate-label] JSON parse failed. Raw (처음 500자):`, text.substring(0, 500));
@@ -479,7 +479,7 @@ router.post('/check-compliance', authenticate, async (req, res) => {
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const text = response.content[0].text;
+    const text = extractTextBlock(response);
     const result = safeParseJson(text);
     if (!result) {
       console.error(`[check-compliance] JSON parse failed. Raw (처음 500자):`, text.substring(0, 500));
@@ -675,7 +675,7 @@ ${linkDescriptions}
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const text = response.content[0].text;
+    const text = extractTextBlock(response);
     const result = safeParseJson(text);
     if (!result) {
       console.error(`[extract-from-links] JSON parse failed. Raw (처음 500자):`, text.substring(0, 500));
@@ -1091,7 +1091,7 @@ async function callExtraction(client, systemPrompt, contentBlocks, label, instru
 
   const response = await client.messages.create({
     model: REVIEW_MODEL,
-    max_tokens: 8192,
+    max_tokens: 16000, // Fable 5는 thinking이 항상 켜져 출력 예산을 소모 → JSON 잘림 방지 위해 상향
     system: systemPrompt,
     messages: [
       {
@@ -1103,7 +1103,7 @@ async function callExtraction(client, systemPrompt, contentBlocks, label, instru
       },
     ],
   });
-  const text = response.content[0].text;
+  const text = extractTextBlock(response);
   const result = safeParseJson(text);
   if (!result) {
     console.error(`[AI] JSON 파싱 실패. Raw response (처음 1000자):`, text.substring(0, 1000));
@@ -1226,13 +1226,13 @@ ${JSON.stringify(designExtraction, null, 2)}
 
     const compareResponse = await client.messages.create({
       model: REVIEW_MODEL,
-      max_tokens: 8192,
+      max_tokens: 16000, // Fable 5 thinking 예산 확보
       system: COMPARE_PROMPT,
       messages: [
         { role: 'user', content: compareUserMessage + '\n\n★ 응답 형식: 순수 JSON만 ({ 로 시작 } 로 끝). 마크다운 코드블록(```) 금지. 설명 텍스트 금지. JSON 문자열 안의 큰따옴표(")는 단일 따옴표(\') 또는 「」로 대체.' },
       ],
     });
-    const compareText = compareResponse.content[0].text;
+    const compareText = extractTextBlock(compareResponse);
     const compareResult = safeParseJson(compareText);
     if (!compareResult) {
       console.error(`[AI Review Multi-pass] Compare JSON parse failed. Raw (처음 1000자):`, compareText.substring(0, 1000));
@@ -1362,7 +1362,7 @@ detectedCompanies 필드에 발견된 모든 회사명을 나열하세요.`;
     });
     console.log(`[AI Review] Anthropic responded in ${Date.now() - t0}ms`);
 
-    const text = response.content[0].text;
+    const text = extractTextBlock(response);
     const result = safeParseJson(text);
     if (!result) {
       console.error(`[AI Review legacy] JSON parse failed. Raw (처음 1000자):`, text.substring(0, 1000));
