@@ -14,9 +14,11 @@ import { userLabel } from '@/lib/user';
 
 interface AiDesignReviewItem {
   field: string;
+  basis?: 'report' | 'mfds';
   reportValue: string | null;
   designValue: string | null;
-  status: 'match' | 'minor' | 'mismatch' | 'needs_review' | 'not_found_in_design' | 'not_found_in_report';
+  status: string; // report: match|minor|mismatch|needs_review|not_found_in_design|not_found_in_report / mfds: mfds_ok|mfds_review|mfds_violation|info
+  legalBasis?: string | null;
   comment: string;
 }
 
@@ -25,15 +27,51 @@ interface DetectedCompany {
   role?: string;
 }
 
+interface AiDesignReviewProduct {
+  productName: string;
+  matchedToReport?: boolean;
+  matchBasis?: string;
+  status?: 'ok' | 'needs_review' | 'critical';
+  detectedCompanies?: Array<DetectedCompany | string>;
+  items: AiDesignReviewItem[];
+}
+
 interface AiDesignReview {
   summary: string;
   overallStatus: 'ok' | 'needs_review' | 'critical';
+  reportProductName?: string;
   detectedCompanies?: Array<DetectedCompany | string>;
   reporterInfoExcluded?: string;
-  items: AiDesignReviewItem[];
+  products?: AiDesignReviewProduct[]; // 신규: 제품별 검수 (여러 식품)
+  items?: AiDesignReviewItem[]; // 구버전 호환: 단일 제품 평면 목록
   criticalIssues: string[];
   recommendations: string[];
 }
+
+const REVIEW_STATUS_STYLE: Record<string, string> = {
+  match: 'bg-green-100 text-green-700',
+  minor: 'bg-blue-100 text-blue-700',
+  mismatch: 'bg-red-100 text-red-700',
+  needs_review: 'bg-purple-100 text-purple-700',
+  not_found_in_design: 'bg-orange-100 text-orange-700',
+  not_found_in_report: 'bg-orange-100 text-orange-700',
+  mfds_ok: 'bg-green-100 text-green-700',
+  mfds_review: 'bg-purple-100 text-purple-700',
+  mfds_violation: 'bg-red-100 text-red-700',
+  info: 'bg-gray-100 text-gray-700',
+};
+const REVIEW_STATUS_LABEL: Record<string, string> = {
+  match: '일치',
+  minor: '경미한 차이',
+  mismatch: '불일치',
+  needs_review: '재확인 필요',
+  not_found_in_design: '디자인 누락',
+  not_found_in_report: '보고서 누락',
+  mfds_ok: '식약처 기준 충족',
+  mfds_review: '식약처 확인 권장',
+  mfds_violation: '식약처 기준 위반',
+  info: '참고',
+};
 
 interface Label {
   id: string;
@@ -1136,54 +1174,110 @@ export default function LabelDetailPage({ params }: { params: { id: string } }) 
                     )}
                   </div>
 
-                  {/* 주요 데이터 비교 테이블 */}
-                  {label.aiDesignReview.items && label.aiDesignReview.items.length > 0 && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm border border-gray-200 rounded-lg">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">항목</th>
-                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">품목제조보고서</th>
-                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">디자인 작업물</th>
-                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">상태</th>
-                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">의견</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {label.aiDesignReview.items.map((item, i) => {
-                            const statusStyle: Record<string, string> = {
-                              match: 'bg-green-100 text-green-700',
-                              minor: 'bg-blue-100 text-blue-700',
-                              mismatch: 'bg-red-100 text-red-700',
-                              needs_review: 'bg-purple-100 text-purple-700',
-                              not_found_in_design: 'bg-orange-100 text-orange-700',
-                              not_found_in_report: 'bg-orange-100 text-orange-700',
-                            };
-                            const statusLabel: Record<string, string> = {
-                              match: '일치',
-                              minor: '경미한 차이',
-                              mismatch: '불일치',
-                              needs_review: '재확인 필요',
-                              not_found_in_design: '디자인 누락',
-                              not_found_in_report: '보고서 누락',
-                            };
-                            return (
+                  {/* 제품별 검수 (신규: 여러 식품 + 품제보 대조 / 식약처 기준 검토) */}
+                  {label.aiDesignReview.products && label.aiDesignReview.products.length > 0 ? (
+                    <div className="space-y-4">
+                      {label.aiDesignReview.reportProductName && (
+                        <p className="text-xs text-gray-500">
+                          품목제조보고서 제품:{' '}
+                          <span className="font-semibold text-gray-700">{label.aiDesignReview.reportProductName}</span>
+                          {label.aiDesignReview.products.length > 1 && (
+                            <span className="ml-2 text-gray-400">· 디자인 검출 제품 {label.aiDesignReview.products.length}종</span>
+                          )}
+                        </p>
+                      )}
+                      {label.aiDesignReview.products.map((prod, pi) => (
+                        <div key={pi} className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 border-b">
+                            <span className="font-bold text-sm text-gray-800">{prod.productName || `제품 ${pi + 1}`}</span>
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${prod.matchedToReport ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800'}`}>
+                              {prod.matchedToReport ? '품제보 매칭' : '품제보 없음 · 식약처 기준 검토'}
+                            </span>
+                            {prod.status && (
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                prod.status === 'critical' ? 'bg-red-600 text-white' :
+                                prod.status === 'needs_review' ? 'bg-yellow-600 text-white' :
+                                'bg-green-600 text-white'
+                              }`}>
+                                {prod.status === 'critical' ? '수정 필요' : prod.status === 'needs_review' ? '검토 권장' : '양호'}
+                              </span>
+                            )}
+                            {prod.matchBasis && <span className="text-xs text-gray-500">{prod.matchBasis}</span>}
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-white">
+                                <tr>
+                                  <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">항목</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">근거</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">품목제조보고서</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">디자인</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">상태</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">의견</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {prod.items?.map((item, i) => (
+                                  <tr key={i} className="border-b last:border-b-0">
+                                    <td className="px-3 py-2 font-medium text-gray-800 align-top text-xs">{item.field}</td>
+                                    <td className="px-3 py-2 align-top">
+                                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${item.basis === 'mfds' ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-700'}`}>
+                                        {item.basis === 'mfds' ? '식약처' : '품제보'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.reportValue || '-'}</td>
+                                    <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.designValue || '-'}</td>
+                                    <td className="px-3 py-2 align-top">
+                                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${REVIEW_STATUS_STYLE[item.status] || 'bg-gray-100 text-gray-700'}`}>
+                                        {REVIEW_STATUS_LABEL[item.status] || item.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600 align-top text-xs">
+                                      {item.comment}
+                                      {item.legalBasis && (
+                                        <span className="block mt-0.5 text-[10px] text-teal-700">근거: {item.legalBasis}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* 구버전 호환: 단일 제품 평면 테이블 */
+                    label.aiDesignReview.items && label.aiDesignReview.items.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border border-gray-200 rounded-lg">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">항목</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">품목제조보고서</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">디자인 작업물</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">상태</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 border-b">의견</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {label.aiDesignReview.items.map((item, i) => (
                               <tr key={i} className="border-b last:border-b-0">
                                 <td className="px-3 py-2 font-medium text-gray-800 align-top">{item.field}</td>
                                 <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.reportValue || '-'}</td>
                                 <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.designValue || '-'}</td>
                                 <td className="px-3 py-2 align-top">
-                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${statusStyle[item.status] || 'bg-gray-100 text-gray-700'}`}>
-                                    {statusLabel[item.status] || item.status}
+                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${REVIEW_STATUS_STYLE[item.status] || 'bg-gray-100 text-gray-700'}`}>
+                                    {REVIEW_STATUS_LABEL[item.status] || item.status}
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 text-gray-600 align-top text-xs">{item.comment}</td>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
                   )}
 
                   {/* 핵심 수정 사항 */}
