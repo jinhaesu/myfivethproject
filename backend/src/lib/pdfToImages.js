@@ -86,7 +86,11 @@ async function pdfToImages(buffer, opts = {}) {
     cMapPacked: true,
     StandardFontDataFactory: NodeStandardFontDataFactory,
     useSystemFonts: false,
-    disableFontFace: false, // 폰트 렌더링 활성화 (디자인 PDF의 벡터 텍스트 표시)
+    // ★ Node(@napi-rs/canvas) 환경에선 반드시 true. glyph를 vector path로 직접 렌더한다.
+    // false면 폰트페이스 로딩 경로로 가는데 CIDFontType0(CFF CID, Identity-H) 임베드 한글 폰트
+    // (SDGothicNeo/NanumSquareNeo 등)를 못 그려서 한글이 전부 .notdef □(두부박스)로 깨진다.
+    // 라벨 디자인 표시사항이 대부분 이 방식이라, 한글 판독 실패의 근본 원인이었다.
+    disableFontFace: true,
   }).promise;
 
   const pageCount = Math.min(doc.numPages, maxPages);
