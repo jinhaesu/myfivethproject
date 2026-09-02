@@ -775,88 +775,142 @@ const DESIGN_EXTRACT_PROMPT = `당신은 한국 식품 라벨 디자인 시안 �
 
 각 회사별로 명칭/주소/번호 등을 분리하여 추출하세요.
 
+[★★ 중요: 하나의 디자인에 여러 식품(제품)이 있을 수 있음 ★★]
+하나의 디자인 파일에 서로 다른 여러 식품의 라벨/표시사항이 함께 담길 수 있습니다
+(예: 세트 구성, 멀티팩, 여러 SKU 시안, 한 장에 여러 제품 표시면).
+  - 서로 다른 "제품명 + 식품유형 + 원재료명" 조합이면 각각 별개의 제품으로 분리하여 products[]에 담으세요.
+  - 표시면이 하나이고 단일 제품이면 products에 1개만 담으세요.
+  - 각 제품마다, 그 제품에 해당하는 회사(제조원/판매원 등)와 표시정보를 그 제품 항목 안에 묶어서 추출하세요.
+  - 여러 제품이 공통 정보(예: 동일 제조원)를 공유하면 각 제품에 동일하게 반복 기재하세요.
+
 각 항목은 디자인에 보이는 텍스트를 한 글자도 빼지 말고 그대로 옮기세요.
 숫자는 한 자리씩 정확히. 자신 없거나 작은 글자라 흐릿하면 값 끝에 " [저신뢰도]" 표시.
 정보가 명확히 보이지 않으면 null로.
 
 순수 JSON으로만 응답:
 {
-  "companies": [
+  "products": [
     {
-      "role": "제조원" | "판매원" | "유통원" | "위탁자" | "콜라보" | "기타",
-      "companyName": "회사명",
-      "address": "회사 주소 (있으면)",
-      "businessRegistrationNumber": "사업자등록번호 또는 영업등록번호 (있으면)",
-      "manufacturingReportNumber": "품목제조보고번호 (있으면, 자릿수 정확히)"
+      "productName": "제품명 (디자인에 적힌 그대로 - 한글)",
+      "productNameEn": "영문 제품명 (있으면)",
+      "productType": "식품유형 (있으면)",
+      "companies": [
+        {
+          "role": "제조원" | "판매원" | "유통원" | "위탁자" | "콜라보" | "기타",
+          "companyName": "회사명",
+          "address": "회사 주소 (있으면)",
+          "businessRegistrationNumber": "사업자등록번호 또는 영업등록번호 (있으면)",
+          "manufacturingReportNumber": "품목제조보고번호 (있으면, 자릿수 정확히)"
+        }
+      ],
+      "netWeight": "내용량/중량 (예: 50g, 200ml)",
+      "shelfLife": "소비기한 표기 형식",
+      "storageMethod": "보관방법",
+      "packagingMaterial": "포장재질 (용기·포장 재질)",
+      "ingredients": ["원재료명 표기 (디자인에 적힌 순서대로)"],
+      "allergens": "알레르기 유발물질 표기 (해당 문구 포함)",
+      "nutritionFacts": "영양성분표 요약 (있으면)",
+      "reportNumberOnLabel": "라벨에 표기된 품목보고번호 (있으면)",
+      "unfitFoodReportNotice": "부정·불량식품 신고 안내 문구(국번없이 1399 등) 표기 여부/문구",
+      "otherMandatoryNotices": "기타 의무·주의 표시 요약(직사광선 회피·개봉후 보관·교환환불·분리배출 등)",
+      "barcode": "바코드 번호 (읽을 수 있으면)"
     }
   ],
-  "product": {
-    "productName": "제품명 (디자인에 적힌 그대로 - 한글)",
-    "productNameEn": "영문 제품명 (있으면)",
-    "productType": "식품유형 (있으면)",
-    "netWeight": "내용량/중량 (예: 50g, 200ml)",
-    "shelfLife": "소비기한 표기 형식",
-    "storageMethod": "보관방법",
-    "packagingMaterial": "포장재질",
-    "ingredients": ["원재료명 표기 (디자인에 적힌 순서대로)"],
-    "allergens": "알레르기 유발물질 표기",
-    "nutritionFacts": "영양성분표 요약 (있으면)",
-    "barcode": "바코드 번호 (읽을 수 있으면)"
-  },
   "extractionConfidence": "high | medium | low",
-  "extractionNotes": "추출 시 어려웠던 부분이나 주의사항 (한국어 1-2문장)"
+  "extractionNotes": "추출 시 어려웠던 부분이나 주의사항 (한국어 1-2문장). 검출된 제품 수도 명시."
 }`;
 
 const COMPARE_PROMPT = `당신은 한국 식품 라벨 검수 전문가입니다.
-이미 추출된 두 JSON 데이터를 받아서 비교 검토합니다 (PDF 분석 없음, 텍스트 비교만).
+이미 추출된 두 JSON을 받아 비교·검토합니다 (원본 PDF 없음. 텍스트 대조 + 식약처 기준 검토).
 
-[비교 규칙]
-- 검수 대상 회사: "(주)조인앤조인" (= 디자인의 "제조원" 역할 회사)
-- 디자인의 companies[] 중 role="제조원"이면서 회사명이 "(주)조인앤조인" 또는 "조인앤조인"인 항목을 찾아 사용
-- 보고서의 reporter 섹션은 비교에서 제외 (보고인 개인 정보)
-- 보고서의 businessEstablishment 섹션을 디자인의 제조원 회사와 매칭
+[입력 구조]
+- report: 품목제조보고서에서 추출한 단일 제품 정보 (reporter / businessEstablishment / product)
+- design.products[]: 디자인 라벨에서 추출한 제품 배열 (하나의 디자인에 여러 식품이 있을 수 있음)
 
-[항목별 매칭]
-- 제조사 명칭: report.businessEstablishment.companyName  vs  design.companies[role=제조원].companyName
-- 제조사 소재지: report.businessEstablishment.address  vs  design.companies[role=제조원].address
-- 영업등록번호: report.businessEstablishment.businessRegistrationNumber  vs  design.companies[role=제조원].businessRegistrationNumber
-- 품목제조보고번호: report.product.manufacturingReportNumber  vs  design.companies[role=제조원].manufacturingReportNumber
-- 제품명: report.product.productName  vs  design.product.productName
-- 식품유형: report.product.productType  vs  design.product.productType
-- 중량/내용량: report.product.packagingUnit  vs  design.product.netWeight
-- 보관방법: report.product.storageMethod  vs  design.product.storageMethod
-- 포장재질: report.product.packagingMaterial  vs  design.product.packagingMaterial
-- 소비기한: report.product.shelfLife  vs  design.product.shelfLife
-- 원재료명: report.product.ingredients  vs  design.product.ingredients (순서까지)
-- 알레르기: report.product.allergens  vs  design.product.allergens
+═══════════════════════════════════════
+[1단계 — 제품 매칭] design.products[]의 각 제품을 report.product와 매칭
+═══════════════════════════════════════
+- 매칭 근거 우선순위: ① 품목제조보고번호 일치 > ② 제품명 일치(띄어쓰기·괄호·영문병기 차이는 무시) > ③ 식품유형 + 주원재료 유사
+- 매칭되면 matchedToReport=true, matchBasis에 근거 기재 (예: "제품명 일치")
+- report와 매칭되는 제품이 없으면 matchedToReport=false ("품제보에 없는 디자인 전용 제품")
+- report는 단일 제품이므로, 매칭은 보통 design.products[] 중 하나에만 성립합니다.
 
-[판정]
-- match: 한 글자/숫자도 다르지 않음
-- minor: 띄어쓰기/괄호/단위/대소문자 차이 (의미 동일)
-- mismatch: 한 글자라도 다름 (반드시 수정 필요)
-- needs_review: 어느 한쪽 값이 [저신뢰도]거나 null이라 비교 불가
-- not_found_in_design: 디자인의 제조원 정보 자체가 없음
-- not_found_in_report: 보고서에 해당 항목 없음
+═══════════════════════════════════════
+[2단계 — 매칭 제품: 품제보 대조] basis="report"
+═══════════════════════════════════════
+검수 대상 회사 = 제조원(주로 "(주)조인앤조인"). design.products[].companies[] 중 role="제조원" 항목을 사용.
+- report.reporter(보고인 개인정보)는 비교에서 제외. report.businessEstablishment(영업소)만 제조원과 대조.
+- 대조 항목과 매핑:
+  · 제조사 명칭   : report.businessEstablishment.companyName            vs  design product의 제조원 companyName
+  · 제조사 소재지 : report.businessEstablishment.address                vs  제조원 address
+  · 영업등록번호   : report.businessEstablishment.businessRegistrationNumber vs 제조원 businessRegistrationNumber
+  · 품목제조보고번호: report.product.manufacturingReportNumber          vs  제조원 manufacturingReportNumber(또는 reportNumberOnLabel)
+  · 제품명        : report.product.productName    vs design productName
+  · 식품유형      : report.product.productType    vs design productType
+  · 내용량/중량   : report.product.packagingUnit  vs design netWeight
+  · 보관방법      : report.product.storageMethod  vs design storageMethod
+  · 포장재질      : report.product.packagingMaterial vs design packagingMaterial
+  · 소비기한      : report.product.shelfLife      vs design shelfLife
+  · 원재료명      : report.product.ingredients    vs design ingredients (표기 순서까지)
+  · 알레르기      : report.product.allergens      vs design allergens
+- status(품제보 대조): match | minor | mismatch | needs_review | not_found_in_design | not_found_in_report
+  · match: 한 글자/숫자도 다르지 않음
+  · minor: 띄어쓰기/괄호/단위/대소문자만 다름(의미 동일)
+  · mismatch: 한 글자라도 다름(반드시 수정)
+  · needs_review: 한쪽이 [저신뢰도]/null이라 비교 불가
+- 숫자·번호는 자릿수까지 한 자리씩. 예: '2024047901224'(13자리) vs '20240470901224'(14자리)=mismatch. 애매하면 needs_review(mismatch 단정 금지).
 
-특히 숫자/번호는 자릿수까지 한 자리씩 비교. 예: '2024047901224'(13자리) vs '20240470901224'(14자리) = mismatch
+═══════════════════════════════════════
+[3단계 — 품제보에 없는 디자인 전용 정보: 식약처 기준 검토] basis="mfds"
+═══════════════════════════════════════
+report에 대응값이 없는 디자인 표기, 그리고 매칭되지 않은 제품(matchedToReport=false)의 모든 항목은
+「식품등의 표시·광고에 관한 법률」 및 「식품등의 표시기준」(식약처 고시) 기준으로 검토하고 의견을 남깁니다.
+일반 가공식품 의무표시 체크리스트(해당 항목만):
+  ① 제품명 ② 식품유형 ③ 영업소 명칭·소재지 ④ 소비기한(또는 품질유지기한) ⑤ 내용량(및 해당 시 열량)
+  ⑥ 원재료명 ⑦ 성분명·함량(해당 시) ⑧ 영양성분(해당 식품) ⑨ 용기·포장 재질 ⑩ 품목보고번호
+  ⑪ 알레르기 유발물질 표시 ⑫ 부정·불량식품 신고 안내(국번없이 1399) ⑬ 보관방법(해당 시)
+  ⑭ 조사처리·유전자변형(GMO) 표시(해당 시) ⑮ 분리배출 표시
+- status(식약처 검토): mfds_ok | mfds_review | mfds_violation | info
+  · mfds_ok: 표기 존재·형식 적합(기준 충족)
+  · mfds_review: 표기는 있으나 형식/문구 확인 권장
+  · mfds_violation: 의무표시 누락 또는 기준 위반 소지(수정 필요)
+  · info: 법적 의무는 아니나 개선 권장(참고)
+- 각 mfds 항목은 legalBasis에 근거를 간단히(예: "식품등의 표시기준 II. 개별표시사항"), comment에 구체 의견.
 
-순수 JSON으로만 응답:
+[배합비율 주의] 품제보의 배합비율(%)은 영업비밀 — 원재료명만 비교하고 비율 수치는 응답에 절대 포함 금지.
+
+[제품별/전체 판정]
+- 제품 status: 항목 중 mismatch 또는 mfds_violation이 있으면 "critical", needs_review/mfds_review만 있으면 "needs_review", 그 외 "ok"
+- overallStatus: 제품들 중 가장 심각한 상태
+
+순수 JSON으로만 응답 (마크다운/설명 금지. 문자열 안 큰따옴표는 ' 또는 「」로 대체):
 {
-  "summary": "전체 검토 한 줄 요약",
+  "summary": "전체 한 줄 요약(검출 제품 수 + 품제보 매칭 결과 포함)",
   "overallStatus": "ok" | "needs_review" | "critical",
-  "detectedCompanies": [{"name": "...", "role": "..."}],
-  "reporterInfoExcluded": "보고인 개인 정보 제외 사실 한 문장",
-  "items": [
+  "reportProductName": "품제보 제품명",
+  "reporterInfoExcluded": "보고인(개인) 정보를 비교에서 제외했음을 한 문장으로 확인",
+  "products": [
     {
-      "field": "제조사 소재지 (영업소)",
-      "reportValue": "보고서 값",
-      "designValue": "디자인 제조원 값. 다른 회사 정보 함께 표기 가능: '[제조원 ○○: A] (참고: 판매원 ○○: B)'",
-      "status": "match" | "minor" | "mismatch" | "needs_review" | "not_found_in_design" | "not_found_in_report",
-      "comment": "한국어 1-2문장. mismatch면 정확히 어디가 다른지"
+      "productName": "디자인 제품명",
+      "matchedToReport": true,
+      "matchBasis": "매칭 근거 또는 '품제보에 없음'",
+      "status": "ok" | "needs_review" | "critical",
+      "detectedCompanies": [{"name": "...", "role": "제조원|판매원|..."}],
+      "items": [
+        {
+          "field": "항목명 (예: 제조사 소재지 / 부정불량식품 신고표시)",
+          "basis": "report" | "mfds",
+          "reportValue": "보고서 값 (basis=mfds면 null)",
+          "designValue": "디자인 값 (없으면 '표기 없음'). 다른 회사 참고표기 가능: '[제조원 ○○: A] (참고: 판매원 ○○: B)'",
+          "status": "match|minor|mismatch|needs_review|not_found_in_design|not_found_in_report|mfds_ok|mfds_review|mfds_violation|info",
+          "legalBasis": "basis=mfds일 때 근거 법령/고시 (아니면 null)",
+          "comment": "한국어 1-2문장. mismatch면 정확히 어디가 다른지 / mfds면 기준 대비 의견"
+        }
+      ]
     }
   ],
-  "criticalIssues": ["반드시 수정 필요"],
-  "recommendations": ["권장 개선"]
+  "criticalIssues": ["반드시 수정 필요 (형식: '제품명 - 내용')"],
+  "recommendations": ["권장 개선 (형식: '제품명 - 내용')"]
 }`;
 
 // ─── (Legacy 호환용) 단일 호출 비교 검토 ───
