@@ -12,6 +12,7 @@ const launchRoutes = require('./routes/launches');
 const salesRoutes = require('./routes/sales');
 const changeLogRoutes = require('./routes/changelog');
 const adminRoutes = require('./routes/admin');
+const deliberationRoutes = require('./routes/deliberations');
 const { startLaunchScheduler } = require('./lib/launchScheduler');
 
 const app = express();
@@ -71,6 +72,7 @@ app.use('/api/launches', launchRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/changelog', changeLogRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/deliberations', deliberationRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

@@ -8,7 +8,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 // 이 라우트로 조회를 허용하는 엔티티 (임의 테이블 이력 열람 방지)
-const ALLOWED = new Set(['launch', 'discontinuation', 'review', 'reviewItem', 'launchTask', 'launchStage', 'client', 'plan', 'user']);
+const ALLOWED = new Set(['launch', 'discontinuation', 'review', 'reviewItem', 'launchTask', 'launchStage', 'client', 'plan', 'user', 'deliberation']);
 
 router.get('/:entityType/:entityId', authenticate, async (req, res) => {
   try {
@@ -96,6 +96,7 @@ const TYPE_META = {
   launchStage: { label: '출시 단계', group: 'launch' },
   launchTask: { label: '체크리스트', group: 'launch' },
   review: { label: '표기사항 검수', group: 'review' },
+  deliberation: { label: '원료 심의', group: 'review' },
   user: { label: '직원 정보', group: 'admin' },
 };
 
@@ -108,7 +109,7 @@ async function resolveTargets(logs) {
     target[`${type}:${id}`] = { name, url };
   };
 
-  const [journals, clients, plans, projects, stages, tasks, items, users] = await Promise.all([
+  const [journals, clients, plans, projects, stages, tasks, items, users, delibs] = await Promise.all([
     idsOf('journal').length
       ? prisma.salesJournal.findMany({
           where: { id: { in: idsOf('journal') } },
@@ -148,6 +149,12 @@ async function resolveTargets(logs) {
     idsOf('user').length
       ? prisma.user.findMany({ where: { id: { in: idsOf('user') } }, select: { id: true, name: true, email: true } })
       : [],
+    idsOf('deliberation').length
+      ? prisma.deliberation.findMany({
+          where: { id: { in: idsOf('deliberation') } },
+          select: { id: true, productName: true, ingredientName: true },
+        })
+      : [],
   ]);
 
   journals.forEach((j) => put('journal', j.id, j.title || `${j.client?.name || '거래처'} 영업일지`, `/sales/${j.id}`));
@@ -162,6 +169,7 @@ async function resolveTargets(logs) {
     put('launchTask', t.id, `${t.stage?.project?.productName || ''} · ${t.name}`.trim(), `/launches/${t.stage?.projectId || ''}`),
   );
   users.forEach((u) => put('user', u.id, u.name ? `${u.name} (${u.email})` : u.email, '/admin'));
+  delibs.forEach((d) => put('deliberation', d.id, `${d.productName} · ${d.ingredientName}`, `/deliberations/${d.id}`));
   items.forEach((i) =>
     put('review', i.id, `${i.category?.label?.productName || ''} · ${i.taskName}`.trim(), `/labels/${i.category?.labelId || ''}`),
   );
