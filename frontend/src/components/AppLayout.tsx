@@ -80,27 +80,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <nav className="sticky top-0 z-30 bg-[var(--bg-nav)] backdrop-blur-md border-b border-[var(--border-1)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-12 items-center gap-2">
-            <div className="flex items-center gap-7 min-w-0">
-              <Link href="/dashboard" className="flex items-center gap-2 group min-w-0">
+            <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+              <Link href="/dashboard" className="flex items-center gap-2 group min-w-0 flex-shrink-0">
                 <span className="inline-block w-1.5 h-5 rounded-sm bg-[var(--brand-500)] group-hover:bg-[var(--brand-400)] transition-colors flex-shrink-0" />
-                {/* 모바일에서는 축약 제목 — 긴 제목이 헤더를 밀어내지 않도록 */}
-                <span className="sm:hidden text-[13px] font-semibold tracking-tight text-[var(--text-1)] truncate">
+                {/* 인라인 네비가 lg부터 나오므로, 제목은 xl 전까지 축약형을 써서 자리를 양보한다 */}
+                <span className="xl:hidden text-[13px] font-semibold tracking-tight text-[var(--text-1)] truncate">
                   출시·검수 시스템
                 </span>
-                <span className="hidden sm:inline text-[13px] font-semibold tracking-tight text-[var(--text-1)] truncate">
+                <span className="hidden xl:inline text-[13px] font-semibold tracking-tight text-[var(--text-1)] truncate">
                   제품 출시 관리 및 표기사항 검수 시스템
                 </span>
-                <span className="hidden lg:inline text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)] ml-1 flex-shrink-0">
+                <span className="hidden 2xl:inline text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)] ml-1 flex-shrink-0">
                   Launch &amp; Compliance Console
                 </span>
               </Link>
-              <div className="hidden sm:flex gap-1">
+              {/* 항목이 많아 좁은 화면에선 잘리므로 lg부터 노출하고, 넘치면 가로 스크롤 */}
+              <div className="hidden lg:flex gap-0.5 min-w-0 overflow-x-auto touch-scroll-x">
                 {NAV.map((n) => (
                   <Link
                     key={n.href}
                     href={n.href}
                     className={cn(
-                      'px-2.5 py-1.5 rounded-md text-[12.5px] transition-colors',
+                      'px-2 py-1.5 rounded-md text-[12.5px] whitespace-nowrap flex-shrink-0 transition-colors',
                       isActive(n)
                         ? 'text-[var(--text-1)] bg-[var(--bg-2)]'
                         : 'text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)]',
@@ -112,15 +113,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-              {/* 헤더는 폭이 좁아 축약 표기, 전체는 툴팁으로 */}
-              <span className="hidden sm:inline text-[12px] text-[var(--text-3)]" title={userLabel(user)}>
+              {/* 헤더는 폭이 좁아 축약 표기, 전체는 툴팁으로 (인라인 네비와 같은 lg 기준) */}
+              <span className="hidden lg:inline text-[12px] text-[var(--text-3)]" title={userLabel(user)}>
                 {userShort(user)}
                 {user.department ? (
                   <span className="text-[var(--text-4)] ml-1.5">/ {user.department}</span>
                 ) : null}
               </span>
               <ThemeToggle />
-              <div className="hidden sm:block">
+              <div className="hidden lg:block">
                 <Button
                   variant="ghost"
                   size="xs"
@@ -132,14 +133,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   로그아웃
                 </Button>
               </div>
-              {/* 모바일 전용 햄버거 */}
+              {/* lg 미만: 햄버거 메뉴 사용 */}
               <button
                 type="button"
                 aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
                 aria-expanded={menuOpen}
                 aria-controls="mobile-nav"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="sm:hidden inline-flex items-center justify-center w-10 h-10 -mr-2 rounded-md text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] transition-colors ring-focus"
+                className="lg:hidden inline-flex items-center justify-center w-10 h-10 -mr-2 rounded-md text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-[var(--bg-2)] transition-colors ring-focus"
               >
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   {menuOpen ? (
@@ -166,7 +167,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* 모바일 메뉴 — 배경 클릭/ESC로 닫힘 */}
       {menuOpen ? (
-        <div className="sm:hidden fixed inset-0 z-40">
+        <div className="lg:hidden fixed inset-0 z-40">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
             onClick={() => setMenuOpen(false)}
