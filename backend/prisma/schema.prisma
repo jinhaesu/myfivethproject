@@ -24,6 +24,7 @@ model User {
   salesClients      SalesClient[]
   salesJournals     SalesJournal[]
   salesPlans        SalesPlan[]
+  deliberations     Deliberation[]
 }
 
 // 메일 CTA용 1회용 자동 로그인 토큰 (매직 링크)
@@ -86,6 +87,7 @@ model Label {
   nutritionInfo    NutritionInfo?
   ingredients      Ingredient[]
   reviewCategories ReviewCategory[]
+  deliberations    Deliberation[]
 }
 
 model NutritionInfo {
@@ -499,4 +501,57 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ── 고시형 원료 심의 취득 관리 ───────────────────────────────
+// 난소화성말토덱스트린 등 고시형(=식약처 고시) 기능성 원료의 표시·광고/영양기준
+// 심의를 제품별로 제안일정·결과일정·상태로 관리하고, 부서간 확인을 남긴다.
+model Deliberation {
+  id              String    @id @default(uuid())
+  // 대상 제품 — 등록된 Label에 연결(선택). 미등록 건은 productName 자유입력으로만 남긴다.
+  label           Label?    @relation(fields: [labelId], references: [id], onDelete: SetNull)
+  labelId         String?
+  productName     String // 대상 제품명 (label 연결 여부와 무관하게 비정규화 보관)
+  ingredientName  String // 고시형 원료명 (예: 난소화성말토덱스트린)
+  functionalClaim String? // 기능성 내용 (예: 식후 혈당상승 억제·배변활동 원활)
+  // 심의 종류
+  category        String // nutrition(영양기준) | advertising(광고)
+  adChannel       String? // category=advertising일 때: detail_page(상세페이지) | homeshopping(홈쇼핑) | tv_cf | sns | print | etc
+  reviewBody      String? // 심의기관 (예: 한국건강기능식품협회)
+  title           String? // 심의 건 제목/식별용 메모
+  // 일정
+  proposalDate    DateTime? // 심의 제안(접수) 예정/실시일
+  resultDate      DateTime? // 결과(승인·반려) 예정/확정일
+  // 상태
+  status          String    @default("planned") // planned(제안예정) | submitted(제안완료) | in_review(심의중) | approved(승인) | rejected(반려) | on_hold(보류)
+  resultNote      String? // 결과 코멘트 (반려 사유 등)
+  referenceUrl    String? // 관련 자료 링크 (상세페이지 URL 등)
+  memo            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById String
+
+  confirmations DeliberationConfirmation[]
+
+  @@index([status])
+  @@index([proposalDate])
+  @@index([resultDate])
+}
+
+// 부서간 확인 — 각 부서가 이 심의 건을 확인(승인)했는지 남긴다.
+model DeliberationConfirmation {
+  id          String    @id @default(uuid())
+  department  String // 개발, RA/인허가, 마케팅, 영업, 품질 등
+  confirmed   Boolean   @default(false)
+  confirmedBy String? // 확인자 이름
+  confirmedAt DateTime?
+  note        String?
+  sortOrder   Int       @default(0)
+
+  deliberation   Deliberation @relation(fields: [deliberationId], references: [id], onDelete: Cascade)
+  deliberationId String
+
+  @@index([deliberationId])
 }

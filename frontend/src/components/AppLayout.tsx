@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn';
 const NAV = [
   { href: '/dashboard', label: '대시보드', match: (p: string) => p === '/dashboard' },
   { href: '/labels', label: '표기사항', match: (p: string) => p.startsWith('/labels') },
+  { href: '/deliberations', label: '원료 심의', match: (p: string) => p.startsWith('/deliberations') },
   {
     href: '/sales',
     label: '영업 관리',

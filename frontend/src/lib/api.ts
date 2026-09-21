@@ -437,6 +437,55 @@ export const api = {
       return request(`/sales/calendar${q.toString() ? `?${q.toString()}` : ''}`);
     },
   },
+  // 고시형 원료 심의 취득 관리
+  deliberations: {
+    meta: () => request('/deliberations/meta'),
+    list: (params?: {
+      status?: string;
+      category?: string;
+      labelId?: string;
+      q?: string;
+      from?: string;
+      to?: string;
+    }) => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.category) query.set('category', params.category);
+      if (params?.labelId) query.set('labelId', params.labelId);
+      if (params?.q) query.set('q', params.q);
+      if (params?.from) query.set('from', params.from);
+      if (params?.to) query.set('to', params.to);
+      const qs = query.toString();
+      return request(`/deliberations${qs ? `?${qs}` : ''}`);
+    },
+    schedule: (from?: string, to?: string) => {
+      const q = new URLSearchParams();
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      return request(`/deliberations/schedule${q.toString() ? `?${q.toString()}` : ''}`);
+    },
+    get: (id: string) => request(`/deliberations/${id}`),
+    create: (data: any) =>
+      request('/deliberations', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: any) =>
+      request(`/deliberations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => request(`/deliberations/${id}`, { method: 'DELETE' }),
+    addConfirmation: (id: string, department: string) =>
+      request(`/deliberations/${id}/confirmations`, {
+        method: 'POST',
+        body: JSON.stringify({ department }),
+      }),
+    updateConfirmation: (
+      cid: string,
+      data: { confirmed?: boolean; note?: string; confirmedBy?: string },
+    ) =>
+      request(`/deliberations/confirmations/${cid}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    deleteConfirmation: (cid: string) =>
+      request(`/deliberations/confirmations/${cid}`, { method: 'DELETE' }),
+  },
   changelog: {
     // 출시/단종/검수 등 열람 제한이 없는 자료의 변경 이력
     list: (entityType: string, entityId: string) =>
