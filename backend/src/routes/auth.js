@@ -26,6 +26,15 @@ function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// 이메일 인증번호(OTP) 로그인 차단 (2026-10-24, 회계·HR·근태·SCM과 동일 조치).
+// 회사 이메일 도메인만 확인하고 허브(auth.nuldam.com) 권한을 보지 않는 우회 경로였다.
+// 사내 로그인은 허브 SSO(/sso)로만 한다. 아래 원래 처리기는 복구 대비로 남겨 두되 도달하지 않는다.
+const ssoOnly = (req, res) => res.status(403).json({
+  error: '이 로그인 방식은 사용할 수 없습니다. 회사 계정(SSO)으로 로그인하세요: https://auth.nuldam.com',
+});
+router.post('/send-code', ssoOnly);
+router.post('/verify-code', ssoOnly);
+
 // 인증 코드 발송
 router.post('/send-code', async (req, res) => {
   try {
